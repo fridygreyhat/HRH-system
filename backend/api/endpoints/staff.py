@@ -272,7 +272,8 @@ def create_login(staff_id: int, body: LoginIn, db: Session = Depends(get_db), cu
         raise HTTPException(status_code=404, detail="Staff member not found")
     if staff.user_id:
         raise HTTPException(status_code=409, detail="This staff member already has a login")
-    user = User(username=body.username, hashed_password=hash_password(body.temporary_password), full_name=staff.legal_name, phone=staff.verified_phone)
+    user = User(username=body.username, hashed_password=hash_password(body.temporary_password), full_name=staff.legal_name,
+                phone=staff.verified_phone, must_change_password=True)
     db.add(user)
     try:
         db.flush()

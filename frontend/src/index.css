@@ -703,3 +703,4 @@ details > summary { cursor: pointer; font-weight: 600; }
   .step { flex-direction: row; align-items: flex-start; gap: 0.7rem; padding-right: 0; }
   .step:not(:last-child)::after { top: 2.05rem; bottom: -0.85rem; left: 0.9rem; right: auto; width: 2px; height: auto; }
 }
+.forced-pw { min-height: 100vh; }

@@ -12,6 +12,7 @@ interface AuthState {
   hasRole: (...roles: string[]) => boolean;
   lang: Lang;
   setLanguage: (lang: Lang) => Promise<void>;
+  changePassword: (current: string, next: string) => Promise<void>;
   t: (key: MessageKey) => string;
 }
 
@@ -62,12 +63,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await api.put('/auth/me/language', { preferred_language: next });
   }, []);
 
+  // The server ends every other session and returns a fresh token for this one.
+  const changePassword = useCallback(async (current: string, next: string) => {
+    const { access_token } = await api.post<{ access_token: string }>('/auth/change-password', { current_password: current, new_password: next });
+    setToken(access_token);
+    setMe(await api.get<Me>('/auth/me'));
+  }, []);
+
   const hasRole = useCallback((...roles: string[]) => !!me && roles.some((r) => me.roles.includes(r)), [me]);
   const t = useCallback((key: MessageKey) => translate(lang, key), [lang]);
 
   const value = useMemo(
-    () => ({ me, loading, sessionExpired, login, logout, hasRole, lang, setLanguage, t }),
-    [me, loading, sessionExpired, login, logout, hasRole, lang, setLanguage, t],
+    () => ({ me, loading, sessionExpired, login, logout, hasRole, lang, setLanguage, changePassword, t }),
+    [me, loading, sessionExpired, login, logout, hasRole, lang, setLanguage, changePassword, t],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

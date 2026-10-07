@@ -107,6 +107,11 @@ reviewer about logs pending more than 48 hours, and repeats no more often than e
 versioned in Kiswahili and English, validated, and can be previewed. The OTP message is protected, is never
 stored in plaintext, and is never logged. SMS never includes amounts, GPS or patient data.
 
+**Sign-in:** an account locks for 15 minutes after 5 wrong passwords in a row (both are settings), and the
+system administrator can unlock it. Every sign-in attempt, successful or not, is audited, and unknown usernames
+get the same answer as wrong passwords. Accounts created or reset by an administrator get a temporary password
+that must be changed before anything else works. Changing or resetting a password ends every other session.
+
 **Security:** role-based access control plus per-role scopes (facility, community area, cluster, region,
 organization) on every query and action. CSOs are isolated by organization. Oversight is read-only. GPS,
 phone numbers and payment details are hidden from roles that don't need them, and access to payment details is

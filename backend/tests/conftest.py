@@ -74,7 +74,7 @@ class Api:
             assert r.status_code < 300, f"{method} {path} as {user} -> {r.status_code} {r.text}"
         else:
             assert r.status_code == expect, f"{method} {path} as {user} -> {r.status_code} (expected {expect}) {r.text}"
-        if r.headers.get("content-type", "").startswith("application/json"):
+        if r.content and r.headers.get("content-type", "").startswith("application/json"):
             return r.json()
         return r
 

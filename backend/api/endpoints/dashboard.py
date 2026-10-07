@@ -83,6 +83,8 @@ def dashboard(
         claim_q = claim_q.filter(PaymentClaim.period_id == period_id)
     if route:
         claim_q = claim_q.filter(PaymentClaim.route_code == route)
+    if cadre:
+        claim_q = claim_q.filter(PaymentClaim.staff_id.in_(db.query(Staff.id).join(Cadre, Cadre.id == Staff.cadre_id).filter(Cadre.code == cadre)))
     if region_id:
         claim_q = claim_q.filter(PaymentClaim.assignment_id.in_(db.query(StaffAssignment.id).filter(StaffAssignment.region_id == region_id)))
     claim_totals: dict[str, dict] = {}

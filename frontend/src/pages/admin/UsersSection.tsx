@@ -314,9 +314,25 @@ function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleIn
     });
     if (ok) {
       setPassword('');
-      setDone({ part: 'password', msg: `Password reset for ${user.username}. Share the new password with them securely.` });
+      setDone({ part: 'password', msg: `Temporary password set for ${user.username}. Their sessions were ended and they must choose their own password at next sign-in. Share it securely.` });
     }
     return undefined;
+  };
+
+  const unlock = async () => {
+    const u = await deactivateAction.run(() => api.post<AdminUser>(`/admin/users/${user.id}/unlock`));
+    if (u) {
+      onChanged(u);
+      setDone({ part: 'status', msg: `${user.username} was unlocked and can sign in again.` });
+    }
+  };
+
+  const reactivate = async () => {
+    const u = await deactivateAction.run(() => api.post<AdminUser>(`/admin/users/${user.id}/reactivate`));
+    if (u) {
+      onChanged(u);
+      setDone({ part: 'status', msg: `${user.username} was reactivated.` });
+    }
   };
 
   const deactivate = async () => {
@@ -338,7 +354,14 @@ function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleIn
           ['Phone', user.phone],
           ['Email', user.email],
           ['Language', user.preferred_language === 'en' ? 'English' : 'Kiswahili'],
-          ['Status', <StatusBadge key="s" status={user.is_active ? 'ACTIVE' : 'INACTIVE'} />],
+          [
+            'Status',
+            <span key="s" className="badges">
+              <StatusBadge status={user.is_active ? 'ACTIVE' : 'INACTIVE'} />
+              {user.is_locked && <span className="badge badge-danger">Locked: too many wrong passwords</span>}
+              {user.must_change_password && <span className="badge badge-warn">Temporary password</span>}
+            </span>,
+          ],
           ['Last sign-in', dateTime(user.last_login_at)],
           ['Staff record', user.staff_id ? `#${user.staff_id}` : null],
         ]}
@@ -387,6 +410,25 @@ function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleIn
           </button>
         </div>
       </form>
+
+      {(user.is_locked || !user.is_active) && (
+        <div className="stack card">
+          <h3>{user.is_locked ? 'Locked account' : 'Deactivated account'}</h3>
+          <Alert>{deactivateAction.error}</Alert>
+          <div className="row">
+            {user.is_locked && (
+              <button className="btn btn-primary" onClick={unlock} disabled={deactivateAction.busy}>
+                Unlock
+              </button>
+            )}
+            {!user.is_active && (
+              <button className="btn btn-primary" onClick={reactivate} disabled={deactivateAction.busy}>
+                Reactivate
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {user.is_active && !isMe && (
         <div className="stack card">
@@ -497,6 +539,7 @@ export function UsersSection() {
                       </td>
                       <td>
                         <StatusBadge status={u.is_active ? 'ACTIVE' : 'INACTIVE'} />
+                        {u.is_locked && <span className="badge badge-danger">Locked</span>}
                       </td>
                       <td className="nowrap">{dateTime(u.last_login_at)}</td>
                       <td>{u.staff_id ? `#${u.staff_id}` : '—'}</td>

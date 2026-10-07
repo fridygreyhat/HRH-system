@@ -341,6 +341,7 @@ def _user_out(db: Session, user: User) -> dict:
     cu = load_current_user(db, user)
     return {
         **to_dict(user, exclude=("hashed_password",)),
+        "is_locked": bool(user.locked_until and user.locked_until > utcnow()),
         "roles": sorted(cu.roles),
         "scopes": [to_dict(s) for s in cu.scopes],
         "staff_id": cu.staff.id if cu.staff else None,
@@ -372,7 +373,7 @@ def list_users(db: Session = Depends(get_db), _: CurrentUser = Depends(require_r
 @router.post("/users", status_code=201)
 def create_user(body: UserCreate, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(SYSTEM_ADMIN))):
     user = User(username=body.username, hashed_password=hash_password(body.password), full_name=body.full_name, phone=body.phone,
-                email=body.email, preferred_language=body.preferred_language)
+                email=body.email, preferred_language=body.preferred_language, must_change_password=True)
     db.add(user)
     try:
         db.flush()
@@ -456,6 +457,7 @@ def reactivate(user_id: int, db: Session = Depends(get_db), current: CurrentUser
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.is_active = True
+    user.failed_login_count, user.locked_until = 0, None
     system_audit.record(db, current, "user", user.id, "reactivate")
     _commit(db)
     return _user_out(db, user)
@@ -466,9 +468,24 @@ def reset_password(user_id: int, body: PasswordReset, db: Session = Depends(get_
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    # Temporary password: the user must replace it, and every existing session ends.
     user.hashed_password = hash_password(body.new_password)
+    user.must_change_password = True
+    user.password_changed_at = utcnow()
+    user.failed_login_count, user.locked_until = 0, None
     system_audit.record(db, current, "user", user.id, "reset_password")
     _commit(db)
+
+
+@router.post("/users/{user_id}/unlock")
+def unlock(user_id: int, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(SYSTEM_ADMIN))):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.failed_login_count, user.locked_until = 0, None
+    system_audit.record(db, current, "user", user.id, "unlock")
+    _commit(db)
+    return _user_out(db, user)
 
 
 # --- Settings ------------------------------------------------------------------------------

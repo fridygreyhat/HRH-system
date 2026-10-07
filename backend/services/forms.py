@@ -59,6 +59,12 @@ def assignment_out(db: Session, a: StaffAssignment | None) -> dict | None:
         return None
     return {
         "id": a.id,
+        # ids let forms (e.g. a rotation) start from the current placement
+        "region_id": a.region_id,
+        "district_id": a.district_id,
+        "ward_id": a.ward_id,
+        "facility_id": a.facility_id,
+        "community_area_id": a.community_area_id,
         "region": _name(db, Region, a.region_id),
         "district": _name(db, District, a.district_id),
         "ward": _name(db, Ward, a.ward_id),

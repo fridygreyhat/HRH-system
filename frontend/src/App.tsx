@@ -10,11 +10,13 @@ import { Budgets } from './pages/Budgets';
 import { Claims } from './pages/Claims';
 import { CsoPortal } from './pages/CsoPortal';
 import { Dashboard } from './pages/Dashboard';
+import { ChangePasswordForm, ForcedPasswordChange } from './pages/ChangePassword';
 import { Login } from './pages/Login';
 import { MyWorkLogs } from './pages/MyWorkLogs';
 import { PrintWorkLog } from './pages/PrintWorkLog';
 import { ReviewWorkLogs } from './pages/ReviewWorkLogs';
 import { Staff } from './pages/Staff';
+import { Modal } from './components/ui';
 import { useTheme } from './theme';
 import { WorkLogSummary } from './types';
 
@@ -133,6 +135,7 @@ function App() {
   const { me, loading, logout, hasRole } = useAuth();
   const route = useHashRoute();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const pages = PAGES.filter((p) => hasRole(...p.roles));
   const current = pages.find((p) => p.key === route.page) || pages[0];
   const isReviewer = hasRole(...REVIEWERS);
@@ -150,6 +153,7 @@ function App() {
       </div>
     );
   if (!me) return <Login />;
+  if (me.must_change_password) return <ForcedPasswordChange />;
 
   const printing = route.page === 'print' && route.id;
   if (printing)
@@ -228,6 +232,9 @@ function App() {
                 <span className="user-role">{me.roles.map(roleLabel).join(', ')}</span>
               </span>
             </div>
+            <button type="button" className="icon-btn" onClick={() => setPasswordOpen(true)} aria-label="Change password" title="Change password">
+              <Icon name="shield" />
+            </button>
             <button type="button" className="icon-btn" onClick={logout} aria-label="Sign out" title="Sign out">
               <Icon name="logout" />
             </button>
@@ -241,6 +248,11 @@ function App() {
           )}
         </main>
       </div>
+      {passwordOpen && (
+        <Modal title="Change password" onClose={() => setPasswordOpen(false)}>
+          <ChangePasswordForm onDone={() => setPasswordOpen(false)} />
+        </Modal>
+      )}
     </div>
   );
 }

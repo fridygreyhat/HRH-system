@@ -20,6 +20,8 @@ DEFAULTS: dict[str, Any] = {
     "payment_requires_proof": True,
     # Escalation beyond the base reviewer reminder is not defined by HRH yet; leave empty until approved.
     "escalation_recipient_roles": [],
+    "login_max_failures": 5,
+    "login_lockout_minutes": 15,
 }
 
 SETTING_DESCRIPTIONS = {
@@ -34,6 +36,8 @@ SETTING_DESCRIPTIONS = {
     "sms_max_attempts": "Delivery attempts before an SMS is marked failed",
     "payment_requires_proof": "Require proof upload before marking a payment PAID",
     "escalation_recipient_roles": "Roles to escalate overdue items to (empty = none)",
+    "login_max_failures": "Wrong passwords in a row before an account is locked",
+    "login_lockout_minutes": "Minutes an account stays locked after too many wrong passwords",
 }
 
 

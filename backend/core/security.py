@@ -4,7 +4,7 @@ from typing import Optional
 
 import bcrypt
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -27,9 +27,20 @@ def verify_password(password: str, hashed: str) -> bool:
         return False
 
 
-def create_access_token(user_id: int) -> str:
-    expires = datetime.now(timezone.utc) + timedelta(minutes=config.ACCESS_TOKEN_EXPIRE_MINUTES)
-    return jwt.encode({"sub": str(user_id), "exp": expires}, config.SECRET_KEY, algorithm=ALGORITHM)
+# Endpoints a user with a temporary password may still call.
+PASSWORD_CHANGE_ALLOWED_PATHS = {"/auth/me", "/auth/change-password"}
+# Verified against when the username does not exist, so response time does not reveal valid usernames.
+DUMMY_HASH = bcrypt.hashpw(b"not-a-real-password", bcrypt.gensalt()).decode()
+
+
+def password_version(user: User) -> int:
+    return int(user.password_changed_at.timestamp() * 1000) if user.password_changed_at else 0  # milliseconds: two changes in one second still differ
+
+
+def create_access_token(user: User) -> str:
+    now = datetime.now(timezone.utc)
+    claims = {"sub": str(user.id), "iat": now, "exp": now + timedelta(minutes=config.ACCESS_TOKEN_EXPIRE_MINUTES), "pwv": password_version(user)}
+    return jwt.encode(claims, config.SECRET_KEY, algorithm=ALGORITHM)
 
 
 def get_user_roles(db: Session, user_id: int) -> set[str]:
@@ -68,7 +79,7 @@ def load_current_user(db: Session, user: User) -> CurrentUser:
     )
 
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> CurrentUser:
+def get_current_user(request: Request, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> CurrentUser:
     unauthorized = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -80,8 +91,10 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     except (jwt.PyJWTError, KeyError, ValueError):
         raise unauthorized
     user = db.get(User, user_id)
-    if not user or not user.is_active:
-        raise unauthorized
+    if not user or not user.is_active or payload.get("pwv", 0) != password_version(user):
+        raise unauthorized  # deactivated, or the password changed since this token was issued
+    if user.must_change_password and request.url.path not in PASSWORD_CHANGE_ALLOWED_PATHS:
+        raise HTTPException(status_code=403, detail="You must change your temporary password before continuing")
     return load_current_user(db, user)
 
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '../../AuthContext';
 import { useApi } from '../../hooks';
-import { Named, Organization, Section } from '../../types';
+import { Assignment, Named, Organization, Section } from '../../types';
 import { Alert, Field } from '../ui';
 
 interface District extends Named {
@@ -50,6 +50,21 @@ export const EMPTY_ASSIGNMENT: AssignmentValue = {
 };
 
 const idOrNull = (v: string): number | null => (v ? Number(v) : null);
+const text = (v: number | string | null | undefined): string => (v === null || v === undefined ? '' : String(v));
+
+/** Form value starting from an existing placement (used to pre-fill a rotation). */
+export function assignmentValueFrom(a: Assignment | null | undefined): AssignmentValue {
+  if (!a) return EMPTY_ASSIGNMENT;
+  return {
+    region_id: text(a.region_id),
+    district_id: text(a.district_id),
+    ward_id: text(a.ward_id),
+    facility_id: text(a.facility_id),
+    community_area_id: text(a.community_area_id),
+    section: text(a.section),
+    organization_id: text(a.organization_id),
+  };
+}
 
 export function assignmentPayload(v: AssignmentValue): AssignmentPayload {
   return {

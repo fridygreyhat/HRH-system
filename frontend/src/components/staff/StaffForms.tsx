@@ -4,7 +4,7 @@ import { useAction } from '../../hooks';
 import { humanize, todayLocal } from '../../format';
 import { Cadre, StaffDetail, StaffSummary } from '../../types';
 import { Alert, Field, Modal, ReasonDialog } from '../ui';
-import { AssignmentFields, AssignmentValue, EMPTY_ASSIGNMENT, assignmentPayload } from './AssignmentFields';
+import { AssignmentFields, AssignmentValue, EMPTY_ASSIGNMENT, assignmentPayload, assignmentValueFrom } from './AssignmentFields';
 
 export const PHONE_PATTERN = '^\\+?\\d{9,15}$';
 const PHONE_RE = new RegExp(PHONE_PATTERN);
@@ -369,7 +369,8 @@ export function EditStaffModal({
 export function RotateModal({ staff, cadres, onClose, onDone }: { staff: StaffDetail; cadres: Cadre[]; onClose: () => void; onDone: (s: StaffDetail) => void }) {
   const [effective, setEffective] = useState(todayLocal());
   const [reason, setReason] = useState('');
-  const [assignment, setAssignment] = useState<AssignmentValue>(EMPTY_ASSIGNMENT);
+  // Start from the current placement so a rotation only changes what actually moves.
+  const [assignment, setAssignment] = useState<AssignmentValue>(() => assignmentValueFrom(staff.assignments.find((a) => !a.end_date) || staff.assignments[0]));
   const { busy, error, run } = useAction();
   const cadre = cadres.find((c) => c.id === staff.cadre_id);
   const submit = async (e: React.FormEvent) => {

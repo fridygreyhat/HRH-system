@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, false, text
 
 from .base import Base, created_at, utcnow
 
@@ -14,6 +14,13 @@ class User(Base):
     preferred_language = Column(String(5), default="sw", nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     last_login_at = Column(DateTime(timezone=True))
+    # Sign-in protection
+    failed_login_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    locked_until = Column(DateTime(timezone=True))
+    # Set when an administrator issues a temporary password; the user must choose their own before doing anything else.
+    must_change_password = Column(Boolean, nullable=False, default=False, server_default=false())
+    # Tokens carry this timestamp; changing or resetting the password invalidates every earlier session.
+    password_changed_at = Column(DateTime(timezone=True))
     created_at = created_at()
 
 

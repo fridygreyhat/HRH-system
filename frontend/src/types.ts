@@ -40,6 +40,8 @@ export interface Me {
   phone: string | null;
   preferred_language: Lang;
   is_active: boolean;
+  /** Set after an administrator issues a temporary password; nothing else works until it is changed. */
+  must_change_password: boolean;
   roles: string[];
   staff: { id: number; legal_name: string; cadre_id: number; status: string; occupation: string | null } | null;
   cadre: Cadre | null;
@@ -130,6 +132,11 @@ export interface WorkLogAudit {
 
 export interface Assignment {
   id: number;
+  region_id?: number | null;
+  district_id?: number | null;
+  ward_id?: number | null;
+  facility_id?: number | null;
+  community_area_id?: number | null;
   region: string | null;
   district: string | null;
   ward: string | null;
@@ -529,6 +536,8 @@ export interface AdminUser {
   phone: string | null;
   preferred_language: Lang;
   is_active: boolean;
+  is_locked: boolean;
+  must_change_password: boolean;
   last_login_at: string | null;
   roles: string[];
   scopes: UserScope[];
