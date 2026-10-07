@@ -85,6 +85,11 @@ export function Login() {
 
       <section className="login-panel">
         <form className="login-card stack" onSubmit={submit}>
+          <div className="partner-bar" role="group" aria-label="Programme partners">
+            <img src={`${process.env.PUBLIC_URL}/brand/usa-mark.png`} alt="United States of America" className="partner-usa" />
+            <span className="partner-divider" aria-hidden="true" />
+            <img src={`${process.env.PUBLIC_URL}/brand/fhi360-logo.png`} alt="FHI 360" className="partner-fhi" />
+          </div>
           <div className="login-mobile-brand">
             <BrandMark size={36} />
             <strong>HRH Pay</strong>

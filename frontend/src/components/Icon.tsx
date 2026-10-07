@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 
 /** Small stroke icon set (24px grid, inherits currentColor). Decorative unless a title is given. */
 const PATHS: Record<string, React.ReactNode> = {
@@ -143,15 +143,17 @@ export function Icon({ name, size = 20, title, className }: { name: string; size
 
 /** Brand mark: a check inside a shield-like rounded square, drawn in the brand gradient. */
 export function BrandMark({ size = 34 }: { size?: number }) {
+  // Unique gradient id per instance: a shared id resolves to the first copy, which may be hidden (display: none).
+  const gradient = `brand-g-${useId().replace(/:/g, '')}`;
   return (
     <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden="true" className="brand-mark">
       <defs>
-        <linearGradient id="brand-g" x1="0" y1="0" x2="1" y2="1">
+        <linearGradient id={gradient} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="#19b394" />
           <stop offset="1" stopColor="#2a78d6" />
         </linearGradient>
       </defs>
-      <rect width="40" height="40" rx="11" fill="url(#brand-g)" />
+      <rect width="40" height="40" rx="11" fill={`url(#${gradient})`} />
       <path d="M11 21.5h4.5l2.5-6 4 11 2.5-5H29" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
