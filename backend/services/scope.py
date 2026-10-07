@@ -1,0 +1,181 @@
+"""Server-side data scoping. Every list and every action goes through these conditions.
+
+A reviewer sees only work whose assignment falls inside the scopes granted for that role:
+  SUPERVISOR          facility or community area
+  FACILITY_IN_CHARGE  facility
+  TECHNICAL_OFFICER   cluster (via facility.cluster_id) or region
+  RPM                 region
+  COMMUNITY_VERIFIER  community area
+  CSO_FINANCE         organization (the CSO)
+  REGIONAL_ADMIN      region
+Reviewers with no matching scope see nothing. OVERSIGHT has read-only visibility everywhere.
+"""
+from datetime import date
+from typing import Optional
+
+from sqlalchemy import and_, exists, false, or_, select, true
+from sqlalchemy.orm import Session
+
+from ..core.roles import (
+    CENTRAL_ADMIN,
+    COMMUNITY_VERIFIER,
+    CSO_FINANCE,
+    FACILITY_IN_CHARGE,
+    FHI360_FINANCE,
+    OVERSIGHT,
+    REGIONAL_ADMIN,
+    RPM,
+    SUPERVISOR,
+    SYSTEM_ADMIN,
+    TECHNICAL_OFFICER,
+)
+from ..core.security import CurrentUser
+from ..models import (
+    Facility,
+    PaymentClaim,
+    PayPeriod,
+    Role,
+    Staff,
+    StaffAssignment,
+    User,
+    UserRole,
+    UserScope,
+    WorkLog,
+)
+
+ROLE_SCOPE_DIMENSIONS: dict[str, tuple[str, ...]] = {
+    SUPERVISOR: ("facility_id", "community_area_id"),
+    FACILITY_IN_CHARGE: ("facility_id",),
+    TECHNICAL_OFFICER: ("cluster_id", "region_id"),
+    RPM: ("region_id",),
+    COMMUNITY_VERIFIER: ("community_area_id",),
+    CSO_FINANCE: ("organization_id",),
+    REGIONAL_ADMIN: ("region_id",),
+}
+
+
+def _assignment_condition(current: CurrentUser, role: str):
+    """Condition on StaffAssignment for assignments inside `role`'s scope, or None when the user has no scope."""
+    if role not in current.roles:
+        return None
+    conditions = []
+    for dim in ROLE_SCOPE_DIMENSIONS.get(role, ()):
+        values = current.scope_values(dim)
+        if not values:
+            continue
+        if dim == "cluster_id":
+            conditions.append(StaffAssignment.facility_id.in_(select(Facility.id).where(Facility.cluster_id.in_(values))))
+        else:
+            conditions.append(getattr(StaffAssignment, dim).in_(values))
+    return or_(*conditions) if conditions else None
+
+
+def assignments_in_role_scope(current: CurrentUser, role: str):
+    condition = _assignment_condition(current, role)
+    return None if condition is None else select(StaffAssignment.id).where(condition)
+
+
+def assignment_in_role_scope(db: Session, current: CurrentUser, role: str, assignment_id: Optional[int]) -> bool:
+    condition = _assignment_condition(current, role)
+    if condition is None or assignment_id is None:
+        return False
+    return db.query(exists().where(StaffAssignment.id == assignment_id, condition)).scalar()
+
+
+def worklog_visibility(current: CurrentUser):
+    if current.has_any(OVERSIGHT, FHI360_FINANCE):
+        return true()
+    conditions = [WorkLog.staff_id == current.staff_id]
+    for role in ROLE_SCOPE_DIMENSIONS:
+        subquery = assignments_in_role_scope(current, role)
+        if subquery is not None:
+            conditions.append(WorkLog.assignment_id.in_(subquery))
+    return or_(*conditions)
+
+
+def claim_visibility(current: CurrentUser):
+    if current.has_any(OVERSIGHT):
+        return true()
+    conditions = [PaymentClaim.staff_id == current.staff_id]
+    if FHI360_FINANCE in current.roles:
+        conditions.append(PaymentClaim.route_code.in_(("A", "B")))
+        conditions.append(and_(PaymentClaim.route_code.is_(None), PaymentClaim.created_by == current.id))
+    if CSO_FINANCE in current.roles:
+        orgs = current.scope_values("organization_id")
+        if orgs:
+            conditions.append(
+                and_(
+                    PaymentClaim.executor_org_id.in_(orgs),
+                    or_(PaymentClaim.route_code == "C", PaymentClaim.status == "HANDED_OFF"),
+                )
+            )
+            conditions.append(and_(PaymentClaim.route_code.is_(None), PaymentClaim.created_by == current.id))
+    for role in (RPM, COMMUNITY_VERIFIER):
+        subquery = assignments_in_role_scope(current, role)
+        if subquery is not None:
+            condition = PaymentClaim.assignment_id.in_(subquery)
+            if role == COMMUNITY_VERIFIER:
+                condition = and_(condition, PaymentClaim.route_code == "C")
+            conditions.append(condition)
+    return or_(*conditions)
+
+
+def staff_visibility(current: CurrentUser):
+    if current.has_any(CENTRAL_ADMIN, SYSTEM_ADMIN, OVERSIGHT, FHI360_FINANCE):
+        return true()
+    conditions = [Staff.id == current.staff_id]
+    for role in ROLE_SCOPE_DIMENSIONS:
+        subquery = assignments_in_role_scope(current, role)
+        if subquery is not None:
+            conditions.append(Staff.id.in_(select(StaffAssignment.staff_id).where(StaffAssignment.id.in_(subquery))))
+    return or_(*conditions) if conditions else false()
+
+
+def assignment_for_period(db: Session, staff_id: int, period: PayPeriod) -> Optional[StaffAssignment]:
+    return _overlapping(db, staff_id, period.start_date, period.end_date)
+
+
+def current_assignment(db: Session, staff_id: int, on: date) -> Optional[StaffAssignment]:
+    return _overlapping(db, staff_id, on, on)
+
+
+def _overlapping(db: Session, staff_id: int, start: date, end: date) -> Optional[StaffAssignment]:
+    return (
+        db.query(StaffAssignment)
+        .filter(
+            StaffAssignment.staff_id == staff_id,
+            StaffAssignment.start_date <= end,
+            or_(StaffAssignment.end_date.is_(None), StaffAssignment.end_date >= start),
+        )
+        .order_by(StaffAssignment.is_primary.desc(), StaffAssignment.start_date.desc())
+        .first()
+    )
+
+
+def users_in_scope_for(db: Session, role: str, assignment: StaffAssignment) -> list[User]:
+    """Active users holding `role` whose scope covers `assignment` (used to address notifications)."""
+    dims = ROLE_SCOPE_DIMENSIONS.get(role, ())
+    matches = []
+    if "facility_id" in dims and assignment.facility_id:
+        matches.append(UserScope.facility_id == assignment.facility_id)
+    if "community_area_id" in dims and assignment.community_area_id:
+        matches.append(UserScope.community_area_id == assignment.community_area_id)
+    if "region_id" in dims and assignment.region_id:
+        matches.append(UserScope.region_id == assignment.region_id)
+    if "organization_id" in dims and assignment.organization_id:
+        matches.append(UserScope.organization_id == assignment.organization_id)
+    if "cluster_id" in dims and assignment.facility_id:
+        facility = db.get(Facility, assignment.facility_id)
+        if facility and facility.cluster_id:
+            matches.append(UserScope.cluster_id == facility.cluster_id)
+    if not matches:
+        return []
+    return (
+        db.query(User)
+        .join(UserRole, UserRole.user_id == User.id)
+        .join(Role, Role.id == UserRole.role_id)
+        .join(UserScope, UserScope.user_id == User.id)
+        .filter(Role.name == role, User.is_active.is_(True), or_(*matches))
+        .distinct()
+        .all()
+    )
