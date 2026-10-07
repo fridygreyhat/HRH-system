@@ -1,3 +1,4 @@
+import { ApprovalStepper } from './ApprovalStepper';
 import React, { useState } from 'react';
 import { api, ApiError } from '../../api';
 import {
@@ -217,6 +218,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
               Print view
             </button>
           </div>
+          <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} />
           {conflict && (
             <div className="alert alert-warn" role="alert">
               This work log changed since you opened it, so your action was not applied. Reload and review it again.{' '}

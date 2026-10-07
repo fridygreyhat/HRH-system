@@ -1,3 +1,4 @@
+import { MiniStepper } from '../components/worklogs/ApprovalStepper';
 import React, { useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../AuthContext';
@@ -85,6 +86,7 @@ export function MyWorkLogs() {
                   <strong>{l.period_label}</strong>
                   <StatusBadge kind="log" status={l.status} />
                 </div>
+                <MiniStepper status={l.status} />
                 <div className="muted small">
                   {num(l.entry_count)} {t('days').toLowerCase()} · {num(l.total_hours)} {t('hours').toLowerCase()} · #{l.id}
                 </div>

@@ -1,3 +1,4 @@
+import { ApprovalStepper } from './ApprovalStepper';
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api';
 import { useAuth } from '../../AuthContext';
@@ -242,6 +243,7 @@ export function WorkLogEditor({ logId, onBack }: { logId: number; onBack: () => 
       </div>
       <header className="stack">
         <h1>{log.cadre.form_title || log.cadre.name}</h1>
+        <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} />
         <div className="row">
           <span className="muted">
             {log.period_label} · #{log.id}
