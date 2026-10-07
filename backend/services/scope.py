@@ -120,6 +120,13 @@ def claim_visibility(current: CurrentUser):
     return or_(*conditions)
 
 
+def can_see_gps(db: Session, current: CurrentUser, staff_id: int, assignment_id: Optional[int]) -> bool:
+    """GPS coordinates: the staff member and the CTC/technical reviewers responsible for them only."""
+    if current.staff_id == staff_id:
+        return True
+    return any(assignment_in_role_scope(db, current, role, assignment_id) for role in (SUPERVISOR, TECHNICAL_OFFICER))
+
+
 def staff_visibility(current: CurrentUser):
     if current.has_any(CENTRAL_ADMIN, SYSTEM_ADMIN, OVERSIGHT, FHI360_FINANCE):
         return true()

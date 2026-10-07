@@ -643,3 +643,28 @@ details > summary { cursor: pointer; font-weight: 600; }
   .split .barlist { width: 100%; }
   h1, .page-header h1, .hero-header h1 { font-size: 1.35rem; }
 }
+
+/* ==========================================================================================
+   Claim trace (lineage)
+   ========================================================================================== */
+.lineage { display: flex; align-items: stretch; gap: 0.4rem; flex-wrap: wrap; }
+.lineage > .icon { align-self: center; color: var(--muted); }
+.lineage-step { flex: 1 1 140px; display: flex; flex-direction: column; gap: 0.2rem; padding: 0.7rem 0.85rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+.lineage-k { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.checks-row { display: grid; gap: 0.6rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.check { display: flex; gap: 0.55rem; align-items: center; padding: 0.65rem 0.8rem; border-radius: 10px; font-size: 0.88rem; font-weight: 550; }
+.check-success { background: var(--success-bg); color: var(--success-fg); }
+.check-danger { background: var(--danger-bg); color: var(--danger-fg); }
+.check-neutral { background: var(--neutral-bg); color: var(--neutral-fg); }
+.trace-comp { display: flex; flex-direction: column; gap: 0.6rem; }
+.trace-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+.trace-head h3 { margin: 0; }
+.trace-formula { display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; }
+.trace-formula span { font-size: 0.85rem; color: var(--muted); }
+.trace-formula strong { font-size: 1.15rem; }
+.chain { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.7rem; }
+.chain li { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 0.6rem; position: relative; }
+.chain li:not(:last-child)::after { content: ''; position: absolute; left: 6px; top: 16px; bottom: -0.7rem; width: 2px; background: var(--border); }
+.chain-dot { width: 14px; height: 14px; border-radius: 50%; border: 3px solid var(--primary); background: var(--surface); margin-top: 0.2rem; }
+.chain-comment { background: var(--surface-2); padding: 0.3rem 0.5rem; border-radius: 6px; margin-top: 0.25rem; }
+.align-start { align-items: start; }

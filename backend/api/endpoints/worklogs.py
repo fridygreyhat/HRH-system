@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ...core import config
-from ...core.roles import PROVIDER, SUPERVISOR, TECHNICAL_OFFICER
+from ...core.roles import PROVIDER
 from ...core.security import CurrentUser, get_current_user, require_roles
 from ...core.serialize import to_dict
 from ...core.settings import get_setting
@@ -36,7 +36,7 @@ from ...services import worklog_workflow as wf
 from ...services.forms import assignment_out, cadre_fields, cadre_out, entries_with_measures, totals
 from ...services.geo import LOCATION_EXCEPTIONS, location_status
 from ...services.otp import dev_code, issue_otp, verify_otp
-from ...services.scope import assignment_for_period, assignment_in_role_scope, worklog_visibility
+from ...services.scope import assignment_for_period, can_see_gps, worklog_visibility
 
 router = APIRouter()
 
@@ -100,12 +100,6 @@ def _editable_log(db: Session, current: CurrentUser, log_id: int) -> WorkLog:
     return log
 
 
-def _can_see_gps(db: Session, current: CurrentUser, log: WorkLog) -> bool:
-    if current.staff_id == log.staff_id:
-        return True
-    return any(assignment_in_role_scope(db, current, role, log.assignment_id) for role in (SUPERVISOR, TECHNICAL_OFFICER))
-
-
 def _summary(db: Session, log: WorkLog) -> dict:
     staff = db.get(Staff, log.staff_id)
     t = totals(db, log)
@@ -126,7 +120,7 @@ def _summary(db: Session, log: WorkLog) -> dict:
 def _detail(db: Session, current: CurrentUser, log: WorkLog) -> dict:
     staff = db.get(Staff, log.staff_id)
     period = db.get(PayPeriod, log.period_id)
-    show_gps = _can_see_gps(db, current, log)
+    show_gps = can_see_gps(db, current, log.staff_id, log.assignment_id)
     entries = []
     for e, measures in entries_with_measures(db, log.id):
         row = to_dict(e, exclude=() if show_gps else ("gps_lat", "gps_lon", "gps_accuracy_m"))

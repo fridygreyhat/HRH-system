@@ -16,7 +16,8 @@ import {
 } from '../../format';
 import { useAction, useApi } from '../../hooks';
 import { ClaimAudit, ClaimComponent, ClaimDetail, PaymentProof } from '../../types';
-import { Alert, AuditTimeline, Drawer, Facts, Field, Modal, ReasonDialog, RouteBadge, Section, StatusBadge } from '../ui';
+import { Alert, AuditTimeline, Drawer, Facts, Field, Modal, ReasonDialog, RouteBadge, Section, StatusBadge, Tabs } from '../ui';
+import { ClaimTrace } from './ClaimTrace';
 
 const MAX_PROOF_BYTES = 10 * 1024 * 1024;
 const PROOF_TYPES = ['application/pdf', 'image/png', 'image/jpeg'];
@@ -210,6 +211,7 @@ type Dialog = { kind: 'action'; action: string } | { kind: 'record_payment' } | 
 export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; onClose: () => void; onChanged?: () => void }) {
   const { data: claim, error, loading, setData } = useApi<ClaimDetail>(`/claims/${claimId}`);
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [tab, setTab] = useState<'overview' | 'trace'>('overview');
   const [notice, setNotice] = useState<string | null>(null);
   const proofAction = useAction();
 
@@ -263,6 +265,19 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
               </div>
             </div>
           </div>
+          <Tabs
+            label="Claim view"
+            value={tab}
+            onChange={setTab}
+            tabs={[
+              { key: 'overview', label: 'Overview & actions' },
+              { key: 'trace', label: 'Trace to daily work' },
+            ]}
+          />
+          {tab === 'trace' ? (
+            <ClaimTrace claimId={claimId} />
+          ) : (
+            <>
           {claim.exception_reason && (
             <div className="alert alert-warn" role="status">
               <strong>Exception – needs attention:</strong> {claim.exception_reason}
@@ -410,6 +425,8 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
           <Section title="History">
             <AuditTimeline rows={auditRows(claim.audit)} actionLabels={CLAIM_ACTION_LABELS} statusKind="claim" />
           </Section>
+            </>
+          )}
         </div>
       )}
 

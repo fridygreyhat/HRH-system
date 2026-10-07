@@ -32,6 +32,7 @@ from ...models import (
 from ...services import claims as cl
 from ...services import payments as pay
 from ...services.scope import assignment_for_period, claim_visibility, worklog_visibility
+from ...services.trace import trace_claim
 from ...services.worklog_workflow import APPROVED as LOG_APPROVED, period_label
 
 router = APIRouter()
@@ -225,6 +226,13 @@ def create_claim(body: ClaimCreate, db: Session = Depends(get_db), current: Curr
 @router.get("/{claim_id}")
 def get_claim(claim_id: int, db: Session = Depends(get_db), current: CurrentUser = Depends(get_current_user)):
     return _detail(db, current, _get(db, current, claim_id))
+
+
+@router.get("/{claim_id}/trace")
+def trace(claim_id: int, db: Session = Depends(get_db), current: CurrentUser = Depends(get_current_user)):
+    """Lineage of a claim: components → approved rate rules → the daily entries and values that produced them →
+    the provider-confirmed version → approvals → payments. Same access rules as the claim itself."""
+    return trace_claim(db, current, _get(db, current, claim_id))
 
 
 @router.post("/{claim_id}/actions/{action}")
