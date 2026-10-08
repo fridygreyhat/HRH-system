@@ -19,7 +19,7 @@ the backend, so browsers never talk to a second origin.
 
 | What | Where |
 |----------|-------------------------------------------------|
-| Web app  | http://localhost:3000 (sign-in page lists one-click demo accounts in demo mode) |
+| Web app  | http://localhost:3000 |
 | API      | http://localhost:3000/api (also directly on :8001 for scripts) |
 | API docs | http://localhost:3000/api/docs |
 | Worker   | `worker` service: SMS outbox + hourly reminders |
@@ -32,29 +32,26 @@ on phones, and a dashboard with charts (each chart has a table view).
 On start the backend runs `alembic upgrade head` and the idempotent seed (`python -m backend.seed`).
 Tests create and drop their own `hrh_test` database.
 
-### Demo data (`SEED_DEMO_DATA=true`, the compose default)
+### First-time setup
 
-All demo users use the password `Demo@12345`; the system administrator is `admin` / `admin12345`.
+A fresh system contains only base configuration: roles, sections, the three cadre forms, payment routes A/B/C,
+SMS templates, the FHI360 organization, and one system administrator (`ADMIN_USERNAME` / `ADMIN_PASSWORD`,
+`admin` / `admin12345` unless you set them; change it immediately). There are no sample users, places, rates or
+budgets. Set the system up in this order:
 
-| User | Role | Scope |
-|---|---|---|
-| `chw1`, `clerk1`, `hcp1` | Provider (CHW, Data Clerk, HCP) | DEMO Iringa Dispensary / community, DEMO CSO Iringa |
-| `hcp2` | Provider (HCP) | Njombe, DEMO CSO Njombe (for isolation checks) |
-| `supervisor1` | CTC In-Charge / Supervisor | Iringa facility + community area |
-| `facilityic1` | Facility In-Charge | Iringa facility |
-| `tofficer1` | Cluster / Regional Technical Officer | Iringa Cluster 1 |
-| `rpm1`, `rpm2` | RPM | Iringa, Njombe |
-| `fhifin1`, `fhifin2` | FHI360 Finance (maker / checker) | — |
-| `csofin1`, `csofin2` | CSO Finance (maker / checker) | DEMO CSO Iringa |
-| `csofin3` | CSO Finance | DEMO CSO Njombe |
-| `verifier1` | Community verifier | Gangilonga community area |
-| `oversight1` | FHI360 oversight (read-only) | all |
-| `central1`, `regadmin1` | Central / Regional administrator | all / Iringa |
+1. **System administrator → Administration → Users:** create the central administrator, finance, RPM, technical
+   officer and other accounts, with their roles and scopes. New accounts get a temporary password that must be
+   changed at first sign-in.
+2. **Central administrator → Administration → Configuration:** regions, clusters, districts, wards, facilities
+   (with geofences), community areas and CSOs; check the cadre forms.
+3. **Central / regional administrator → Staff registry:** import the approved roster (CSV) or add staff, then give
+   providers logins.
+4. **FHI360 Finance:** pay periods, funding sources and claim categories (route, payor, budget owner), proposed
+   rate rules (approved by an RPM or oversight user), and budget lines (or a tracker import).
+5. **SMS:** configure a real SMS gateway (see the production checklist). Without one, providers cannot receive
+   the confirmation code they need to confirm a verified work log.
 
-Demo claim categories, rates and budgets are prefixed **DEMO** and are illustrative only. The production seed
-contains no rates, budgets or route mappings.
-
-With the mock SMS gateway and `EXPOSE_DEV_OTP=true`, confirmation codes are shown in the app instead of being texted.
+`EXPOSE_DEV_OTP=true` (development only, with the mock gateway) shows confirmation codes on screen instead.
 
 ## How it works
 
@@ -128,15 +125,14 @@ backend/
                    staff_registry, notifications, templates, sms_gateway
   api/endpoints/   auth, worklogs, claims, batches, budgets, staff, admin, dashboard
   worker.py        outbox delivery + reminders
-  seed.py          base configuration + optional DEMO data
-  tests/           acceptance tests mapped to the master prompt's section 17
+  seed.py          base configuration (no sample data)
+  tests/           acceptance tests mapped to the master prompt's section 17 (sample data in tests/demo_data.py)
 frontend/          React + TypeScript (CRA), built and served by nginx (nginx.conf proxies /api)
 ```
 
 ## Production checklist
 
-- Set `SECRET_KEY` (32+ random bytes), `ADMIN_PASSWORD`, `SEED_DEMO_DATA=false`, `EXPOSE_DEV_OTP=false`, and
-  `CORS_ORIGINS`.
+- Set `SECRET_KEY` (32+ random bytes), `ADMIN_PASSWORD`, `CORS_ORIGINS`, and keep `EXPOSE_DEV_OTP=false`.
 - Configure an SMS gateway (`SMS_GATEWAY_TYPE=twilio` plus credentials, or add a local provider in
   `services/sms_gateway.py`).
 - Serve behind TLS. Back up Postgres and the `uploads` volume, which holds payment proofs.

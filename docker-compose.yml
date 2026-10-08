@@ -29,8 +29,8 @@ services:
       CORS_ORIGINS: http://localhost:3000,http://localhost:3001
       FORWARDED_ALLOW_IPS: "*"
       SMS_GATEWAY_TYPE: ${SMS_GATEWAY_TYPE:-mock}
-      EXPOSE_DEV_OTP: ${EXPOSE_DEV_OTP:-true}
-      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      # Development only: show SMS confirmation codes on screen when no SMS gateway is configured.
+      EXPOSE_DEV_OTP: ${EXPOSE_DEV_OTP:-false}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
       UPLOAD_DIR: /data/uploads
@@ -52,19 +52,6 @@ services:
     environment: *backend_env
     volumes:
       - uploads:/data/uploads
-    depends_on:
-      backend:
-        condition: service_healthy
-
-  # One-off: fills a fresh demo database with activity at every stage (skips if work logs already exist).
-  demo-data:
-    build:
-      context: ./backend
-    command: ["python", "-m", "backend.demo_activity"]
-    environment:
-      <<: *backend_env
-      API_URL: http://backend:8000
-    restart: "no"
     depends_on:
       backend:
         condition: service_healthy

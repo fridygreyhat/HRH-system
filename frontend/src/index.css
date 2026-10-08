@@ -520,14 +520,6 @@ details > summary { cursor: pointer; font-weight: 600; }
 .login-card h2 { font-size: 1.6rem; letter-spacing: -0.02em; }
 .login-mobile-brand { display: none; align-items: center; gap: 0.6rem; font-size: 1.1rem; }
 .login-version { text-align: center; }
-.demo-box { border: 1px dashed var(--border-strong); border-radius: var(--radius); padding: 0.9rem; display: flex; flex-direction: column; gap: 0.7rem; background: var(--surface); }
-.demo-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
-.demo-group-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.3rem; }
-.demo-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-.demo-chip { display: flex; flex-direction: column; align-items: flex-start; gap: 0.05rem; text-align: left; font: inherit; cursor: pointer; padding: 0.4rem 0.65rem; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); transition: border-color 0.15s, transform 0.1s, box-shadow 0.15s; }
-.demo-chip:hover:not(:disabled) { border-color: var(--primary); box-shadow: var(--ring); }
-.demo-chip-label { font-size: 0.8rem; font-weight: 600; }
-.demo-chip-user { font-size: 0.72rem; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 /* ==========================================================================================
    Dashboard: KPIs and charts

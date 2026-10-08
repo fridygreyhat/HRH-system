@@ -6,11 +6,7 @@ import { Alert, Field } from '../components/ui';
 
 interface Meta {
   version: string;
-  demo: boolean;
-  demo_accounts: { username: string; label: string; group: string }[];
 }
-
-const DEMO_PASSWORD = 'Demo@12345';
 const STAGES = ['Provider logs work', 'CTC verifies', 'Provider confirms by SMS', 'Technical review', 'RPM authorizes', 'Claim · budget · payment'];
 
 export function Login() {
@@ -40,8 +36,6 @@ export function Login() {
     e.preventDefault();
     signIn(username, password);
   };
-
-  const groups = Array.from(new Set((meta?.demo_accounts || []).map((a) => a.group)));
 
   return (
     <main className="login">
@@ -109,29 +103,6 @@ export function Login() {
           <button className="btn btn-primary btn-lg" disabled={busy}>
             {busy ? 'Signing in…' : 'Sign in / Ingia'}
           </button>
-          {meta?.demo && (
-            <div className="demo-box">
-              <div className="demo-head">
-                <span className="badge badge-warn">Demo environment</span>
-                <span className="muted small">One click signs in as that role</span>
-              </div>
-              {groups.map((g) => (
-                <div key={g} className="demo-group">
-                  <div className="demo-group-label">{g}</div>
-                  <div className="demo-chips">
-                    {meta.demo_accounts
-                      .filter((a) => a.group === g)
-                      .map((a) => (
-                        <button key={a.username} type="button" className="demo-chip" disabled={busy} onClick={() => signIn(a.username, DEMO_PASSWORD)} title={`Sign in as ${a.username}`}>
-                          <span className="demo-chip-label">{a.label}</span>
-                          <span className="demo-chip-user">{a.username}</span>
-                        </button>
-                      ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
           {meta && <p className="muted small login-version">Version {meta.version}</p>}
         </form>
       </section>

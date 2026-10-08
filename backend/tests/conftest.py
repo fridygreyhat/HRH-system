@@ -13,7 +13,8 @@ import pytest
 BASE_URL = os.environ.get("DATABASE_URL", "postgresql+psycopg2://hrh_user:hrh_password@db:5432/hrh_db")
 TEST_DB = "hrh_test"
 os.environ["DATABASE_URL"] = BASE_URL.rsplit("/", 1)[0] + "/" + TEST_DB
-os.environ.update({"SEED_DEMO_DATA": "true", "SMS_GATEWAY_TYPE": "mock", "EXPOSE_DEV_OTP": "true", "UPLOAD_DIR": "/tmp/hrh-test-uploads"})
+# Tests read SMS codes from API responses (mock gateway only); sample data comes from tests/demo_data.py.
+os.environ.update({"SMS_GATEWAY_TYPE": "mock", "EXPOSE_DEV_OTP": "true", "UPLOAD_DIR": "/tmp/hrh-test-uploads"})
 
 PASSWORD = "Demo@12345"
 
@@ -38,6 +39,11 @@ def client():
     from backend.seed import main as seed_main
 
     seed_main()
+    from backend.db.session import SessionLocal
+    from backend.tests.demo_data import seed_test_data
+
+    with SessionLocal() as session:
+        seed_test_data(session)
     from fastapi.testclient import TestClient
 
     from backend.main import app
