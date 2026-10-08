@@ -87,8 +87,9 @@ def _get_or_create(db: Session, model, defaults=None, **lookup):
     return row, True
 
 
-def _user(db: Session, username: str, full_name: str, phone: str, roles: list[str], password: str, scopes: list[dict] = ()) -> User:
-    user, created = _get_or_create(db, User, username=username, defaults={"hashed_password": hash_password(password), "full_name": full_name, "phone": phone})
+def _user(db: Session, username: str, full_name: str, phone: str, roles: list[str], password: str, scopes: list[dict] = (), must_change_password: bool = False) -> User:
+    user, created = _get_or_create(db, User, username=username, defaults={
+        "hashed_password": hash_password(password), "full_name": full_name, "phone": phone, "must_change_password": must_change_password})
     if created:
         for role in db.query(Role).filter(Role.name.in_(roles)):
             db.add(UserRole(user_id=user.id, role_id=role.id))
@@ -115,7 +116,8 @@ def seed(db: Session) -> None:
         for lang in LANGUAGES:
             _get_or_create(db, SMSTemplate, event_name=event, language=lang, version=1, defaults={"template_text": meta[lang], "is_active": True})
     _get_or_create(db, Organization, name="FHI360", defaults={"type": "FHI360", "code": "FHI360"})
-    _user(db, config.ADMIN_USERNAME, "System Administrator", config.ADMIN_PHONE, [SYSTEM_ADMIN], config.ADMIN_PASSWORD)
+    # The bootstrap password is configuration (and its default is public), so it must be replaced at first sign-in.
+    _user(db, config.ADMIN_USERNAME, "System Administrator", config.ADMIN_PHONE, [SYSTEM_ADMIN], config.ADMIN_PASSWORD, must_change_password=True)
     db.commit()
 
 

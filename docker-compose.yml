@@ -33,6 +33,9 @@ services:
       EXPOSE_DEV_OTP: ${EXPOSE_DEV_OTP:-false}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
       UPLOAD_DIR: /data/uploads
     volumes:
       - uploads:/data/uploads

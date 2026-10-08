@@ -36,7 +36,7 @@ Tests create and drop their own `hrh_test` database.
 
 A fresh system contains only base configuration: roles, sections, the three cadre forms, payment routes A/B/C,
 SMS templates, the FHI360 organization, and one system administrator (`ADMIN_USERNAME` / `ADMIN_PASSWORD`,
-`admin` / `admin12345` unless you set them; change it immediately). There are no sample users, places, rates or
+`admin` / `admin12345` unless you set them; the first sign-in forces a new password). There are no sample users, places, rates or
 budgets. Set the system up in this order:
 
 1. **System administrator → Administration → Users:** create the central administrator, finance, RPM, technical
@@ -132,6 +132,7 @@ frontend/          React + TypeScript (CRA), built and served by nginx (nginx.co
 
 ## Production checklist
 
+- Copy `.env.example` to `.env` and fill it in; `docker compose` reads it automatically and it is never committed.
 - Set `SECRET_KEY` (32+ random bytes), `ADMIN_PASSWORD`, `CORS_ORIGINS`, and keep `EXPOSE_DEV_OTP=false`.
 - Configure an SMS gateway (`SMS_GATEWAY_TYPE=twilio` plus credentials, or add a local provider in
   `services/sms_gateway.py`).

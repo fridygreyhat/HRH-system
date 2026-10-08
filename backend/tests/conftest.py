@@ -44,6 +44,11 @@ def client():
 
     with SessionLocal() as session:
         seed_test_data(session)
+        # Tests act as the bootstrap administrator directly, so skip its first-sign-in password change.
+        from backend.models import User
+
+        session.query(User).filter(User.username == "admin").update({User.must_change_password: False})
+        session.commit()
     from fastapi.testclient import TestClient
 
     from backend.main import app
