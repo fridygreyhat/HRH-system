@@ -42,6 +42,7 @@ def cadre_out(db: Session, cadre: Cadre, include_inactive: bool = False) -> dict
         "hours_mode": cadre.hours_mode,
         "uses_facility_geofence": cadre.uses_facility_geofence,
         "requires_facility_endorsement": cadre.requires_facility_endorsement,
+        "technical_reviewer_title": cadre.technical_reviewer_title,
         "uses_section": cadre.uses_section,
         "occupation_options": cadre.occupation_options,
         "is_active": cadre.is_active,

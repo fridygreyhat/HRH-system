@@ -33,7 +33,18 @@ const STAGE_OF_STATUS: Record<string, number> = { PENDING_CTC_VERIFICATION: 1, P
 
 type StepState = 'done' | 'current' | 'upcoming' | 'warn' | 'danger' | 'muted';
 
-function states(status: string, audit: WorkLogAudit[]): { current: number; state: StepState[]; note: string | null } {
+const OTP_STEP = 2;
+
+function states(status: string, audit: WorkLogAudit[], otpSkipped = false): { current: number; state: StepState[]; note: string | null } {
+  const result = baseStates(status, audit);
+  // With provider confirmation switched off, a log that never waited for a code shows that step as not required.
+  if (otpSkipped && status !== 'PENDING_PROVIDER_OTP_CONFIRMATION' && !audit.some((a) => a.action === 'confirm_otp')) {
+    result.state = result.state.map((s, i) => (i === OTP_STEP && s !== 'danger' ? 'muted' : s));
+  }
+  return result;
+}
+
+function baseStates(status: string, audit: WorkLogAudit[]): { current: number; state: StepState[]; note: string | null } {
   if (status === 'CANCELLED') return { current: -1, state: STEPS.map(() => 'muted'), note: 'Cancelled' };
   if (status === 'REJECTED') {
     const rejected = [...audit].reverse().find((a) => a.new_status === 'REJECTED');
@@ -65,15 +76,19 @@ export function ApprovalStepper({
   audit,
   hoursInStatus,
   facilityEndorsed,
+  technicalReviewer,
 }: {
   status: string;
   audit: WorkLogAudit[];
   hoursInStatus?: number;
   facilityEndorsed?: string | null;
+  /** The cadre's technical reviewer position, shown in place of the generic "Technical Officer" */
+  technicalReviewer?: string | null;
 }) {
-  const { lang } = useAuth();
+  const { lang, me } = useAuth();
   const l = lang === 'sw' ? 'sw' : 'en';
-  const { current, state, note } = states(status, audit);
+  const otpSkipped = me?.client_settings.provider_otp_required === false;
+  const { current, state, note } = states(status, audit, otpSkipped);
   const by = completedBy(audit);
   const approved = status === 'APPROVED';
 
@@ -83,6 +98,7 @@ export function ApprovalStepper({
         {STEPS.map((step, i) => {
           const s = state[i];
           const row = s === 'done' ? by[step.action] : undefined;
+          const who = step.action === 'endorse' && technicalReviewer ? technicalReviewer : step.who[l];
           return (
             <li key={step.action} className={`step step-${s}`} aria-current={s === 'current' || s === 'warn' ? 'step' : undefined}>
               <span className="step-marker" aria-hidden="true">
@@ -93,19 +109,22 @@ export function ApprovalStepper({
                 <span className="step-sub">
                   {row ? (
                     <>
-                      {row.actor_name || step.who[l]} · {dateTime(row.timestamp)}
+                      {row.actor_name || who} · {dateTime(row.timestamp)}
                     </>
                   ) : s === 'current' || s === 'warn' ? (
                     <>
                       {note || (l === 'sw' ? 'Inasubiri' : 'Waiting')}
+                      {step.action === 'endorse' && technicalReviewer && ` · ${technicalReviewer}`}
                       {hoursInStatus !== undefined && status !== 'DRAFT' && (
                         <span className={hoursInStatus > 48 ? 'step-late' : undefined}> · {hoursAge(hoursInStatus)}</span>
                       )}
                     </>
+                  ) : s === 'muted' && i === OTP_STEP && otpSkipped ? (
+                    l === 'sw' ? 'Haihitajiki' : 'Not required'
                   ) : s === 'danger' ? (
                     note
                   ) : (
-                    step.who[l]
+                    who
                   )}
                 </span>
                 {step.action === 'endorse' && facilityEndorsed && <span className="step-sub">Facility In-Charge: {facilityEndorsed}</span>}
@@ -130,7 +149,8 @@ export function ApprovalStepper({
 
 /** Five dots for list rows: done, current (or warning) and upcoming steps. */
 export function MiniStepper({ status }: { status: string }) {
-  const { state } = states(status, []);
+  const { me } = useAuth();
+  const { state } = states(status, [], me?.client_settings.provider_otp_required === false);
   const done = status === 'APPROVED';
   return (
     <span className="mini-stepper" aria-hidden="true">

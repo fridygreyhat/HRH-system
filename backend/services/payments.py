@@ -21,6 +21,7 @@ from ..core.roles import CSO_FINANCE, FHI360_FINANCE
 from ..core.security import CurrentUser
 from ..core.settings import get_setting
 from ..models import PaymentClaim, PaymentProof, PaymentRecord, PayPeriod, PayrollBatch, Staff, User
+from .staff_registry import check_payment_method
 from . import budgets, notifications
 from . import claims as cl
 from .worklog_workflow import period_label
@@ -80,6 +81,11 @@ def record_payment(db: Session, current: CurrentUser, claim: PaymentClaim, amoun
         raise HTTPException(status_code=403 if "recorded by" in reason or "another CSO" in reason else 409, detail=reason)
     if status not in ("PAID", "PARTIAL", "FAILED"):
         raise HTTPException(status_code=422, detail="status must be PAID, PARTIAL or FAILED")
+    if method not in (None, "BANK", "MOBILE_WALLET"):
+        raise HTTPException(status_code=422, detail="Payment method must be BANK or MOBILE_WALLET")
+    staff = db.get(Staff, claim.staff_id) if claim.staff_id else None
+    if staff:
+        check_payment_method(db, staff.cadre_id, method)
     counted = status != "FAILED"
     already = paid_total(db, claim.id)
     if counted and already + amount > claim.amount:

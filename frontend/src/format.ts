@@ -186,7 +186,16 @@ export const ROLE_LABELS: Record<string, string> = {
   CENTRAL_ADMIN: 'Central Admin',
   REGIONAL_ADMIN: 'Regional Admin',
   SYSTEM_ADMIN: 'System Admin',
+  SUPER_ADMIN: 'Super Admin',
 };
+
+/** Plain names for payment routes: FHI360 pays route A; the assigned CSO pays routes B and C. */
+export const ROUTE_LABELS: Record<string, string> = {
+  A: 'FHI360 Payment',
+  B: 'CSO Payment · Facility payroll',
+  C: 'CSO Payment · Community',
+};
+export const routeLabel = (r: string | null | undefined): string => (r ? ROUTE_LABELS[r] || r : 'No payment route');
 
 export const roleLabel = (r: string | null | undefined): string => (r ? ROLE_LABELS[r] || humanize(r) : '—');
 export const label = (map: Record<string, string>, key: string | null | undefined): string => (key ? map[key] || humanize(key) : '—');

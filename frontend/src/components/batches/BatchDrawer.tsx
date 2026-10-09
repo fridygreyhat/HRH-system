@@ -24,7 +24,7 @@ export function PaymentProgress({ progress }: { progress: Record<string, number>
 
 const RECEIVE_CONFIRM =
   'Acknowledge that your CSO has received this batch? Payments for its claims can be recorded only after receipt. This cannot be undone.';
-const HAND_OFF_CONFIRM = 'Hand this Route B batch off to the CSO? The CSO will then acknowledge receipt and record payments. This cannot be undone.';
+const HAND_OFF_CONFIRM = 'Hand this facility payroll batch off to the CSO? The CSO will then acknowledge receipt and record payments. This cannot be undone.';
 
 /** Batch detail: facts, payment progress, export lines, claims and the batch actions the server allows. */
 export function BatchDrawer({ batchId, onClose, onChanged }: { batchId: number; onClose: () => void; onChanged?: () => void }) {
@@ -103,7 +103,7 @@ export function BatchDrawer({ batchId, onClose, onChanged }: { batchId: number; 
             <Facts
               items={[
                 ['Reference', b.reference],
-                ['Route', <RouteBadge route={b.route_code} />],
+                ['Payment', <RouteBadge route={b.route_code} />],
                 ['Batch status', <StatusBadge status={b.status} />],
                 ['Payor', b.payor_name],
                 ['Executor (pays staff)', b.executor_name],

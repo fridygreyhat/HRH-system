@@ -9,8 +9,9 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from ..db.session import get_db
-from ..models import Role, Staff, User, UserRole, UserScope
+from ..models import CommunityArea, Cluster, Facility, Organization, Region, Role, Staff, User, UserReviewCadre, UserRole, UserScope
 from . import config
+from .roles import ALL_ROLES, PROVIDER, SUPER_ADMIN
 
 ALGORITHM = "HS256"
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -54,6 +55,12 @@ class CurrentUser:
     roles: set[str]
     staff: Optional[Staff]
     scopes: list[UserScope] = field(default_factory=list)
+    # Technical officers: the cadres whose logs they review (their technical area)
+    review_cadres: set[int] = field(default_factory=set)
+    # Super administrators act in every role with no scope limit; `db` answers their scope lookups.
+    unrestricted: bool = False
+    db: Optional[Session] = field(default=None, repr=False)
+    _all_ids: dict[str, set[int]] = field(default_factory=dict, repr=False)
 
     @property
     def id(self) -> int:
@@ -67,15 +74,29 @@ class CurrentUser:
         return bool(self.roles.intersection(roles))
 
     def scope_values(self, attr: str) -> set[int]:
+        if self.unrestricted and self.db is not None and attr in SCOPE_MODELS:
+            if attr not in self._all_ids:
+                self._all_ids[attr] = {row[0] for row in self.db.query(SCOPE_MODELS[attr].id)}
+            return self._all_ids[attr]
         return {getattr(s, attr) for s in self.scopes if getattr(s, attr) is not None}
 
 
+SCOPE_MODELS = {"region_id": Region, "cluster_id": Cluster, "facility_id": Facility, "community_area_id": CommunityArea, "organization_id": Organization}
+
+
 def load_current_user(db: Session, user: User) -> CurrentUser:
+    roles = get_user_roles(db, user.id)
+    unrestricted = SUPER_ADMIN in roles
+    if unrestricted:
+        roles |= set(ALL_ROLES) - {PROVIDER}  # PROVIDER needs a linked staff record, so it is only ever held directly
     return CurrentUser(
         user=user,
-        roles=get_user_roles(db, user.id),
+        roles=roles,
         staff=db.query(Staff).filter(Staff.user_id == user.id).first(),
         scopes=db.query(UserScope).filter(UserScope.user_id == user.id).all(),
+        review_cadres={r[0] for r in db.query(UserReviewCadre.cadre_id).filter(UserReviewCadre.user_id == user.id)},
+        unrestricted=unrestricted,
+        db=db,
     )
 
 

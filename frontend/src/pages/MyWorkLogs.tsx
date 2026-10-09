@@ -50,7 +50,12 @@ export function MyWorkLogs() {
         </div>
       </header>
 
-      {!me?.staff && <Alert kind="warn">Your account is not linked to a staff record. Contact your administrator.</Alert>}
+      {!me?.staff && (
+        <Alert kind="warn">
+          Your account is not linked to a staff record (CHW, Data Clerk or HCP), so you cannot start work logs yet. A system administrator can link it
+          under Administration → Users → Manage.
+        </Alert>
+      )}
 
       <form className="card stack" onSubmit={start}>
         <h3>{t('startLog')}</h3>

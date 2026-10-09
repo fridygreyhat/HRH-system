@@ -45,6 +45,20 @@ const DICT = {
   captureGps: { en: 'Capture my location', sw: 'Chukua mahali nilipo' },
   gpsCaptured: { en: 'Location captured', sw: 'Mahali pamechukuliwa' },
   gpsFailed: { en: 'Location could not be captured. You can still save; the reviewer will see it.', sw: 'Mahali hapakupatikana. Bado unaweza kuhifadhi; mhakiki ataona.' },
+  gpsRequired: {
+    en: 'Your location is needed to submit. Allow location (GPS) for this site, then submit again.',
+    sw: 'Mahali ulipo panahitajika ili kuwasilisha. Ruhusu GPS kwa tovuti hii, kisha wasilisha tena.',
+  },
+  gpsRequiredHint: {
+    en: 'Your location is recorded when you submit. It is only used for review and never rejects your work automatically.',
+    sw: 'Mahali ulipo panarekodiwa unapowasilisha. Panatumika kwa mapitio tu na hakukatai kazi yako moja kwa moja.',
+  },
+  estimateTitle: { en: 'Estimated payout', sw: 'Makadirio ya malipo' },
+  estimateNote: {
+    en: 'Estimate from approved rates — not yet approved. The amount paid is set when your claim is approved.',
+    sw: 'Makadirio kwa viwango vilivyoidhinishwa — bado hayajaidhinishwa. Kiasi halisi huwekwa dai lako linapoidhinishwa.',
+  },
+  estimateNone: { en: 'No approved rates apply to this work log yet.', sw: 'Bado hakuna viwango vilivyoidhinishwa kwa kumbukumbu hii.' },
   gpsHint: { en: 'Location is only used for review and never rejects your work automatically.', sw: 'Mahali panatumika kwa mapitio tu na hakukatai kazi yako moja kwa moja.' },
   calendar: { en: 'Days in this period', sw: 'Siku za kipindi hiki' },
   calendarHint: { en: 'Tap a day to record or change your work. Future days are locked.', sw: 'Gusa siku kurekodi au kubadilisha kazi yako. Siku zijazo zimefungwa.' },

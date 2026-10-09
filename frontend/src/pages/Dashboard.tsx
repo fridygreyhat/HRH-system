@@ -21,8 +21,8 @@ import { Cadre, DashboardData, Named, PayPeriod } from '../types';
 
 const EXCEPTION_ACTIONS = ['return', 'return_to_reviewer', 'reject', 'hold', 'reopen', 'decline'];
 const ROUTES = ['A', 'B', 'C'];
-const ROUTE_NAMES: Record<string, string> = { A: 'Route A · FHI360 activity', B: 'Route B · Facility → FHI360 → CSO', C: 'Route C · Community via CSO', UNROUTED: 'Not routed (exception)' };
-const ROUTE_SHORT: Record<string, string> = { A: 'FHI360 activity', B: 'Facility → FHI360 → CSO', C: 'Community via CSO', UNROUTED: 'Exception' };
+const ROUTE_NAMES: Record<string, string> = { A: 'FHI360 Payment', B: 'CSO Payment · Facility payroll', C: 'CSO Payment · Community', UNROUTED: 'No payment route (exception)' };
+const ROUTE_SHORT: Record<string, string> = { A: 'Paid by FHI360', B: 'Facility → FHI360 → CSO', C: 'Community, paid by CSO', UNROUTED: 'Exception' };
 const PIPELINE = [
   'DRAFT',
   'PENDING_CTC_VERIFICATION',
@@ -130,7 +130,7 @@ function DashboardBody({ d, periodSelected }: { d: DashboardData; periodSelected
   const routeRow = (r: string) => (
     <span className="row-inline nowrap">
       <span className={`route-dot route-${r}`}>{r === 'UNROUTED' ? '!' : r}</span>
-      {r === 'UNROUTED' ? 'Not routed' : `Route ${r}`}
+      {r === 'UNROUTED' ? 'No payment route' : ROUTE_NAMES[r]}
     </span>
   );
   const routeCaption = (r: string) => `${ROUTE_SHORT[r] || ''} · ${num(d.claims[r].count)} claim${d.claims[r].count === 1 ? '' : 's'}`;
@@ -437,12 +437,12 @@ export function Dashboard() {
             ))}
           </select>
         </Field>
-        <Field label="Payment route" hint="Claims">
+        <Field label="Payment" hint="Claims">
           <select value={route} onChange={(e) => setRoute(e.target.value)}>
-            <option value="">All routes</option>
+            <option value="">All payments</option>
             {ROUTES.map((r) => (
               <option key={r} value={r}>
-                Route {r}
+                {ROUTE_NAMES[r] || r}
               </option>
             ))}
           </select>

@@ -1,20 +1,22 @@
 """Idempotent seed.
 
 Always: roles, sections, the three cadre forms (every row of the supplied CHW, Data Clerk and HCP sheets),
-payment routes A/B/C, default SMS templates (v1), the FHI360 organization and the bootstrap system administrator.
+every Tanzanian region, district and ward (backend/data/tz_locations.csv), payment routes A/B/C, default SMS templates (v1), the FHI360 organization and the bootstrap system administrator.
 No rates, budgets or route mappings are seeded for production — those are HRH decisions to configure.
 
 Run: python -m backend.seed
 """
+import csv
 import logging
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from .core import config
-from .core.roles import ROLE_DESCRIPTIONS, SYSTEM_ADMIN
+from .core.roles import ROLE_DESCRIPTIONS, SUPER_ADMIN, SYSTEM_ADMIN
 from .core.security import hash_password
 from .db.session import SessionLocal
-from .models import Cadre, CadreFormField, Organization, PaymentRoute, Role, Section, SMSTemplate, User, UserRole, UserScope
+from .models import Cadre, CadreFormField, District, Organization, PaymentRoute, Role, Region, Section, SMSTemplate, User, UserRole, UserScope, Ward
 from .services.templates import EVENTS, LANGUAGES, PROTECTED_EVENTS
 
 logger = logging.getLogger(__name__)
@@ -28,6 +30,7 @@ CADRES = [
         "code": "CHW", "name": "Community Health Worker", "form_title": "EpiC Project Weekly Work Log-Sheet – CHW",
         "hours_mode": "DIRECT", "uses_facility_geofence": False, "requires_facility_endorsement": False,
         "uses_section": False, "occupation_options": [],
+        "technical_reviewer_title": "Senior Regional Technical Officer, Community Engagement",
         "fields": [
             ("clients_screened_hiv_tb", "Clients screened for HIV and TB testing indicators", "Idadi ya Wateja Waliochunguzwa viashiria vya upimaji wa VVU na TB"),
             ("clients_linked_hiv_tb_testing", "Clients linked to HIV and TB testing services", "Idadi ya wateja waliunganishwa na huduma ya upimaji wa VVU na TB"),
@@ -40,6 +43,7 @@ CADRES = [
         "code": "DATA_CLERK", "name": "Data Clerk", "form_title": "Weekly Work Log-Sheet – Data Clerks",
         "hours_mode": "START_END", "uses_facility_geofence": True, "requires_facility_endorsement": False,
         "uses_section": True, "occupation_options": ["Data Clerk", "Data Entry Volunteer", "ART Nurse / Clinician", "Other"],
+        "technical_reviewer_title": "Regional Strategic Information Officer",
         "fields": [
             ("ctc_clients_registered", "Number of CTC clients registered per day", "Idadi ya wateja wa CTC waliosajiliwa kwa siku"),
             ("ctc_visits_updated", "Number of CTC visits updated in the database per day", "Idadi ya mahudhurio ya CTC yaliyosasishwa kwenye kanzidata kwa siku"),
@@ -52,6 +56,7 @@ CADRES = [
         "code": "HCP", "name": "Health Care Provider", "form_title": "EpiC Project Weekly Work Log-Sheet",
         "hours_mode": "START_END", "uses_facility_geofence": True, "requires_facility_endorsement": True,
         "uses_section": True, "occupation_options": ["Nurse", "Clinician", "Lab Tech", "Other"],
+        "technical_reviewer_title": "Senior Regional Technical Officer, Care & Treatment",
         "fields": [
             ("clients_reached_community", "Number of Clients Reached (For Community)", "Idadi ya wateja waliofikiwa (jamii)"),
             ("clients_tested_hiv", "Number of clients Tested For HIV", "Idadi ya wateja waliopimwa VVU"),
@@ -98,6 +103,31 @@ def _user(db: Session, username: str, full_name: str, phone: str, roles: list[st
     return user
 
 
+LOCATIONS_CSV = Path(__file__).parent / "data" / "tz_locations.csv"
+
+
+def _seed_locations(db: Session) -> None:
+    """Regions, districts and wards from the national gazetteer. Matched by name, so admin edits and additions are kept."""
+    regions = {r.name.lower(): r for r in db.query(Region)}
+    districts = {(d.region_id, d.name.lower()): d for d in db.query(District)}
+    wards = {(w.district_id, w.name.lower()) for w in db.query(Ward)}
+    with open(LOCATIONS_CSV, encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            region = regions.get(row["region"].lower())
+            if not region:
+                region = regions[row["region"].lower()] = Region(name=row["region"])
+                db.add(region)
+                db.flush()
+            district = districts.get((region.id, row["district"].lower()))
+            if not district:
+                district = districts[(region.id, row["district"].lower())] = District(region_id=region.id, name=row["district"])
+                db.add(district)
+                db.flush()
+            if (district.id, row["ward"].lower()) not in wards:
+                wards.add((district.id, row["ward"].lower()))
+                db.add(Ward(district_id=district.id, name=row["ward"]))
+
+
 def seed(db: Session) -> None:
     for name, description in ROLE_DESCRIPTIONS.items():
         _get_or_create(db, Role, name=name, defaults={"description": description})
@@ -115,9 +145,10 @@ def seed(db: Session) -> None:
             continue
         for lang in LANGUAGES:
             _get_or_create(db, SMSTemplate, event_name=event, language=lang, version=1, defaults={"template_text": meta[lang], "is_active": True})
+    _seed_locations(db)
     _get_or_create(db, Organization, name="FHI360", defaults={"type": "FHI360", "code": "FHI360"})
     # The bootstrap password is configuration (and its default is public), so it must be replaced at first sign-in.
-    _user(db, config.ADMIN_USERNAME, "System Administrator", config.ADMIN_PHONE, [SYSTEM_ADMIN], config.ADMIN_PASSWORD, must_change_password=True)
+    _user(db, config.ADMIN_USERNAME, "System Administrator", config.ADMIN_PHONE, [SYSTEM_ADMIN, SUPER_ADMIN], config.ADMIN_PASSWORD, must_change_password=True)
     db.commit()
 
 

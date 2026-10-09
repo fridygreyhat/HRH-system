@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../AuthContext';
-import { dateTime, money, num } from '../format';
+import { dateTime, money, num, routeLabel } from '../format';
 import { useAction, useApi } from '../hooks';
 import { Batch } from '../types';
 import { BatchDrawer, PaymentProgress } from '../components/batches/BatchDrawer';
@@ -17,7 +17,7 @@ export function Batches() {
   const routes = [...(hasRole('FHI360_FINANCE') ? ['A', 'B'] : []), ...(hasRole('CSO_FINANCE') ? ['C'] : [])];
 
   const createBatches = async (route: string) => {
-    if (!window.confirm(`Create Route ${route} batches from every Route ${route} claim marked "Ready for payment"?`)) return;
+    if (!window.confirm(`Create ${routeLabel(route)} batches from every ${routeLabel(route)} claim marked "Ready for payment"?`)) return;
     setNotice(null);
     const created = await create.run(() => api.post<Batch[]>('/batches', { route_code: route }));
     if (created) {
@@ -40,7 +40,7 @@ export function Batches() {
         <div className="row">
           {routes.map((r) => (
             <button key={r} type="button" className="btn btn-primary" onClick={() => createBatches(r)} disabled={create.busy}>
-              {create.busy ? 'Working…' : `Create Route ${r} batches`}
+              {create.busy ? 'Working…' : `Create ${routeLabel(r)} batches`}
             </button>
           ))}
           <button type="button" className="btn btn-secondary" onClick={list.reload} disabled={list.loading}>
@@ -52,7 +52,7 @@ export function Batches() {
       <div className="notice notice-info">
         Only claims marked <strong>Ready for payment</strong> are included in a new batch. Exporting a batch does <strong>not</strong> mean staff have
         been paid: payment status is tracked separately on each claim until payment is recorded, proven and reconciled.
-        {hasRole('CSO_FINANCE') && ' Route B batches appear here once FHI360 Finance hands them off to your CSO.'}
+        {hasRole('CSO_FINANCE') && ' Facility payroll batches appear here once FHI360 Finance hands them off to your CSO.'}
       </div>
       <Alert kind="success">{notice}</Alert>
       <Alert>{create.error}</Alert>
@@ -64,7 +64,7 @@ export function Batches() {
               <thead>
                 <tr>
                   <th scope="col">Reference</th>
-                  <th scope="col">Route</th>
+                  <th scope="col">Payment</th>
                   <th scope="col">Payor → executor</th>
                   <th scope="col">Batch status</th>
                   <th scope="col" className="num">

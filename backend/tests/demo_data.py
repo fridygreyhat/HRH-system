@@ -15,7 +15,7 @@ from backend.core.security import hash_password
 from backend.core.timeutil import local_today
 from backend.models import (
     BudgetLine, BudgetTransaction, Cadre, ClaimCategory, Cluster, CommunityArea, District, Facility, FundingSource,
-    Organization, PaymentRoute, PayPeriod, RateRule, Region, Role, Staff, StaffAssignment, User, UserRole, UserScope, Ward,
+    Organization, PaymentRoute, PayPeriod, RateRule, Region, Role, Staff, StaffAssignment, User, UserReviewCadre, UserRole, UserScope, Ward,
     utcnow,
 )
 
@@ -57,10 +57,11 @@ def seed_test_data(db: Session) -> None:
     region, _ = _get_or_create(db, Region, name="Iringa")
     other_region, _ = _get_or_create(db, Region, name="Njombe")
     cluster, _ = _get_or_create(db, Cluster, name="Iringa Cluster 1", defaults={"region_id": region.id})
-    district, _ = _get_or_create(db, District, name="Iringa Municipal", defaults={"region_id": region.id})
-    other_district, _ = _get_or_create(db, District, name="Njombe Town", defaults={"region_id": other_region.id})
-    ward, _ = _get_or_create(db, Ward, name="Gangilonga", defaults={"district_id": district.id})
-    other_ward, _ = _get_or_create(db, Ward, name="Ramadhani", defaults={"district_id": other_district.id})
+    # Real gazetteer names (seeded from backend/data/tz_locations.csv); ward names repeat, so look up inside the parent.
+    district, _ = _get_or_create(db, District, name="Iringa Urban", region_id=region.id)
+    other_district, _ = _get_or_create(db, District, name="Njombe Urban", region_id=other_region.id)
+    ward, _ = _get_or_create(db, Ward, name="Gangilonga", district_id=district.id)
+    other_ward, _ = _get_or_create(db, Ward, name="Ramadhani", district_id=other_district.id)
     facility, _ = _get_or_create(db, Facility, name="DEMO Iringa Dispensary", defaults={
         "ward_id": ward.id, "cluster_id": cluster.id, "facility_type": "PUBLIC",
         "geofence_lat": -7.7700, "geofence_lon": 35.6900, "geofence_radius_meters": 300})
@@ -103,6 +104,9 @@ def seed_test_data(db: Session) -> None:
     for username, name, phone, roles, scopes in staff_users:
         _user(db, username, name, phone, roles, pw, scopes)
     db.flush()
+    tofficer = db.query(User).filter(User.username == "tofficer1").one()
+    for cadre in db.query(Cadre):  # one officer covers every cadre's technical review in the tests
+        _get_or_create(db, UserReviewCadre, user_id=tofficer.id, cadre_id=cadre.id)
     oversight = db.query(User).filter(User.username == "oversight1").one()
     fin = db.query(User).filter(User.username == "fhifin1").one()
 

@@ -39,7 +39,7 @@ const ROUTE_C_GROUPS: { status: string; title: string; hint: string }[] = [
     title: 'Awaiting community verification',
     hint: 'Waiting for the community verifier to confirm the service was delivered.',
   },
-  { status: 'APPROVED', title: 'Approved', hint: 'Mark ready for payment so it can be included in a Route C batch.' },
+  { status: 'APPROVED', title: 'Approved', hint: 'Mark ready for payment so it can be included in a community payment batch.' },
 ];
 
 const outstanding = (c: ClaimSummary) => Math.max(0, Number(c.amount) - Number(c.amount_paid || 0));
@@ -59,7 +59,7 @@ function PendingTable({ rows, onOpen }: { rows: ClaimSummary[]; onOpen: (id: num
             <th scope="col">Claim</th>
             <th scope="col">Staff</th>
             <th scope="col">Category / period</th>
-            <th scope="col">Route</th>
+            <th scope="col">Payment</th>
             <th scope="col">Status</th>
             <th scope="col" className="num">
               Amount
@@ -228,7 +228,7 @@ export function CsoPortal() {
     { key: 'all', label: 'Overview' },
     { key: 'pending', label: `Pending payments${claims.data ? ` (${pending.length})` : ''}` },
     { key: 'receipt', label: `Awaiting receipt${batches.data ? ` (${awaitingReceipt.length})` : ''}` },
-    { key: 'routec', label: `Route C claims${claims.data ? ` (${routeCCount})` : ''}` },
+    { key: 'routec', label: `Community claims${claims.data ? ` (${routeCCount})` : ''}` },
     { key: 'recon', label: 'Reconciliation' },
     { key: 'budget', label: 'Budget' },
   ];
@@ -239,7 +239,7 @@ export function CsoPortal() {
       <div className="page-header">
         <div>
           <h1>CSO payments{names.length ? ` — ${names.join(', ')}` : ''}</h1>
-          <p className="muted">Claims your CSO pays: record payments, upload proof, and keep Route C claims moving.</p>
+          <p className="muted">Claims your CSO pays: record payments, upload proof, and keep community claims moving.</p>
         </div>
         <button type="button" className="btn btn-secondary" onClick={refreshAll} disabled={claims.loading || batches.loading || budgets.loading}>
           {claims.loading || batches.loading || budgets.loading ? 'Refreshing…' : 'Refresh'}
@@ -284,9 +284,9 @@ export function CsoPortal() {
       )}
 
       {show('receipt') && (
-        <Section title="Route B batches awaiting receipt">
+        <Section title="Facility payroll batches awaiting receipt">
           <p className="muted small">
-            FHI360 Finance hands Route B batches to your CSO. Acknowledge receipt first — payments for these claims can be recorded only after receipt.
+            FHI360 Finance hands facility payroll batches to your CSO. Acknowledge receipt first — payments for these claims can be recorded only after receipt.
           </p>
           <Alert>{receive.error}</Alert>
           <AsyncState data={batches.data} error={batches.error} loading={batches.loading}>
@@ -346,7 +346,7 @@ export function CsoPortal() {
       )}
 
       {show('routec') && (
-        <Section title="Route C claims needing attention">
+        <Section title="Community claims needing attention">
           <AsyncState data={claims.data} error={claims.error} loading={claims.loading}>
             {() =>
               routeCCount ? (
@@ -366,7 +366,7 @@ export function CsoPortal() {
                   })}
                 </div>
               ) : (
-                <Empty>No Route C claims need attention.</Empty>
+                <Empty>No community claims need attention.</Empty>
               )
             }
           </AsyncState>

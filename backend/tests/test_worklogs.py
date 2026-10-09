@@ -214,10 +214,10 @@ def test_rotation_preserves_history_and_identity(api, db):
     api.post(f"/staff/{staff['id']}/rotate", "regadmin1", {"effective_date": "2022-07-01", "reason": "Move to Njombe",
                                                           "assignment": {"region_id": njombe.id}}, expect=403)  # outside region
 
-    csv_text = "first_name,last_name,phone,cadre,region,facility,section,start_date\n" \
-               "Test,Rotator,+255799000001,HCP,Iringa,DEMO Iringa Dispensary,RCH,2022-09-01\n" \
-               "New,Person,+255799000002,CHW,Iringa,,,2022-09-01\n" \
-               "Bad,Row,+255799000003,ALIEN,Iringa,,,2022-09-01\n"
+    csv_text = "first_name,last_name,phone,cadre,region,district,ward,facility,section,start_date\n" \
+               "Test,Rotator,+255799000001,HCP,Iringa,Iringa Urban,Gangilonga,demo iringa dispensary,RCH,2022-09-01\n" \
+               "New,Person,+255799000002,CHW,Iringa,,,,,2022-09-01\n" \
+               "Bad,Row,+255799000003,ALIEN,Iringa,,,,,2022-09-01\n"
     result = api.call("POST", "/staff/import", "central1", files={"file": ("roster.csv", csv_text, "text/csv")}, data={"enrollment_source": "ENGAGEMENT_LIST"})
     assert (result["created_count"], result["updated_count"], result["error_count"]) == (1, 1, 1)
     assert db.execute(text("select count(*) from staff where verified_phone = '+255799000001'")).scalar() == 1

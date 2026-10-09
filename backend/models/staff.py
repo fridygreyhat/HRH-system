@@ -15,6 +15,8 @@ class Cadre(Base):
     hours_mode = Column(String(20), nullable=False)  # CHW captures hours directly; others from start/end time
     uses_facility_geofence = Column(Boolean, default=True, nullable=False)
     requires_facility_endorsement = Column(Boolean, default=False, nullable=False)
+    # FHI360 position that gives technical endorsement for this cadre's logs, e.g. "Regional Strategic Information Officer"
+    technical_reviewer_title = Column(String(255))
     occupation_options = Column(JSONB, default=list, nullable=False)
     uses_section = Column(Boolean, default=False, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)

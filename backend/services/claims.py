@@ -175,6 +175,21 @@ def calculate(db, category, staff, period, assignment, work_log, declared_units)
     return components, exceptions
 
 
+def estimate_for_work_log(db: Session, log: WorkLog) -> dict:
+    """What the log would earn under today's active, approved rate rules. Only a claim sets the amount actually paid."""
+    staff = db.get(Staff, log.staff_id)
+    period = db.get(PayPeriod, log.period_id)
+    assignment = db.get(StaffAssignment, log.assignment_id) if log.assignment_id else None
+    lines, totals = [], {}
+    categories = db.query(ClaimCategory).filter(ClaimCategory.is_active.is_(True), ClaimCategory.requires_work_log.is_(True)).order_by(ClaimCategory.name)
+    for category in categories:
+        components, _ = calculate(db, category, staff, period, assignment, log, None)
+        for c in components:
+            lines.append({"category": category.name, "component": c["component_name"], "units": c["units"], "rate": c["rate"], "amount": c["amount"], "currency": c["currency"]})
+            totals[c["currency"]] = totals.get(c["currency"], Decimal(0)) + c["amount"]
+    return {"lines": lines, "totals": [{"currency": k, "amount": v} for k, v in sorted(totals.items())]}
+
+
 def _units(db, rule: RateRule, work_log, declared, form_keys, exceptions) -> Optional[Decimal]:
     if rule.unit_type == "FIXED":
         return Decimal(1)

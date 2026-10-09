@@ -4,7 +4,7 @@ import { useAuth } from '../AuthContext';
 import { ClaimDrawer } from '../components/claims/ClaimDrawer';
 import { CreateClaim } from '../components/claims/CreateClaim';
 import { Alert, AsyncState, Field, RouteBadge, StatusBadge } from '../components/ui';
-import { CLAIM_STATUS_LABELS, CLAIM_STATUSES, dateTime, money, PAYMENT_STATUS_LABELS, PAYMENT_STATUSES } from '../format';
+import { CLAIM_STATUS_LABELS, CLAIM_STATUSES, dateTime, money, PAYMENT_STATUS_LABELS, PAYMENT_STATUSES, routeLabel } from '../format';
 import { useApi } from '../hooks';
 import { ClaimSummary, PayPeriod } from '../types';
 
@@ -65,12 +65,12 @@ export function Claims() {
             ))}
           </select>
         </Field>
-        <Field label="Route">
+        <Field label="Payment">
           <select value={route} onChange={(e) => setRoute(e.target.value)}>
             <option value="">All</option>
             {['A', 'B', 'C'].map((r) => (
               <option key={r} value={r}>
-                Route {r}
+                {routeLabel(r)}
               </option>
             ))}
           </select>
@@ -99,7 +99,7 @@ export function Claims() {
                   <th>Staff</th>
                   <th>Category</th>
                   <th>Period</th>
-                  <th>Route</th>
+                  <th>Payment</th>
                   <th>Claim status</th>
                   <th>Payment status</th>
                   <th className="num">Amount</th>

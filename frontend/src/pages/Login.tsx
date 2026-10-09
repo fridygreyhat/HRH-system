@@ -67,7 +67,7 @@ export function Login() {
             </li>
             <li>
               <Icon name="route" />
-              Routes A, B and C kept separate — approved is never shown as paid
+              FHI360 and CSO payments kept separate — approved is never shown as paid
             </li>
             <li>
               <Icon name="phone" />

@@ -34,7 +34,7 @@ export const TABLES: TableSpec[] = [
     singular: 'organization',
     path: '/admin/organizations',
     writeRoles: CENTRAL,
-    description: 'Payors, CSOs and partners. A CSO is the executor for Route B and Route C claims.',
+    description: 'Payors, CSOs and partners. A CSO pays CSO facility payroll (route B) and CSO community (route C) claims.',
     fields: [
       { key: 'name', label: 'Name', type: 'text', required: true, maxLength: 255 },
       { key: 'code', label: 'Code', type: 'text', maxLength: 50 },
@@ -177,7 +177,7 @@ export const TABLES: TableSpec[] = [
         type: 'select',
         ref: { path: '/admin/funding-sources', label: (r) => `${String(r.code)} — ${String(r.name)}` },
       },
-      { key: 'payor_org_id', label: 'Payor organization', type: 'select', ref: { path: '/admin/organizations' }, hint: 'Leave blank for Route C (the assigned CSO pays)' },
+      { key: 'payor_org_id', label: 'Payor organization', type: 'select', ref: { path: '/admin/organizations' }, hint: 'Leave blank for CSO community payments (route C): the assigned CSO pays' },
       { key: 'budget_owner', label: 'Budget owner', type: 'select', required: true, options: opts('PAYOR', 'EXECUTOR'), defaultValue: 'PAYOR' },
       {
         key: 'origin_channel',

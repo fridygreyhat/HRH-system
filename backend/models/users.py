@@ -52,3 +52,13 @@ class UserScope(Base):
     organization_id = Column(Integer, ForeignKey("organizations.id"))
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = created_at()
+
+
+class UserReviewCadre(Base):
+    """A technical officer's technical area: the cadres whose work logs they review (CHW, Data Clerk, HCP)."""
+
+    __tablename__ = "user_review_cadres"
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    cadre_id = Column(Integer, ForeignKey("cadres.id"), primary_key=True)
+    assigned_by = Column(Integer, ForeignKey("users.id"))
+    assigned_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)

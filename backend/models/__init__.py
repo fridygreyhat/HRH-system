@@ -1,6 +1,6 @@
 from .base import Base, utcnow
 from .org import Organization, Region, Cluster, District, Ward, Facility, CommunityArea, Section
-from .users import User, Role, UserRole, UserScope
+from .users import User, Role, UserRole, UserScope, UserReviewCadre
 from .staff import Cadre, CadreFormField, Staff, StaffAssignment, StaffChangeRequest, RosterImport
 from .worklogs import (
     PayPeriod,

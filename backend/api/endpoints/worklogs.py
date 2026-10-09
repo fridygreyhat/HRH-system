@@ -31,6 +31,7 @@ from ...models import (
     WorkLogVersion,
     utcnow,
 )
+from ...services import claims as claims_service
 from ...services import notifications
 from ...services import worklog_workflow as wf
 from ...services.forms import assignment_out, cadre_fields, cadre_out, entries_with_measures, totals
@@ -80,7 +81,7 @@ class ActionIn(BaseModel):
 
 
 class OTPIn(BaseModel):
-    code: str = Field(min_length=4, max_length=8)
+    code: Optional[str] = Field(default=None, min_length=4, max_length=8)  # not needed while provider_otp_required is off
 
 
 def _get_log(db: Session, current: CurrentUser, log_id: int, lock: bool = False) -> WorkLog:
@@ -407,13 +408,21 @@ def perform_action(log_id: int, action: str, body: ActionIn = ActionIn(), db: Se
         if not body.attest:
             raise HTTPException(status_code=422, detail="Confirm that the entries are true and complete before submitting")
         if current.staff_id == log.staff_id and log.status in wf.EDITABLE_STATUSES:
+            if get_setting(db, "gps_required_on_submit") and (body.gps_lat is None or body.gps_lon is None):
+                raise HTTPException(status_code=422, detail="Your location is needed to submit. Turn on location (GPS) for this site and try again.")
             log.attested_at = utcnow()
-            if "SUBMIT" in get_setting(db, "gps_capture_events") and body.gps_lat is not None:
+            if (get_setting(db, "gps_required_on_submit") or "SUBMIT" in get_setting(db, "gps_capture_events")) and body.gps_lat is not None:
                 log.submit_gps_lat, log.submit_gps_lon, log.submit_gps_accuracy_m = body.gps_lat, body.gps_lon, body.gps_accuracy_m
     wf.transition(db, current, log, action, body.comment, details, body.expected_version)
     db.commit()
     otp = _send_otp(db, log) if log.status == wf.PENDING_OTP else None
     return {**_detail(db, current, log), "otp": otp}
+
+
+@router.get("/{log_id}/estimate")
+def estimate(log_id: int, db: Session = Depends(get_db), current: CurrentUser = Depends(get_current_user)):
+    """Estimated payout from active approved rates. Not an approved amount: the claim decides what is paid."""
+    return claims_service.estimate_for_work_log(db, _get_log(db, current, log_id))
 
 
 @router.post("/{log_id}/otp/resend")
@@ -433,6 +442,13 @@ def confirm_otp(log_id: int, body: OTPIn, db: Session = Depends(get_db), current
     reason = wf.check_action(db, current, log, "confirm_otp")
     if reason:
         raise HTTPException(status_code=403, detail=reason)
+    if not get_setting(db, "provider_otp_required"):
+        # Logs verified before the code was switched off: the provider confirms without one.
+        wf.transition(db, current, log, "confirm_otp", f"Provider confirmed version {log.version} (SMS code not required)")
+        db.commit()
+        return _detail(db, current, log)
+    if not body.code:
+        raise HTTPException(status_code=422, detail="Enter the confirmation code from the SMS")
     try:
         verify_otp(db, log, body.code)
     except HTTPException:

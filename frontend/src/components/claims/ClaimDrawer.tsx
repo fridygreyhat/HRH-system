@@ -130,8 +130,12 @@ function RecordPaymentDialog({ claim, onDone, onClose }: { claim: ClaimDetail; o
           <Field label="Payment date">
             <input type="date" required max={todayLocal()} value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
           </Field>
-          <Field label="Payment method (optional)">
-            <input maxLength={50} value={method} onChange={(e) => setMethod(e.target.value)} placeholder="e.g. MOBILE_WALLET" />
+          <Field label="Payment method (optional)" hint="HCP salaries must be paid into a bank account">
+            <select value={method} onChange={(e) => setMethod(e.target.value)}>
+              <option value="">Not specified</option>
+              <option value="BANK">Bank account</option>
+              <option value="MOBILE_WALLET">Mobile wallet</option>
+            </select>
           </Field>
         </div>
         {tooMuch && <Alert kind="warn">The amount is more than the outstanding balance.</Alert>}

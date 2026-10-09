@@ -17,6 +17,8 @@ export interface Cadre {
   hours_mode: 'DIRECT' | 'START_END';
   uses_facility_geofence: boolean;
   requires_facility_endorsement: boolean;
+  /** FHI360 position that gives technical endorsement for this cadre's logs */
+  technical_reviewer_title: string | null;
   uses_section: boolean;
   occupation_options: string[];
   fields: CadreField[];
@@ -47,7 +49,7 @@ export interface Me {
   cadre: Cadre | null;
   organizations: { id: number; name: string; type: string }[];
   scopes: UserScope[];
-  client_settings: { gps_capture_events: string[]; otp_length: number };
+  client_settings: { gps_capture_events: string[]; otp_length: number; provider_otp_required: boolean; gps_required_on_submit: boolean };
 }
 
 export interface PayPeriod {
@@ -541,6 +543,8 @@ export interface AdminUser {
   last_login_at: string | null;
   roles: string[];
   scopes: UserScope[];
+  /** Technical officers: the cadres whose logs they review */
+  review_cadre_ids: number[];
   staff_id: number | null;
 }
 
@@ -626,4 +630,10 @@ export interface DashboardData {
         unsynced_tracker_lines: number;
       }
     | never[];
+}
+
+/** Estimated payout for a work log, from active approved rate rules. Not an approved amount. */
+export interface PayoutEstimateData {
+  lines: { category: string; component: string; units: string | number; rate: string | number; amount: string | number; currency: string }[];
+  totals: { currency: string; amount: string | number }[];
 }

@@ -3,7 +3,7 @@
 A reviewer sees only work whose assignment falls inside the scopes granted for that role:
   SUPERVISOR          facility or community area
   FACILITY_IN_CHARGE  facility
-  TECHNICAL_OFFICER   cluster (via facility.cluster_id) or region
+  TECHNICAL_OFFICER   cluster (via facility.cluster_id) or region, and only the cadres in their technical area
   RPM                 region
   COMMUNITY_VERIFIER  community area
   CSO_FINANCE         organization (the CSO)
@@ -38,6 +38,7 @@ from ..models import (
     Staff,
     StaffAssignment,
     User,
+    UserReviewCadre,
     UserRole,
     UserScope,
     WorkLog,
@@ -58,6 +59,10 @@ def _assignment_condition(current: CurrentUser, role: str):
     """Condition on StaffAssignment for assignments inside `role`'s scope, or None when the user has no scope."""
     if role not in current.roles:
         return None
+    if current.unrestricted:
+        return true()
+    if role == TECHNICAL_OFFICER and not current.review_cadres:
+        return None  # a technical officer with no technical area reviews nothing
     conditions = []
     for dim in ROLE_SCOPE_DIMENSIONS.get(role, ()):
         values = current.scope_values(dim)
@@ -67,7 +72,12 @@ def _assignment_condition(current: CurrentUser, role: str):
             conditions.append(StaffAssignment.facility_id.in_(select(Facility.id).where(Facility.cluster_id.in_(values))))
         else:
             conditions.append(getattr(StaffAssignment, dim).in_(values))
-    return or_(*conditions) if conditions else None
+    if not conditions:
+        return None
+    if role == TECHNICAL_OFFICER:
+        in_area = StaffAssignment.staff_id.in_(select(Staff.id).where(Staff.cadre_id.in_(current.review_cadres)))
+        return and_(or_(*conditions), in_area)
+    return or_(*conditions)
 
 
 def assignments_in_role_scope(current: CurrentUser, role: str):
@@ -177,12 +187,14 @@ def users_in_scope_for(db: Session, role: str, assignment: StaffAssignment) -> l
             matches.append(UserScope.cluster_id == facility.cluster_id)
     if not matches:
         return []
-    return (
+    query = (
         db.query(User)
         .join(UserRole, UserRole.user_id == User.id)
         .join(Role, Role.id == UserRole.role_id)
         .join(UserScope, UserScope.user_id == User.id)
         .filter(Role.name == role, User.is_active.is_(True), or_(*matches))
-        .distinct()
-        .all()
     )
+    if role == TECHNICAL_OFFICER:
+        cadre_id = db.get(Staff, assignment.staff_id).cadre_id
+        query = query.join(UserReviewCadre, UserReviewCadre.user_id == User.id).filter(UserReviewCadre.cadre_id == cadre_id)
+    return query.distinct().all()

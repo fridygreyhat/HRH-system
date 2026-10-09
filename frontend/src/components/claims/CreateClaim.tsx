@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { api } from '../../api';
 import { useAuth } from '../../AuthContext';
-import { humanize, money } from '../../format';
+import { humanize, money, routeLabel } from '../../format';
 import { useAction, useApi } from '../../hooks';
 import { ClaimCategory, ClaimDetail, ClaimPreview, EligibleWorkLog, PayPeriod, RateRule, StaffSummary } from '../../types';
 import { Alert, Drawer, Field, RouteBadge, Tabs } from '../ui';
@@ -145,7 +145,7 @@ export function CreateClaim({ onClose, onCreated }: { onClose: () => void; onCre
                   <option value="">Choose a category</option>
                   {categoryOptions.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name} {routeCode(c) ? `(Route ${routeCode(c)})` : '(no route configured)'}
+                      {c.name} {routeCode(c) ? `(${routeLabel(routeCode(c))})` : '(no payment route configured)'}
                     </option>
                   ))}
                 </select>
@@ -167,7 +167,7 @@ export function CreateClaim({ onClose, onCreated }: { onClose: () => void; onCre
                     <option value="">Choose a category</option>
                     {categoryOptions.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.name} {routeCode(c) ? `(Route ${routeCode(c)})` : '(no route configured)'}
+                        {c.name} {routeCode(c) ? `(${routeLabel(routeCode(c))})` : '(no payment route configured)'}
                       </option>
                     ))}
                   </select>
@@ -294,10 +294,10 @@ export function CreateClaim({ onClose, onCreated }: { onClose: () => void; onCre
               </div>
             )}
             {preview.route_code === 'C' && hasRole('FHI360_FINANCE') && !hasRole('CSO_FINANCE') && (
-              <Alert kind="info">Route C claims are prepared by the assigned CSO's finance staff.</Alert>
+              <Alert kind="info">CSO community payments are prepared by the assigned CSO's finance staff.</Alert>
             )}
             {preview.route_code && preview.route_code !== 'C' && !hasRole('FHI360_FINANCE') && (
-              <Alert kind="info">Route {preview.route_code} claims are prepared by FHI360 Finance.</Alert>
+              <Alert kind="info">{routeLabel(preview.route_code)} claims are prepared by FHI360 Finance.</Alert>
             )}
             <Alert>{createAction.error}</Alert>
             <div className="row">

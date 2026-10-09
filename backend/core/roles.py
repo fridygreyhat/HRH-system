@@ -10,12 +10,13 @@ OVERSIGHT = "OVERSIGHT"  # FHI360 oversight / management: read-only cross-region
 CENTRAL_ADMIN = "CENTRAL_ADMIN"
 REGIONAL_ADMIN = "REGIONAL_ADMIN"
 SYSTEM_ADMIN = "SYSTEM_ADMIN"
+SUPER_ADMIN = "SUPER_ADMIN"  # holds every role, with no scope limit
 
 ROLE_DESCRIPTIONS = {
     PROVIDER: "Records own work logs and confirms verified logs by OTP",
     SUPERVISOR: "CTC In-Charge / Supervisor: verifies that work occurred",
     FACILITY_IN_CHARGE: "Supplemental facility endorsement where the cadre form requires it",
-    TECHNICAL_OFFICER: "Cluster / Regional Technical Officer: technical endorsement",
+    TECHNICAL_OFFICER: "FHI360 technical officer: technical endorsement of the cadres in their technical area",
     RPM: "Regional Program Manager: final program and budget authorization",
     COMMUNITY_VERIFIER: "Verifies community-originated (Route C) claims not based on an HRH work log",
     FHI360_FINANCE: "FHI360 Finance: Route A claims and Route B processing/handoff",
@@ -24,9 +25,10 @@ ROLE_DESCRIPTIONS = {
     CENTRAL_ADMIN: "Global staff registry and organization configuration",
     REGIONAL_ADMIN: "Staff and facility administration within assigned regions",
     SYSTEM_ADMIN: "Accounts, roles and technical configuration",
+    SUPER_ADMIN: "Super administrator: every role and every page, across all regions and organizations",
 }
 ALL_ROLES = list(ROLE_DESCRIPTIONS)
 
 REVIEWER_ROLES = (SUPERVISOR, FACILITY_IN_CHARGE, TECHNICAL_OFFICER, RPM)
 FINANCE_ROLES = (FHI360_FINANCE, CSO_FINANCE)
-ADMIN_ROLES = (CENTRAL_ADMIN, REGIONAL_ADMIN, SYSTEM_ADMIN)
+ADMIN_ROLES = (CENTRAL_ADMIN, REGIONAL_ADMIN, SYSTEM_ADMIN, SUPER_ADMIN)

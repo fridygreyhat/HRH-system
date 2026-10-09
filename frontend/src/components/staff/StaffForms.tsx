@@ -15,7 +15,7 @@ export const PAYMENT_CRITICAL = ['cadre_id', 'salary_scale', 'payment_method', '
 const isOther = (s: string) => s.trim().toLowerCase() === 'other';
 const blankToNull = (s: string): string | null => (s.trim() ? s.trim() : null);
 
-function OccupationFields({
+export function OccupationFields({
   cadre,
   occupation,
   other,

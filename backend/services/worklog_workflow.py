@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from ..core.roles import FACILITY_IN_CHARGE, PROVIDER, RPM, SUPERVISOR, TECHNICAL_OFFICER
 from ..core.security import CurrentUser
+from ..core.settings import get_setting
 from ..models import (
     Cadre,
     PaymentClaim,
@@ -197,6 +198,11 @@ def transition(
         log.version += 1
         log.confirmed_version = None
         db.add(WorkLogVersion(work_log_id=log.id, version=log.version, snapshot=build_snapshot(db, log), created_by=current.id))
+        if not get_setting(db, "provider_otp_required"):
+            # Provider confirmation is switched off: the CTC-verified version goes straight to technical review.
+            next_status = PENDING_TECH
+            log.confirmed_version = log.version
+            details = {**(details or {}), "provider_confirmation": "not required"}
     if action == "confirm_otp":
         log.confirmed_version = log.version
     if action == "submit":

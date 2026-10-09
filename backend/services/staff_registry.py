@@ -7,11 +7,13 @@ from typing import Optional
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..core import audit as system_audit
 from ..core.security import CurrentUser
 from ..core.serialize import to_dict
+from ..core.settings import get_setting
 from ..models import (
     Cadre,
     CommunityArea,
@@ -51,6 +53,14 @@ def validate_changes(db: Session, staff: Staff, changes: dict) -> None:
             raise HTTPException(status_code=422, detail=f"{name} cannot be empty")
     if changes.get("payment_method") not in (None, "MOBILE_WALLET", "BANK"):
         raise HTTPException(status_code=422, detail="payment_method must be MOBILE_WALLET or BANK")
+    check_payment_method(db, changes.get("cadre_id", staff.cadre_id), changes.get("payment_method", staff.payment_method))
+
+
+def check_payment_method(db: Session, cadre_id: Optional[int], method: Optional[str]) -> None:
+    """Cadres listed in the bank_only_cadres setting (HCP by default) are paid into a bank account only."""
+    cadre = db.get(Cadre, cadre_id) if cadre_id else None
+    if cadre and method and method != "BANK" and cadre.code in get_setting(db, "bank_only_cadres"):
+        raise HTTPException(status_code=422, detail=f"{cadre.name} staff must be paid into a bank account, not a mobile wallet")
 EDITABLE_FIELDS = {"first_name", "middle_name", "last_name", "occupation", "occupation_other"} | PAYMENT_CRITICAL_FIELDS
 
 
@@ -99,6 +109,17 @@ ROSTER_COLUMNS = ["first_name", "middle_name", "last_name", "phone", "cadre", "o
                   "ward", "facility", "community_area", "section", "organization", "start_date"]
 
 
+def facility_for_name(db: Session, ward_id: int, name: str) -> Facility:
+    """Facilities are typed by hand: reuse the ward's facility with the same name (any case), otherwise register it."""
+    name = " ".join(name.split())
+    facility = db.query(Facility).filter(Facility.ward_id == ward_id, func.lower(Facility.name) == name.lower()).first()
+    if not facility:
+        facility = Facility(ward_id=ward_id, name=name)
+        db.add(facility)
+        db.flush()
+    return facility
+
+
 def import_roster(db: Session, current: CurrentUser, filename: str, content: str, source: str, allowed_region_ids: Optional[set[int]]) -> RosterImport:
     """Create staff (or, for an existing phone number, record a rotation) from an approved roster CSV.
 
@@ -110,11 +131,16 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
     if missing:
         raise HTTPException(status_code=422, detail=f"Missing required columns: {sorted(missing)}. Expected: {ROSTER_COLUMNS}")
 
-    def lookup(model, name):
-        return db.query(model).filter(model.name == name.strip()).first() if name and name.strip() else None
+    def lookup(model, name, **parent):
+        if not (name and name.strip()):
+            return None
+        return db.query(model).filter(func.lower(model.name) == name.strip().lower(), *(getattr(model, k) == v for k, v in parent.items())).first()
 
-    def optional_id(model, name):
-        row = lookup(model, name)
+    def lookup_any(model, name):
+        return lookup(model, name)
+
+    def optional_id(model, name, **parent):
+        row = lookup(model, name, **parent)
         if name and name.strip() and not row:
             raise ValueError(f"Unknown {model.__tablename__[:-1]} '{name}'")
         return row.id if row else None
@@ -126,17 +152,23 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
         try:
             with db.begin_nested():
                 cadre = db.query(Cadre).filter(Cadre.code == (row.get("cadre") or "").strip().upper()).first()
-                region = lookup(Region, row.get("region"))
+                region = lookup_any(Region, row.get("region"))
                 if not cadre:
                     raise ValueError(f"Unknown cadre '{row.get('cadre')}'")
                 if not region:
                     raise ValueError(f"Unknown region '{row.get('region')}'")
                 if allowed_region_ids is not None and region.id not in allowed_region_ids:
                     raise ValueError(f"Region '{region.name}' is outside your administrative scope")
-                facility = lookup(Facility, row.get("facility"))
-                if row.get("facility") and not facility:
-                    raise ValueError(f"Unknown facility '{row.get('facility')}'")
-                org = lookup(Organization, row.get("organization"))
+                # Ward names repeat across the country, so each level is looked up inside its parent.
+                district_id = optional_id(District, row.get("district"), region_id=region.id)
+                ward_id = optional_id(Ward, row.get("ward"), district_id=district_id) if district_id else None
+                if (row.get("ward") or "").strip() and not district_id:
+                    raise ValueError("Give the district together with the ward")
+                facility_name = (row.get("facility") or "").strip()
+                if facility_name and not ward_id:
+                    raise ValueError("Give the district and ward together with the facility")
+                facility = facility_for_name(db, ward_id, facility_name) if facility_name else None
+                org = lookup_any(Organization, row.get("organization"))
                 if row.get("organization") and not org:
                     raise ValueError(f"Unknown organization '{row.get('organization')}'")
                 section = (row.get("section") or "").strip().upper() or None
@@ -146,10 +178,10 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
                 phone = row["phone"].strip()
                 assignment = {
                     "region_id": region.id,
-                    "district_id": optional_id(District, row.get("district")),
-                    "ward_id": optional_id(Ward, row.get("ward")),
+                    "district_id": district_id,
+                    "ward_id": ward_id,
                     "facility_id": facility.id if facility else None,
-                    "community_area_id": optional_id(CommunityArea, row.get("community_area")),
+                    "community_area_id": optional_id(CommunityArea, row.get("community_area")) if row.get("community_area") else None,
                     "section": section,
                     "organization_id": org.id if org else None,
                 }

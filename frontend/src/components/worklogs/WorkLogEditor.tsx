@@ -2,10 +2,10 @@ import { ApprovalStepper } from './ApprovalStepper';
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api';
 import { useAuth } from '../../AuthContext';
-import { datesBetween, dayOfMonth, num, todayLocal, WORKLOG_ACTION_LABELS, weekday } from '../../format';
+import { datesBetween, dayOfMonth, money, num, todayLocal, WORKLOG_ACTION_LABELS, weekday } from '../../format';
 import { useAction, useApi } from '../../hooks';
 import { navigate } from '../../nav';
-import { Section as SectionRow, WorkLogDetail } from '../../types';
+import { PayoutEstimateData, Section as SectionRow, WorkLogDetail } from '../../types';
 import { Alert, AuditTimeline, Field, ReasonDialog, StatusBadge } from '../ui';
 import { captureLocation, DayEntryForm } from './DayEntryForm';
 import { OtpPanel } from './OtpPanel';
@@ -182,11 +182,13 @@ function SubmitPanel({ log, onSubmitted }: { log: WorkLogDetail; onSubmitted: (l
   const { me, t } = useAuth();
   const [attest, setAttest] = useState(false);
   const { busy, error, run } = useAction();
-  const gpsOnSubmit = !!me?.client_settings.gps_capture_events.includes('SUBMIT');
+  const gpsRequired = !!me?.client_settings.gps_required_on_submit;
+  const gpsOnSubmit = gpsRequired || !!me?.client_settings.gps_capture_events.includes('SUBMIT');
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const result = await run(async () => {
       const fix = gpsOnSubmit ? await captureLocation() : null;
+      if (gpsRequired && !fix) throw new Error(t('gpsRequired'));
       return api.post<WorkLogDetail>(`/worklogs/${log.id}/actions/submit`, { attest: true, ...(fix || {}) });
     });
     if (result) {
@@ -201,7 +203,7 @@ function SubmitPanel({ log, onSubmitted }: { log: WorkLogDetail; onSubmitted: (l
         <input type="checkbox" checked={attest} onChange={(e) => setAttest(e.target.checked)} required />
         <span>{t('attest')}</span>
       </label>
-      {gpsOnSubmit && <span className="field-hint">{t('gpsHint')}</span>}
+      {gpsOnSubmit && <span className="field-hint">{t(gpsRequired ? 'gpsRequiredHint' : 'gpsHint')}</span>}
       <Alert>{error}</Alert>
       <div className="row">
         <button className="btn btn-primary" disabled={!attest || busy || log.entries.length === 0}>
@@ -209,6 +211,33 @@ function SubmitPanel({ log, onSubmitted }: { log: WorkLogDetail; onSubmitted: (l
         </button>
       </div>
     </form>
+  );
+}
+
+/** What the log would earn under approved rates; clearly not an approved amount. */
+function PayoutEstimate({ logId, version }: { logId: number; version: string }) {
+  const { t } = useAuth();
+  const { data } = useApi<PayoutEstimateData>(`/worklogs/${logId}/estimate?v=${encodeURIComponent(version)}`);
+  if (!data) return null;
+  return (
+    <section className="card stack" aria-labelledby="estimate-title">
+      <h3 id="estimate-title">{t('estimateTitle')}</h3>
+      {data.totals.length ? (
+        <>
+          <p className="estimate-total">{data.totals.map((x) => money(x.amount, x.currency)).join(' + ')}</p>
+          <ul className="muted small">
+            {data.lines.map((l, i) => (
+              <li key={i}>
+                {l.category} · {l.component}: {num(Number(l.units))} × {money(l.rate, l.currency)} = {money(l.amount, l.currency)}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p className="muted">{t('estimateNone')}</p>
+      )}
+      <span className="badge badge-warn" style={{ justifySelf: 'start' }}>{t('estimateNote')}</span>
+    </section>
   );
 }
 
@@ -243,7 +272,7 @@ export function WorkLogEditor({ logId, onBack }: { logId: number; onBack: () => 
       </div>
       <header className="stack">
         <h1>{log.cadre.form_title || log.cadre.name}</h1>
-        <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} />
+        <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} technicalReviewer={log.cadre?.technical_reviewer_title} />
         <div className="row">
           <span className="muted">
             {log.period_label} · #{log.id}
@@ -272,6 +301,8 @@ export function WorkLogEditor({ logId, onBack }: { logId: number; onBack: () => 
       )}
 
       {log.awaiting_my_otp && <OtpPanel log={log} onChanged={setData} />}
+
+      <PayoutEstimate logId={log.id} version={log.updated_at} />
 
       <HeaderForm key={`${log.id}-${log.updated_at}`} log={log} onSaved={setData} />
 

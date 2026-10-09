@@ -13,7 +13,7 @@ from ...core.security import CurrentUser, get_current_user, hash_password, requi
 from ...core.serialize import mask_phone, to_dict
 from ...core.timeutil import local_today
 from ...db.session import get_db
-from ...models import Cadre, Role, RosterImport, Section, Staff, StaffAssignment, StaffChangeRequest, User, UserRole
+from ...models import Cadre, District, Facility, Role, RosterImport, Section, Staff, StaffAssignment, StaffChangeRequest, User, UserRole, Ward
 from ...services import staff_registry as reg
 from ...services.forms import assignment_out
 from ...services.scope import current_assignment, staff_visibility
@@ -27,6 +27,8 @@ class AssignmentIn(BaseModel):
     district_id: Optional[int] = None
     ward_id: Optional[int] = None
     facility_id: Optional[int] = None
+    # Facilities are typed by hand; the name is matched within the ward or registered there.
+    facility_name: Optional[str] = Field(default=None, max_length=255)
     community_area_id: Optional[int] = None
     section: Optional[str] = None
     organization_id: Optional[int] = None
@@ -111,9 +113,27 @@ def _check_admin_for_staff(db: Session, current: CurrentUser, staff: Staff) -> N
         raise HTTPException(status_code=403, detail="This staff member is outside your administrative region")
 
 
-def _validate_assignment(db: Session, body: AssignmentIn) -> None:
+def _assignment_columns(db: Session, body: AssignmentIn) -> dict:
+    """Check the placement hangs together and turn a typed facility name into its facility row."""
     if body.section and not db.get(Section, body.section):
         raise HTTPException(status_code=422, detail="Unknown section")
+    district = db.get(District, body.district_id) if body.district_id else None
+    if body.district_id and (not district or district.region_id != body.region_id):
+        raise HTTPException(status_code=422, detail="The district is not in the chosen region")
+    ward = db.get(Ward, body.ward_id) if body.ward_id else None
+    if body.ward_id and (not ward or not district or ward.district_id != district.id):
+        raise HTTPException(status_code=422, detail="The ward is not in the chosen district")
+    columns = body.model_dump(exclude={"facility_name"})
+    name = (body.facility_name or "").strip()
+    if name:
+        if not ward:
+            raise HTTPException(status_code=422, detail="Choose the district and ward before entering the facility name")
+        columns["facility_id"] = reg.facility_for_name(db, ward.id, name).id
+    elif body.facility_id:
+        facility = db.get(Facility, body.facility_id)
+        if not facility or (body.ward_id and facility.ward_id != body.ward_id):
+            raise HTTPException(status_code=422, detail="The facility is not in the chosen ward")
+    return columns
 
 
 @router.get("")
@@ -184,20 +204,29 @@ def decide(request_id: int, body: DecisionIn, db: Session = Depends(get_db), cur
     return to_dict(request)
 
 
-@router.post("", status_code=201)
-def create_staff(body: StaffCreate, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(*ADMINS))):
-    if not _admin_region_ok(current, body.assignment.region_id):
-        raise HTTPException(status_code=403, detail="That region is outside your administrative scope")
+def new_staff_record(db: Session, current: CurrentUser, body: StaffCreate) -> Staff:
+    """Register one staff identity with its first assignment (flushed, not committed). Shared with user enrollment."""
     if not db.get(Cadre, body.cadre_id):
         raise HTTPException(status_code=422, detail="Unknown cadre")
-    _validate_assignment(db, body.assignment)
+    if body.payment_method not in (None, "MOBILE_WALLET", "BANK"):
+        raise HTTPException(status_code=422, detail="payment_method must be MOBILE_WALLET or BANK")
+    reg.check_payment_method(db, body.cadre_id, body.payment_method)
+    assignment = _assignment_columns(db, body.assignment)
     if db.query(Staff).filter(Staff.verified_phone == body.verified_phone).first():
         raise HTTPException(status_code=409, detail="A staff member with this phone already exists. Use a rotation instead of creating a second identity.")
     staff = Staff(**body.model_dump(exclude={"assignment"}), created_by=current.id)
     db.add(staff)
     db.flush()
-    db.add(StaffAssignment(staff_id=staff.id, start_date=body.employment_start_date, created_by=current.id, **body.assignment.model_dump()))
+    db.add(StaffAssignment(staff_id=staff.id, start_date=body.employment_start_date, created_by=current.id, **assignment))
     system_audit.record(db, current, "staff", staff.id, "create", after=body.model_dump(exclude={"payment_account"}))
+    return staff
+
+
+@router.post("", status_code=201)
+def create_staff(body: StaffCreate, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(*ADMINS))):
+    if not _admin_region_ok(current, body.assignment.region_id):
+        raise HTTPException(status_code=403, detail="That region is outside your administrative scope")
+    staff = new_staff_record(db, current, body)
     db.commit()
     return _summary(db, current, staff)
 
@@ -247,8 +276,7 @@ def rotate(staff_id: int, body: RotateIn, db: Session = Depends(get_db), current
     _check_admin_for_staff(db, current, staff)
     if not _admin_region_ok(current, body.assignment.region_id):
         raise HTTPException(status_code=403, detail="The new region is outside your administrative scope")
-    _validate_assignment(db, body.assignment)
-    reg.rotate(db, current, staff, body.assignment.model_dump(), body.effective_date, body.reason)
+    reg.rotate(db, current, staff, _assignment_columns(db, body.assignment), body.effective_date, body.reason)
     db.commit()
     return get_staff(staff_id, db, current)
 

@@ -8,6 +8,7 @@ import {
   humanize,
   label,
   roleLabel,
+  routeLabel,
 } from '../format';
 
 type Tone = 'neutral' | 'info' | 'success' | 'warn' | 'danger';
@@ -93,7 +94,7 @@ export function LocationBadge({ status }: { status: string }) {
 }
 
 export function RouteBadge({ route }: { route: string | null | undefined }) {
-  return route ? <span className="badge badge-route">Route {route}</span> : <span className="badge badge-warn">No route</span>;
+  return route ? <span className="badge badge-route" title={`Route ${route}`}>{routeLabel(route)}</span> : <span className="badge badge-warn">No payment route</span>;
 }
 
 export function Alert({ kind = 'error', children }: { kind?: 'error' | 'success' | 'info' | 'warn'; children: React.ReactNode }) {

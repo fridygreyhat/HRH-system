@@ -3,9 +3,17 @@ import { api } from '../../api';
 import { useAuth } from '../../AuthContext';
 import { dateTime, roleLabel } from '../../format';
 import { useAction, useApi } from '../../hooks';
-import { AdminUser, RoleInfo, UserScope } from '../../types';
-import { Alert, AsyncState, Drawer, Facts, Field, StatusBadge } from '../../components/ui';
+import { AdminUser, Cadre, RoleInfo, UserScope } from '../../types';
+import { Alert, AsyncState, Drawer, Facts, Field, StatusBadge, Tabs } from '../../components/ui';
 import { Row, matches, nameMap, refName, useLookups } from './common';
+import {
+  HealthWorkerFields,
+  HealthWorkerValue,
+  UnlinkedStaff,
+  emptyHealthWorker,
+  healthWorkerName,
+  healthWorkerPayload,
+} from '../../components/staff/HealthWorkerFields';
 
 type Dim = 'region_id' | 'cluster_id' | 'facility_id' | 'community_area_id' | 'organization_id';
 /** One scope row; `dim` remembers the chosen dimension while no value is picked yet (editor only, never sent). */
@@ -20,6 +28,10 @@ const DIMS: { key: Dim; label: string; path: string }[] = [
 ];
 const DIM_PATHS = DIMS.map((d) => d.path);
 const PHONE_RE = /^\+?\d{9,15}$/;
+/** Granted automatically with a staff record; never ticked by hand. */
+const PROVIDER = 'PROVIDER';
+const SUPER_ADMIN = 'SUPER_ADMIN';
+const TECHNICAL_OFFICER = 'TECHNICAL_OFFICER';
 
 type Maps = Record<Dim, Map<string, string>>;
 
@@ -135,6 +147,36 @@ function ScopeEditor({
   );
 }
 
+/** A technical officer's technical area: which cadres' work logs reach them for technical review. */
+function TechnicalArea({ value, onChange, disabled }: { value: number[]; onChange: (ids: number[]) => void; disabled: boolean }) {
+  const cadres = useApi<Cadre[]>('/admin/cadres');
+  return (
+    <fieldset className="stack">
+      <legend>Technical area</legend>
+      <p className="muted small">
+        Technical review of a work log goes to the technical officer whose area includes the worker's cadre and whose scope covers their
+        facility or region. A technical officer with no area receives no logs.
+      </p>
+      <Alert>{cadres.error}</Alert>
+      {(cadres.data || []).map((c) => (
+        <label key={c.id} className="row" style={{ alignItems: 'flex-start' }}>
+          <input
+            type="checkbox"
+            checked={value.includes(c.id)}
+            disabled={disabled}
+            onChange={(e) => onChange(e.target.checked ? [...value, c.id] : value.filter((x) => x !== c.id))}
+          />
+          <span>
+            <strong>{c.technical_reviewer_title || `${c.name} technical officer`}</strong>
+            <br />
+            <span className="muted small">Reviews {c.name} work logs</span>
+          </span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
 /** Strip editor-only keys and check every row names something. */
 function cleanScopes(scopes: ScopeIn[]): { scopes: ScopeIn[]; error: string | null } {
   const out = scopes.map((s) => {
@@ -153,17 +195,22 @@ function RoleChecks({
   value,
   onChange,
   disabled,
+  legend = 'Roles',
 }: {
   roles: RoleInfo[] | null;
   value: string[];
   onChange: (r: string[]) => void;
   disabled: boolean;
+  legend?: string;
 }) {
+  const { hasRole } = useAuth();
   if (!roles) return <p className="muted">Loading roles…</p>;
+  // Only a super administrator can grant the super administrator role.
+  const grantable = roles.filter((r) => r.name !== PROVIDER && (r.name !== SUPER_ADMIN || hasRole(SUPER_ADMIN)));
   return (
     <fieldset className="stack">
-      <legend>Roles</legend>
-      {roles.map((r) => (
+      <legend>{legend}</legend>
+      {grantable.map((r) => (
         <label key={r.name} className="row" style={{ alignItems: 'flex-start' }}>
           <input
             type="checkbox"
@@ -184,32 +231,44 @@ function RoleChecks({
 
 function CreateUser({ roles, onDone, onCancel }: { roles: RoleInfo[] | null; onDone: (u: AdminUser) => void; onCancel: () => void }) {
   const { lists, maps, error: lookupError } = useScopeMaps();
-  const [form, setForm] = useState({ username: '', password: '', full_name: '', phone: '', email: '', preferred_language: 'sw', staff_id: '' });
+  const unlinked = useApi<UnlinkedStaff[]>('/admin/unlinked-staff');
+  const [kind, setKind] = useState<'worker' | 'office'>('worker');
+  const [form, setForm] = useState({ username: '', password: '', full_name: '', phone: '', email: '', preferred_language: 'sw' });
+  const [worker, setWorker] = useState<HealthWorkerValue>(emptyHealthWorker);
   const [userRoles, setUserRoles] = useState<string[]>([]);
   const [scopes, setScopes] = useState<ScopeIn[]>([]);
+  const [reviewCadres, setReviewCadres] = useState<number[]>([]);
   const { busy, error, setError, run } = useAction();
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const isWorker = kind === 'worker';
+  const fullName = isWorker ? healthWorkerName(worker, unlinked.data) : form.full_name.trim();
+  const otherRoles = userRoles.filter((r) => r !== PROVIDER);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (form.password.length < 8) return setError('The password must be at least 8 characters.');
     if (!PHONE_RE.test(form.phone.trim())) return setError('Enter the phone number as 9–15 digits, optionally starting with +, e.g. +255712345678.');
-    if (!userRoles.length) return setError('Choose at least one role.');
+    if (!isWorker && !otherRoles.length) return setError('Choose at least one role.');
+    const link = isWorker ? healthWorkerPayload(worker, form.phone) : null;
+    if (typeof link === 'string') return setError(link);
+    if (!fullName) return setError('Enter the full name.');
     const cleaned = cleanScopes(scopes);
     if (cleaned.error) return setError(cleaned.error);
-    const staffId = form.staff_id.trim() ? Number(form.staff_id) : null;
-    if (staffId !== null && !Number.isInteger(staffId)) return setError('Staff ID must be a whole number.');
+    const isTechnical = otherRoles.includes(TECHNICAL_OFFICER);
+    if (isTechnical && !reviewCadres.length) return setError('Choose the technical area: which cadres this technical officer reviews.');
     const created = await run(() =>
       api.post<AdminUser>('/admin/users', {
         username: form.username.trim(),
         password: form.password,
-        full_name: form.full_name.trim(),
+        full_name: fullName,
         phone: form.phone.trim(),
         email: form.email.trim() || null,
         preferred_language: form.preferred_language,
-        roles: userRoles,
+        roles: isWorker ? [PROVIDER, ...otherRoles] : otherRoles,
         scopes: cleaned.scopes,
-        staff_id: staffId,
+        review_cadre_ids: isTechnical ? reviewCadres : [],
+        staff_id: link?.staff_id ?? null,
+        staff: link?.staff ?? null,
       }),
     );
     if (created) onDone(created);
@@ -218,6 +277,22 @@ function CreateUser({ roles, onDone, onCancel }: { roles: RoleInfo[] | null; onD
 
   return (
     <form className="stack" onSubmit={submit}>
+      <Field label="Account type">
+        <Tabs
+          label="Account type"
+          value={kind}
+          onChange={setKind}
+          tabs={[
+            { key: 'worker', label: 'Health worker (CHW, Data Clerk, HCP)' },
+            { key: 'office', label: 'Office / reviewer' },
+          ]}
+        />
+      </Field>
+      <p className="muted small">
+        {isWorker
+          ? 'Health workers record their own work logs. The account gets the Provider role and is linked to a staff record with their cadre and placement.'
+          : 'Supervisors, reviewers, finance, administrators and oversight. Choose the roles and the areas they cover.'}
+      </p>
       <div className="grid-2">
         <Field label="Username *">
           <input value={form.username} onChange={set('username')} required minLength={3} maxLength={100} autoComplete="off" />
@@ -225,10 +300,12 @@ function CreateUser({ roles, onDone, onCancel }: { roles: RoleInfo[] | null; onD
         <Field label="Initial password *" hint="At least 8 characters. Share it with the user securely.">
           <input type="password" value={form.password} onChange={set('password')} required minLength={8} maxLength={72} autoComplete="new-password" />
         </Field>
-        <Field label="Full name *">
-          <input value={form.full_name} onChange={set('full_name')} required maxLength={255} />
-        </Field>
-        <Field label="Phone *" hint="e.g. +255712345678">
+        {!isWorker && (
+          <Field label="Full name *">
+            <input value={form.full_name} onChange={set('full_name')} required maxLength={255} />
+          </Field>
+        )}
+        <Field label="Phone *" hint={isWorker ? 'Receives the confirmation codes, e.g. +255712345678' : 'e.g. +255712345678'}>
           <input type="tel" value={form.phone} onChange={set('phone')} required pattern="\+?\d{9,15}" />
         </Field>
         <Field label="Email">
@@ -240,13 +317,27 @@ function CreateUser({ roles, onDone, onCancel }: { roles: RoleInfo[] | null; onD
             <option value="en">English</option>
           </select>
         </Field>
-        <Field label="Staff record ID" hint="Optional: links this login to an existing staff record (ID from the Staff page) that has no login yet.">
-          <input type="number" inputMode="numeric" min={1} step={1} value={form.staff_id} onChange={set('staff_id')} />
-        </Field>
       </div>
-      <RoleChecks roles={roles} value={userRoles} onChange={setUserRoles} disabled={busy} />
-      <Alert>{lookupError}</Alert>
-      <ScopeEditor scopes={scopes} onChange={setScopes} lists={lists} maps={maps} disabled={busy} />
+      {isWorker && (
+        <>
+          <Alert>{unlinked.error}</Alert>
+          <HealthWorkerFields value={worker} onChange={setWorker} unlinked={unlinked.data} disabled={busy} />
+        </>
+      )}
+      <RoleChecks
+        roles={roles}
+        value={otherRoles}
+        onChange={setUserRoles}
+        disabled={busy}
+        legend={isWorker ? 'Additional roles (optional, e.g. a CHW who is also a supervisor)' : 'Roles'}
+      />
+      {(!isWorker || otherRoles.length > 0) && (
+        <>
+          <Alert>{lookupError}</Alert>
+          <ScopeEditor scopes={scopes} onChange={setScopes} lists={lists} maps={maps} disabled={busy} />
+        </>
+      )}
+      {otherRoles.includes(TECHNICAL_OFFICER) && <TechnicalArea value={reviewCadres} onChange={setReviewCadres} disabled={busy} />}
       <Alert>{error}</Alert>
       <div className="row">
         <button className="btn btn-primary" disabled={busy}>
@@ -260,6 +351,39 @@ function CreateUser({ roles, onDone, onCancel }: { roles: RoleInfo[] | null; onD
   );
 }
 
+/** For accounts with no staff record: register one (cadre + placement) or link an existing one. */
+function LinkStaff({ user, onChanged }: { user: AdminUser; onChanged: (u: AdminUser) => void }) {
+  const unlinked = useApi<UnlinkedStaff[]>('/admin/unlinked-staff');
+  const [worker, setWorker] = useState<HealthWorkerValue>(emptyHealthWorker);
+  const { busy, error, setError, run } = useAction();
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (worker.mode === 'new' && !PHONE_RE.test(user.phone || '')) return setError('Give this user a valid phone number first; it becomes the verified phone.');
+    const link = healthWorkerPayload(worker, user.phone || '');
+    if (typeof link === 'string') return setError(link);
+    const u = await run(() => api.post<AdminUser>(`/admin/users/${user.id}/staff`, link));
+    if (u) onChanged(u);
+    return undefined;
+  };
+  return (
+    <form className="stack card" onSubmit={submit}>
+      <h3>Health-worker record</h3>
+      <Alert kind="warn">
+        This account is not linked to a staff record, so it cannot start work logs. If this person is a CHW, Data Clerk or HCP, register or link their
+        staff record here. The Provider role is added automatically.
+      </Alert>
+      <Alert>{unlinked.error}</Alert>
+      <HealthWorkerFields value={worker} onChange={setWorker} unlinked={unlinked.data} disabled={busy} />
+      <Alert>{error}</Alert>
+      <div>
+        <button className="btn btn-primary" disabled={busy}>
+          {busy ? 'Saving…' : worker.mode === 'new' ? 'Register and link' : 'Link staff record'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleInfo[] | null; onChanged: (u: AdminUser) => void }) {
   const { me } = useAuth();
   const { lists, maps, error: lookupError } = useScopeMaps();
@@ -267,11 +391,14 @@ function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleIn
   const [rolesReason, setRolesReason] = useState('');
   const [scopes, setScopes] = useState<ScopeIn[]>(user.scopes.map(toScopeIn));
   const [scopesReason, setScopesReason] = useState('');
+  const [reviewCadres, setReviewCadres] = useState<number[]>(user.review_cadre_ids);
+  const [areaReason, setAreaReason] = useState('');
   const [password, setPassword] = useState('');
-  const [done, setDone] = useState<{ part: 'roles' | 'scopes' | 'password' | 'status'; msg: string } | null>(null);
-  const doneMsg = (part: 'roles' | 'scopes' | 'password' | 'status') => (done?.part === part ? done.msg : null);
+  const [done, setDone] = useState<{ part: 'roles' | 'scopes' | 'area' | 'password' | 'status'; msg: string } | null>(null);
+  const doneMsg = (part: 'roles' | 'scopes' | 'area' | 'password' | 'status') => (done?.part === part ? done.msg : null);
   const rolesAction = useAction();
   const scopesAction = useAction();
+  const areaAction = useAction();
   const pwAction = useAction();
   const deactivateAction = useAction();
   const isMe = me?.id === user.id;
@@ -299,6 +426,18 @@ function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleIn
       setScopesReason('');
       onChanged(u);
       setDone({ part: 'scopes', msg: 'Scopes saved.' });
+    }
+    return undefined;
+  };
+
+  const saveArea = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (areaReason.trim().length < 3) return areaAction.setError('Give a reason (at least 3 characters).');
+    const u = await areaAction.run(() => api.put<AdminUser>(`/admin/users/${user.id}/review-cadres`, { cadre_ids: reviewCadres, reason: areaReason.trim() }));
+    if (u) {
+      setAreaReason('');
+      onChanged(u);
+      setDone({ part: 'area', msg: 'Technical area saved.' });
     }
     return undefined;
   };
@@ -367,6 +506,8 @@ function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleIn
         ]}
       />
 
+      {!user.staff_id && user.is_active && <LinkStaff user={user} onChanged={onChanged} />}
+
       <form className="stack card" onSubmit={saveRoles}>
         <RoleChecks roles={roles} value={userRoles} onChange={setUserRoles} disabled={rolesAction.busy} />
         {isMe && <p className="muted small">You cannot remove your own System Admin role.</p>}
@@ -396,6 +537,22 @@ function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleIn
           </button>
         </div>
       </form>
+
+      {user.roles.includes(TECHNICAL_OFFICER) && (
+        <form className="stack card" onSubmit={saveArea}>
+          <TechnicalArea value={reviewCadres} onChange={setReviewCadres} disabled={areaAction.busy} />
+          <Field label="Reason for the change (required)">
+            <input value={areaReason} onChange={(e) => setAreaReason(e.target.value)} minLength={3} maxLength={500} />
+          </Field>
+          <Alert>{areaAction.error}</Alert>
+          <Alert kind="success">{doneMsg('area')}</Alert>
+          <div>
+            <button className="btn btn-primary" disabled={areaAction.busy || areaReason.trim().length < 3}>
+              {areaAction.busy ? 'Saving…' : 'Save technical area'}
+            </button>
+          </div>
+        </form>
+      )}
 
       <form className="stack card" onSubmit={resetPassword}>
         <h3>Reset password</h3>

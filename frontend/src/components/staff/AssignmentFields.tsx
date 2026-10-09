@@ -10,10 +10,6 @@ interface District extends Named {
 interface Ward extends Named {
   district_id: number;
 }
-interface Facility extends Named {
-  ward_id: number;
-  is_active: boolean;
-}
 interface CommunityArea extends Named {
   district_id: number | null;
   ward_id: number | null;
@@ -23,7 +19,8 @@ export interface AssignmentValue {
   region_id: string;
   district_id: string;
   ward_id: string;
-  facility_id: string;
+  /** Typed by hand; the server reuses the ward's facility with the same name or registers it. */
+  facility_name: string;
   community_area_id: string;
   section: string;
   organization_id: string;
@@ -33,7 +30,7 @@ export interface AssignmentPayload {
   region_id: number;
   district_id: number | null;
   ward_id: number | null;
-  facility_id: number | null;
+  facility_name: string | null;
   community_area_id: number | null;
   section: string | null;
   organization_id: number | null;
@@ -43,7 +40,7 @@ export const EMPTY_ASSIGNMENT: AssignmentValue = {
   region_id: '',
   district_id: '',
   ward_id: '',
-  facility_id: '',
+  facility_name: '',
   community_area_id: '',
   section: '',
   organization_id: '',
@@ -59,7 +56,7 @@ export function assignmentValueFrom(a: Assignment | null | undefined): Assignmen
     region_id: text(a.region_id),
     district_id: text(a.district_id),
     ward_id: text(a.ward_id),
-    facility_id: text(a.facility_id),
+    facility_name: text(a.facility),
     community_area_id: text(a.community_area_id),
     section: text(a.section),
     organization_id: text(a.organization_id),
@@ -71,7 +68,7 @@ export function assignmentPayload(v: AssignmentValue): AssignmentPayload {
     region_id: Number(v.region_id),
     district_id: idOrNull(v.district_id),
     ward_id: idOrNull(v.ward_id),
-    facility_id: idOrNull(v.facility_id),
+    facility_name: v.facility_name.trim() || null,
     community_area_id: idOrNull(v.community_area_id),
     section: v.section || null,
     organization_id: idOrNull(v.organization_id),
@@ -79,7 +76,7 @@ export function assignmentPayload(v: AssignmentValue): AssignmentPayload {
 }
 
 /**
- * Cascading region → district → ward → facility / community area pickers plus section and implementing organization.
+ * Cascading region → district → ward pickers, a typed facility name, community area, section and implementing organization.
  * Regional administrators only see the regions in their scope.
  */
 export function AssignmentFields({ value, onChange, showSection = true }: { value: AssignmentValue; onChange: (v: AssignmentValue) => void; showSection?: boolean }) {
@@ -87,20 +84,18 @@ export function AssignmentFields({ value, onChange, showSection = true }: { valu
   const regions = useApi<Named[]>('/admin/regions');
   const districts = useApi<District[]>('/admin/districts');
   const wards = useApi<Ward[]>('/admin/wards');
-  const facilities = useApi<Facility[]>('/admin/facilities');
   const areas = useApi<CommunityArea[]>('/admin/community-areas');
   const sections = useApi<Section[]>('/admin/sections');
   const orgs = useApi<Organization[]>('/admin/organizations');
 
-  const regionScope = hasRole('CENTRAL_ADMIN') ? null : new Set((me?.scopes || []).map((s) => s.region_id).filter((id): id is number => id !== null));
+  const regionScope = hasRole('CENTRAL_ADMIN') || hasRole('SYSTEM_ADMIN') ? null : new Set((me?.scopes || []).map((s) => s.region_id).filter((id): id is number => id !== null));
   const regionList = (regions.data || []).filter((r) => !regionScope || regionScope.has(r.id));
   const districtList = (districts.data || []).filter((d) => String(d.region_id) === value.region_id);
   const wardList = (wards.data || []).filter((w) => String(w.district_id) === value.district_id);
-  const facilityList = (facilities.data || []).filter((f) => String(f.ward_id) === value.ward_id && f.is_active);
   const areaList = (areas.data || []).filter(
     (a) => (value.ward_id && String(a.ward_id) === value.ward_id) || (!value.ward_id && value.district_id && String(a.district_id) === value.district_id),
   );
-  const loadError = [regions, districts, wards, facilities, areas, sections, orgs].map((r) => r.error).find(Boolean);
+  const loadError = [regions, districts, wards, areas, sections, orgs].map((r) => r.error).find(Boolean);
 
   const set = (patch: Partial<AssignmentValue>) => onChange({ ...value, ...patch });
 
@@ -111,7 +106,7 @@ export function AssignmentFields({ value, onChange, showSection = true }: { valu
         <Field label="Region (required)">
           <select
             value={value.region_id}
-            onChange={(e) => set({ region_id: e.target.value, district_id: '', ward_id: '', facility_id: '', community_area_id: '' })}
+            onChange={(e) => set({ region_id: e.target.value, district_id: '', ward_id: '', facility_name: '', community_area_id: '' })}
             required
           >
             <option value="">Select…</option>
@@ -125,7 +120,7 @@ export function AssignmentFields({ value, onChange, showSection = true }: { valu
         <Field label="District">
           <select
             value={value.district_id}
-            onChange={(e) => set({ district_id: e.target.value, ward_id: '', facility_id: '', community_area_id: '' })}
+            onChange={(e) => set({ district_id: e.target.value, ward_id: '', facility_name: '', community_area_id: '' })}
             disabled={!value.region_id}
           >
             <option value="">—</option>
@@ -137,7 +132,7 @@ export function AssignmentFields({ value, onChange, showSection = true }: { valu
           </select>
         </Field>
         <Field label="Ward">
-          <select value={value.ward_id} onChange={(e) => set({ ward_id: e.target.value, facility_id: '', community_area_id: '' })} disabled={!value.district_id}>
+          <select value={value.ward_id} onChange={(e) => set({ ward_id: e.target.value, facility_name: '', community_area_id: '' })} disabled={!value.district_id}>
             <option value="">—</option>
             {wardList.map((w) => (
               <option key={w.id} value={w.id}>
@@ -146,15 +141,15 @@ export function AssignmentFields({ value, onChange, showSection = true }: { valu
             ))}
           </select>
         </Field>
-        <Field label="Facility">
-          <select value={value.facility_id} onChange={(e) => set({ facility_id: e.target.value })} disabled={!value.ward_id}>
-            <option value="">—</option>
-            {facilityList.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
+        <Field label="Facility name" hint={value.ward_id ? 'Type the full name, e.g. Mbezi Health Centre.' : 'Choose the ward first.'}>
+          <input
+            value={value.facility_name}
+            onChange={(e) => set({ facility_name: e.target.value })}
+            disabled={!value.ward_id}
+            maxLength={255}
+            autoComplete="off"
+            placeholder={value.ward_id ? 'e.g. Mbezi Health Centre' : ''}
+          />
         </Field>
         <Field label="Community area" hint="For community-based cadres.">
           <select value={value.community_area_id} onChange={(e) => set({ community_area_id: e.target.value })} disabled={!value.district_id}>

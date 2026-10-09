@@ -35,15 +35,17 @@ Tests create and drop their own `hrh_test` database.
 ### First-time setup
 
 A fresh system contains only base configuration: roles, sections, the three cadre forms, payment routes A/B/C,
-SMS templates, the FHI360 organization, and one system administrator (`ADMIN_USERNAME` / `ADMIN_PASSWORD`,
+SMS templates, every Tanzanian region, district and ward (see [backend/data](backend/data/README.md)), the FHI360
+organization, and one system administrator (`ADMIN_USERNAME` / `ADMIN_PASSWORD`,
 `admin` / `admin12345` unless you set them; the first sign-in forces a new password). There are no sample users, places, rates or
 budgets. Set the system up in this order:
 
 1. **System administrator → Administration → Users:** create the central administrator, finance, RPM, technical
    officer and other accounts, with their roles and scopes. New accounts get a temporary password that must be
    changed at first sign-in.
-2. **Central administrator → Administration → Configuration:** regions, clusters, districts, wards, facilities
-   (with geofences), community areas and CSOs; check the cadre forms.
+2. **Central administrator → Administration → Configuration:** clusters, community areas and CSOs; add any district
+   or ward created after 2012; check the cadre forms. Facilities are typed by name when staff are placed (the name
+   is reused within its ward); add geofences to them here.
 3. **Central / regional administrator → Staff registry:** import the approved roster (CSV) or add staff, then give
    providers logins.
 4. **FHI360 Finance:** pay periods, funding sources and claim categories (route, payor, budget owner), proposed

@@ -17,6 +17,7 @@ function CadreForm({ cadre, onDone, onCancel }: { cadre: Cadre; onDone: (c: Cadr
     form_title: cadre.form_title || '',
     uses_facility_geofence: cadre.uses_facility_geofence,
     requires_facility_endorsement: cadre.requires_facility_endorsement,
+    technical_reviewer_title: cadre.technical_reviewer_title || '',
     uses_section: cadre.uses_section,
     occupations: cadre.occupation_options.join('\n'),
     is_active: true,
@@ -33,6 +34,7 @@ function CadreForm({ cadre, onDone, onCancel }: { cadre: Cadre; onDone: (c: Cadr
         form_title: form.form_title.trim() || null,
         uses_facility_geofence: form.uses_facility_geofence,
         requires_facility_endorsement: form.requires_facility_endorsement,
+        technical_reviewer_title: form.technical_reviewer_title.trim() || null,
         uses_section: form.uses_section,
         occupation_options: form.occupations
           .split('\n')
@@ -61,6 +63,9 @@ function CadreForm({ cadre, onDone, onCancel }: { cadre: Cadre; onDone: (c: Cadr
           <input value={form.form_title} onChange={(e) => setForm((f) => ({ ...f, form_title: e.target.value }))} maxLength={255} />
         </Field>
       </div>
+      <Field label="Technical reviewer" hint="The FHI360 position that gives technical endorsement for this cadre's work logs">
+        <input value={form.technical_reviewer_title} onChange={(e) => setForm((f) => ({ ...f, technical_reviewer_title: e.target.value }))} maxLength={255} />
+      </Field>
       <Field label="Occupation options" hint="One per line. Leave empty if the form does not ask for an occupation.">
         <textarea rows={4} value={form.occupations} onChange={(e) => setForm((f) => ({ ...f, occupations: e.target.value }))} />
       </Field>
@@ -231,6 +236,7 @@ export function CadresSection() {
                   ['Form title', c.form_title],
                   ['Hours mode (read only)', HOURS_MODE_LABELS[c.hours_mode] || c.hours_mode],
                   ['Facility geofence', c.uses_facility_geofence ? 'Checked' : 'Not used'],
+                  ['Technical reviewer', c.technical_reviewer_title],
                   ['Facility In-Charge endorsement', c.requires_facility_endorsement ? 'Required' : 'Not required'],
                   ['Section', c.uses_section ? 'Asked' : 'Not asked'],
                   ['Occupation options', c.occupation_options.length ? c.occupation_options.join(', ') : null],

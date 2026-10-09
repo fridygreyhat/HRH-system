@@ -7,7 +7,8 @@ import { Alert, DevCodeNotice, Field, ReasonDialog } from '../ui';
 
 /** Provider confirmation of the frozen, verified version by SMS code (or decline with a reason). */
 export function OtpPanel({ log, onChanged }: { log: WorkLogDetail; onChanged: (log: WorkLogDetail) => void }) {
-  const { me, t } = useAuth();
+  const { me, t, lang } = useAuth();
+  const codeRequired = me?.client_settings.provider_otp_required !== false;
   const length = me?.client_settings.otp_length || 4;
   const [code, setCode] = useState('');
   const [devCode, setDevCode] = useState<string | null>(log.otp?.dev_otp || log.dev_otp || null);
@@ -18,7 +19,7 @@ export function OtpPanel({ log, onChanged }: { log: WorkLogDetail; onChanged: (l
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const result = await confirm.run(() => api.post<WorkLogDetail>(`/worklogs/${log.id}/otp/confirm`, { code: code.trim() }));
+    const result = await confirm.run(() => api.post<WorkLogDetail>(`/worklogs/${log.id}/otp/confirm`, codeRequired ? { code: code.trim() } : {}));
     if (result) onChanged(result);
     else setCode('');
   };
@@ -41,6 +42,21 @@ export function OtpPanel({ log, onChanged }: { log: WorkLogDetail; onChanged: (l
   return (
     <section className="card stack" aria-labelledby="otp-title" style={{ borderColor: 'var(--primary)', borderWidth: 2 }}>
       <h3 id="otp-title">{t('otpTitle')}</h3>
+      {!codeRequired ? (
+        <form className="stack" onSubmit={submit}>
+          <p className="small">
+            {lang === 'sw'
+              ? 'Kumbukumbu yako imehakikiwa na Mkuu wa CTC. Hakiki takwimu hapo juu, kisha thibitisha. Namba ya SMS haihitajiki kwa sasa.'
+              : 'Your CTC In-Charge has verified this log. Check the figures above, then confirm them. No SMS code is needed for now.'}
+          </p>
+          <div>
+            <button className="btn btn-primary" disabled={confirm.busy}>
+              {confirm.busy ? t('loading') : t('confirm')}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <>
       <p className="small">{t('otpIntro')}</p>
       <DevCodeNotice code={devCode} label={t('devCode')} />
       <form className="row" onSubmit={submit}>
@@ -61,11 +77,15 @@ export function OtpPanel({ log, onChanged }: { log: WorkLogDetail; onChanged: (l
           {confirm.busy ? t('loading') : t('confirm')}
         </button>
       </form>
+        </>
+      )}
       <Alert>{confirm.error}</Alert>
       <div className="row">
-        <button type="button" className="btn btn-secondary btn-sm" onClick={requestCode} disabled={resend.busy}>
-          {t('resend')}
-        </button>
+        {codeRequired && (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={requestCode} disabled={resend.busy}>
+            {t('resend')}
+          </button>
+        )}
         {log.available_actions.includes('decline') && (
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDeclining(true)}>
             {t('decline')}

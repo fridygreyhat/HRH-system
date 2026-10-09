@@ -713,3 +713,17 @@ details > summary { cursor: pointer; font-weight: 600; }
   .partner-usa { height: 32px; }
   .partner-fhi { height: 40px; }
 }
+
+/* Cadre picker on the user form */
+.choice-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.5rem; }
+.choice-card { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.7rem 0.8rem; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); cursor: pointer; }
+.choice-card > span { display: flex; flex-direction: column; gap: 0.15rem; }
+.choice-card input { margin-top: 0.2rem; }
+.choice-card.is-selected { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+
+.estimate-total {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}

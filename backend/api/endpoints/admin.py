@@ -15,11 +15,13 @@ from ...core.roles import (
     CSO_FINANCE,
     FHI360_FINANCE,
     OVERSIGHT,
+    PROVIDER,
     ROLE_DESCRIPTIONS,
     RPM,
+    SUPER_ADMIN,
     SYSTEM_ADMIN,
 )
-from ...core.security import CurrentUser, get_current_user, hash_password, load_current_user, require_roles
+from ...core.security import CurrentUser, get_current_user, get_user_roles, hash_password, load_current_user, require_roles
 from ...core.serialize import mask_phone, to_dict
 from ...core.settings import DEFAULTS, SETTING_DESCRIPTIONS, all_settings
 from ...db.session import get_db
@@ -45,6 +47,7 @@ from ...models import (
     Staff,
     SystemSetting,
     User,
+    UserReviewCadre,
     UserRole,
     UserScope,
     Ward,
@@ -53,6 +56,7 @@ from ...models import (
 from ...services import notifications
 from ...services.forms import cadre_out
 from ...services.templates import EVENTS, LANGUAGES, PROTECTED_EVENTS
+from .staff import StaffCreate, new_staff_record
 
 router = APIRouter()
 AUTO_COLUMNS = {"id", "created_at", "updated_at"}
@@ -152,6 +156,7 @@ class CadreUpdate(BaseModel):
     form_title: Optional[str] = None
     uses_facility_geofence: bool
     requires_facility_endorsement: bool
+    technical_reviewer_title: Optional[str] = Field(default=None, max_length=255)
     uses_section: bool
     occupation_options: List[str] = []
     is_active: bool = True
@@ -320,7 +325,15 @@ class UserCreate(BaseModel):
     preferred_language: str = Field(default="sw", pattern="^(en|sw)$")
     roles: List[str] = Field(min_length=1)
     scopes: List[ScopeIn] = []
+    review_cadre_ids: List[int] = []  # technical area, for technical officers
+    # A health worker (CHW, Data Clerk, HCP) is linked to a staff record: an existing one, or a new one created here.
     staff_id: Optional[int] = None
+    staff: Optional[StaffCreate] = None
+
+
+class StaffLinkIn(BaseModel):
+    staff_id: Optional[int] = None
+    staff: Optional[StaffCreate] = None
 
 
 class RolesIn(BaseModel):
@@ -333,6 +346,11 @@ class ScopesIn(BaseModel):
     reason: str = Field(min_length=3)
 
 
+class ReviewCadresIn(BaseModel):
+    cadre_ids: List[int]
+    reason: str = Field(min_length=3)
+
+
 class PasswordReset(BaseModel):
     new_password: str = Field(min_length=8, max_length=72)
 
@@ -342,16 +360,25 @@ def _user_out(db: Session, user: User) -> dict:
     return {
         **to_dict(user, exclude=("hashed_password",)),
         "is_locked": bool(user.locked_until and user.locked_until > utcnow()),
-        "roles": sorted(cu.roles),
+        "roles": sorted(get_user_roles(db, user.id)),  # as granted; a super admin's other roles are implied
         "scopes": [to_dict(s) for s in cu.scopes],
+        "review_cadre_ids": sorted(cu.review_cadres),
         "staff_id": cu.staff.id if cu.staff else None,
     }
+
+
+def _guard_super_admin(db: Session, current: CurrentUser, user: User) -> None:
+    """Only a super administrator may change a super administrator's account."""
+    if SUPER_ADMIN in get_user_roles(db, user.id) and not current.unrestricted:
+        raise HTTPException(status_code=403, detail="Only a super administrator can change a super administrator's account")
 
 
 def _set_roles(db: Session, user: User, roles: list[str], actor: CurrentUser) -> None:
     unknown = set(roles) - set(ALL_ROLES)
     if unknown:
         raise HTTPException(status_code=422, detail=f"Unknown roles {sorted(unknown)}")
+    if SUPER_ADMIN in roles and not actor.unrestricted:
+        raise HTTPException(status_code=403, detail="Only a super administrator can grant the super administrator role")
     db.query(UserRole).filter(UserRole.user_id == user.id).delete()
     for role in db.query(Role).filter(Role.name.in_(roles)):
         db.add(UserRole(user_id=user.id, role_id=role.id, assigned_by=actor.id))
@@ -363,6 +390,41 @@ def _set_scopes(db: Session, user: User, scopes: list[ScopeIn], actor: CurrentUs
         if not any(s.model_dump().values()):
             raise HTTPException(status_code=422, detail="Each scope must name at least one region, cluster, facility, community area or organization")
         db.add(UserScope(user_id=user.id, created_by=actor.id, **s.model_dump()))
+
+
+def _set_review_cadres(db: Session, user: User, cadre_ids: list[int], actor: CurrentUser) -> None:
+    if set(cadre_ids) - {c.id for c in db.query(Cadre)}:
+        raise HTTPException(status_code=422, detail="Unknown cadre in the technical area")
+    db.query(UserReviewCadre).filter(UserReviewCadre.user_id == user.id).delete()
+    for cadre_id in set(cadre_ids):
+        db.add(UserReviewCadre(user_id=user.id, cadre_id=cadre_id, assigned_by=actor.id))
+
+
+def _link_staff(db: Session, current: CurrentUser, user: User, staff_id: Optional[int], new_staff: Optional[StaffCreate]) -> Staff:
+    """Link a login to its staff record and make sure it carries the provider role."""
+    if bool(staff_id) == bool(new_staff):
+        raise HTTPException(status_code=422, detail="Give either an existing staff record or the details of a new one")
+    if db.query(Staff).filter(Staff.user_id == user.id).first():
+        raise HTTPException(status_code=409, detail="This user is already linked to a staff record")
+    if new_staff:
+        staff = new_staff_record(db, current, new_staff)
+    else:
+        staff = db.query(Staff).filter(Staff.id == staff_id).with_for_update().first()
+        if not staff or staff.user_id:
+            raise HTTPException(status_code=409, detail="Staff record not found or already linked to a login")
+    staff.user_id = user.id
+    provider = db.query(Role).filter(Role.name == PROVIDER).one()
+    if not db.query(UserRole).filter(UserRole.user_id == user.id, UserRole.role_id == provider.id).first():
+        db.add(UserRole(user_id=user.id, role_id=provider.id, assigned_by=current.id))
+    return staff
+
+
+@router.get("/unlinked-staff")
+def unlinked_staff(db: Session = Depends(get_db), _: CurrentUser = Depends(require_roles(SYSTEM_ADMIN))):
+    """Active staff records without a login, for linking from the Users screen."""
+    rows = db.query(Staff).filter(Staff.user_id.is_(None), Staff.status == "ACTIVE").order_by(Staff.last_name, Staff.first_name).limit(1000)
+    cadres = {c.id: c.code for c in db.query(Cadre)}
+    return [{"id": s.id, "legal_name": s.legal_name, "cadre": cadres.get(s.cadre_id), "phone": s.verified_phone} for s in rows]
 
 
 @router.get("/users")
@@ -380,14 +442,26 @@ def create_user(body: UserCreate, db: Session = Depends(get_db), current: Curren
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail="Username or phone already in use")
-    _set_roles(db, user, body.roles, current)
+    _set_roles(db, user, [r for r in body.roles if r != PROVIDER], current)
     _set_scopes(db, user, body.scopes, current)
-    if body.staff_id:
-        staff = db.get(Staff, body.staff_id)
-        if not staff or staff.user_id:
-            raise HTTPException(status_code=409, detail="Staff record not found or already linked to a login")
-        staff.user_id = user.id
-    system_audit.record(db, current, "user", user.id, "create", after=body.model_dump(exclude={"password"}))
+    _set_review_cadres(db, user, body.review_cadre_ids, current)
+    if body.staff_id or body.staff:
+        _link_staff(db, current, user, body.staff_id, body.staff)
+    elif PROVIDER in body.roles:
+        raise HTTPException(status_code=422, detail="A provider account must be linked to a staff record (CHW, Data Clerk or HCP)")
+    system_audit.record(db, current, "user", user.id, "create", after=body.model_dump(exclude={"password": True, "staff": {"payment_account"}}, mode="json"))
+    _commit(db)
+    return _user_out(db, user)
+
+
+@router.post("/users/{user_id}/staff")
+def link_staff(user_id: int, body: StaffLinkIn, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(SYSTEM_ADMIN))):
+    """Link an existing login to a staff record, or register the staff record for it."""
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    staff = _link_staff(db, current, user, body.staff_id, body.staff)
+    system_audit.record(db, current, "user", user.id, "link_staff", after={"staff_id": staff.id})
     _commit(db)
     return _user_out(db, user)
 
@@ -397,9 +471,12 @@ def set_roles(user_id: int, body: RolesIn, db: Session = Depends(get_db), curren
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if user.id == current.id and SYSTEM_ADMIN not in body.roles:
-        raise HTTPException(status_code=422, detail="You cannot remove your own system administrator role")
-    before = sorted(load_current_user(db, user).roles)
+    _guard_super_admin(db, current, user)
+    if user.id == current.id and not ({SYSTEM_ADMIN, SUPER_ADMIN} & set(body.roles)):
+        raise HTTPException(status_code=422, detail="You cannot remove your own administrator role")
+    if user.id == current.id and current.unrestricted and SUPER_ADMIN not in body.roles:
+        raise HTTPException(status_code=422, detail="You cannot remove your own super administrator role")
+    before = sorted(get_user_roles(db, user.id))
     _set_roles(db, user, body.roles, current)
     system_audit.record(db, current, "user_roles", user.id, "set", before={"roles": before}, after={"roles": body.roles}, reason=body.reason)
     _commit(db)
@@ -411,9 +488,24 @@ def set_scopes(user_id: int, body: ScopesIn, db: Session = Depends(get_db), curr
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    _guard_super_admin(db, current, user)
     before = [to_dict(s) for s in load_current_user(db, user).scopes]
     _set_scopes(db, user, body.scopes, current)
     system_audit.record(db, current, "user_scopes", user.id, "set", before={"scopes": before}, after={"scopes": [s.model_dump() for s in body.scopes]}, reason=body.reason)
+    _commit(db)
+    return _user_out(db, user)
+
+
+@router.put("/users/{user_id}/review-cadres")
+def set_review_cadres(user_id: int, body: ReviewCadresIn, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(SYSTEM_ADMIN))):
+    """A technical officer's technical area: which cadres' work logs reach them for technical review."""
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    _guard_super_admin(db, current, user)
+    before = sorted(load_current_user(db, user).review_cadres)
+    _set_review_cadres(db, user, body.cadre_ids, current)
+    system_audit.record(db, current, "user_review_cadres", user.id, "set", before={"cadre_ids": before}, after={"cadre_ids": sorted(set(body.cadre_ids))}, reason=body.reason)
     _commit(db)
     return _user_out(db, user)
 
@@ -423,6 +515,7 @@ def deactivate(user_id: int, db: Session = Depends(get_db), current: CurrentUser
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    _guard_super_admin(db, current, user)
     if user.id == current.id:
         raise HTTPException(status_code=422, detail="You cannot deactivate yourself")
     user.is_active = False
@@ -443,6 +536,7 @@ def update_user(user_id: int, body: UserUpdate, db: Session = Depends(get_db), c
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    _guard_super_admin(db, current, user)
     before = to_dict(user, exclude=("hashed_password",))
     for key, value in body.model_dump().items():
         setattr(user, key, value)
@@ -456,6 +550,7 @@ def reactivate(user_id: int, db: Session = Depends(get_db), current: CurrentUser
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    _guard_super_admin(db, current, user)
     user.is_active = True
     user.failed_login_count, user.locked_until = 0, None
     system_audit.record(db, current, "user", user.id, "reactivate")
@@ -468,6 +563,7 @@ def reset_password(user_id: int, body: PasswordReset, db: Session = Depends(get_
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    _guard_super_admin(db, current, user)
     # Temporary password: the user must replace it, and every existing session ends.
     user.hashed_password = hash_password(body.new_password)
     user.must_change_password = True

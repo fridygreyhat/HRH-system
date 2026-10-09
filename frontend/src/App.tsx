@@ -139,6 +139,10 @@ function App() {
   const pages = PAGES.filter((p) => hasRole(...p.roles));
   const current = pages.find((p) => p.key === route.page) || pages[0];
   const isReviewer = hasRole(...REVIEWERS);
+  // A super admin holds every role; naming them all would crowd the top bar.
+  const roleSummary = me ? (me.roles.includes('SUPER_ADMIN') ? roleLabel('SUPER_ADMIN') : me.roles.map(roleLabel).join(', ')) : '';
+  // Health workers also see their cadre, e.g. "Provider · Health Care Provider".
+  const identity = me?.cadre ? `${roleSummary} · ${me.cadre.name}` : roleSummary;
 
   useEffect(() => setMenuOpen(false), [route.page]);
   useEffect(() => {
@@ -223,13 +227,13 @@ function App() {
           <div className="topbar-actions">
             <LanguageToggle />
             <ThemeToggle />
-            <div className="user-chip" title={me.roles.map(roleLabel).join(', ')}>
+            <div className="user-chip" title={identity}>
               <span className="avatar" aria-hidden="true">
                 {initials(me.full_name)}
               </span>
               <span className="user-text">
                 <span className="user-name">{me.full_name}</span>
-                <span className="user-role">{me.roles.map(roleLabel).join(', ')}</span>
+                <span className="user-role">{identity}</span>
               </span>
             </div>
             <button type="button" className="icon-btn" onClick={() => setPasswordOpen(true)} aria-label="Change password" title="Change password">
