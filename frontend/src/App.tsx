@@ -17,6 +17,7 @@ import { PrintWorkLog } from './pages/PrintWorkLog';
 import { ReviewWorkLogs } from './pages/ReviewWorkLogs';
 import { Staff } from './pages/Staff';
 import { Modal } from './components/ui';
+import { InstallButton } from './pwa';
 import { useTheme } from './theme';
 import { WorkLogSummary } from './types';
 
@@ -225,6 +226,7 @@ function App() {
             )}
           </nav>
           <div className="topbar-actions">
+            <InstallButton />
             <LanguageToggle />
             <ThemeToggle />
             <div className="user-chip" title={identity}>

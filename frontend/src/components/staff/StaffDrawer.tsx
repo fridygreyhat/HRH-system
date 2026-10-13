@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useAuth } from '../../AuthContext';
 import { useApi } from '../../hooks';
-import { dateOnly, humanize } from '../../format';
+import { dateOnly, humanize, money } from '../../format';
 import { Cadre, Organization, StaffDetail } from '../../types';
 import { Alert, AsyncState, Drawer, Facts, Section, StatusBadge } from '../ui';
 import { EditStaffModal, ExitDialog, LoginModal, RotateModal } from './StaffForms';
@@ -76,6 +76,7 @@ export function StaffDrawer({ staffId, cadres, onClose, onChanged }: { staffId: 
                     ['Cadre', cadre ? `${cadre.name} (${s.cadre})` : s.cadre],
                     ['Occupation', s.occupation && s.occupation_other ? `${s.occupation}: ${s.occupation_other}` : s.occupation],
                     ['Salary scale', s.salary_scale],
+                    ...('monthly_salary' in s ? [['Monthly salary', s.monthly_salary != null ? money(s.monthly_salary, 'TZS') : null] as [string, React.ReactNode]] : []),
                     ['Employment start', dateOnly(s.employment_start_date)],
                     ['Employment end', s.employment_end_date ? dateOnly(s.employment_end_date) : null],
                     ['Enrollment source', humanize(s.enrollment_source)],

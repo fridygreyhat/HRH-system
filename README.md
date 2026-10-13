@@ -36,8 +36,9 @@ Tests create and drop their own `hrh_test` database.
 
 A fresh system contains only base configuration: roles, sections, the three cadre forms, payment routes A/B/C,
 SMS templates, every Tanzanian region, district and ward (see [backend/data](backend/data/README.md)), the FHI360
-organization, and one system administrator (`ADMIN_USERNAME` / `ADMIN_PASSWORD`,
-`admin` / `admin12345` unless you set them; the first sign-in forces a new password). There are no sample users, places, rates or
+organization, and one system administrator (`ADMIN_USERNAME` / `ADMIN_PASSWORD` from `.env`; there is no default
+password, and the first sign-in forces a new one). `SECRET_KEY`, `POSTGRES_PASSWORD` and `ADMIN_PASSWORD` must be set
+in `.env` (see `.env.example`) or the system will not start. There are no sample users, places, rates or
 budgets. Set the system up in this order:
 
 1. **System administrator → Administration → Users:** create the central administrator, finance, RPM, technical

@@ -71,7 +71,8 @@ def download(batch_id: int, fmt: str, db: Session = Depends(get_db), current: Cu
     system_audit.record(db, current, "payroll_batch", batch.id, f"download_{fmt}")
     db.commit()
     if fmt == "csv":
-        content, media = batch.export_csv.encode(), "text/csv"
+        # Rebuilt from the immutable snapshot so batches exported before formula-escaping download safely too.
+        content, media = bt.to_csv(batch).encode(), "text/csv"
     elif fmt == "xlsx":
         content, media = bt.to_xlsx(batch), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     else:

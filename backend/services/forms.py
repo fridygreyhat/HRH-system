@@ -30,7 +30,7 @@ def cadre_fields(db: Session, cadre_id: int, include_inactive: bool = False) -> 
 
 def field_out(f: CadreFormField) -> dict:
     return {"key": f.key, "label_en": f.label_en, "label_sw": f.label_sw, "field_type": f.field_type,
-            "sort_order": f.sort_order, "is_active": f.is_active}
+            "sort_order": f.sort_order, "is_active": f.is_active, "is_service": f.is_service}
 
 
 def cadre_out(db: Session, cadre: Cadre, include_inactive: bool = False) -> dict:

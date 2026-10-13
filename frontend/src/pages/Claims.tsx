@@ -15,8 +15,10 @@ export function Claims() {
   const [paymentStatus, setPaymentStatus] = useState('');
   const [route, setRoute] = useState('');
   const [periodId, setPeriodId] = useState('');
+  // FHI360 Finance lands on the services sent to them after RPM approval.
+  const [formType, setFormType] = useState(() => (hasRole('FHI360_FINANCE') ? 'SERVICES' : ''));
   const periods = useApi<PayPeriod[]>('/admin/pay-periods');
-  const claims = useApi<ClaimSummary[]>(`/claims${qs({ status, payment_status: paymentStatus, route, period_id: periodId })}`);
+  const claims = useApi<ClaimSummary[]>(`/claims${qs({ status, payment_status: paymentStatus, route, period_id: periodId, form_type: formType })}`);
   const [openId, setOpenId] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -45,6 +47,12 @@ export function Claims() {
       </header>
 
       <div className="filters" role="search">
+        <Field label="Claim type">
+          <select value={formType} onChange={(e) => setFormType(e.target.value)}>
+            <option value="">All claims</option>
+            <option value="SERVICES">Services to pay (FHI360)</option>
+          </select>
+        </Field>
         <Field label="Claim status">
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">All</option>
@@ -89,7 +97,11 @@ export function Claims() {
 
       <Alert kind="success">{notice}</Alert>
 
-      <AsyncState data={claims.data} error={claims.error} loading={claims.loading} empty="No claims match these filters.">
+      <AsyncState data={claims.data} error={claims.error} loading={claims.loading} empty={
+          formType === 'SERVICES' && !status && !paymentStatus && !route && !periodId
+            ? 'No services claims yet. A services claim appears here automatically when the RPM approves a work log that has services recorded. Open it to review, submit and approve it (a different FHI360 Finance person approves).'
+            : 'No claims match these filters.'
+        }>
         {(rows) => (
           <div className="table-wrap">
             <table className="clickable">

@@ -73,7 +73,9 @@ class Api:
 
     def token(self, user: str) -> str:
         if user not in self.tokens:
-            password = "admin12345" if user == "admin" else PASSWORD
+            from backend.core import config
+
+            password = config.ADMIN_PASSWORD if user == "admin" else PASSWORD
             r = self.client.post("/auth/login", data={"username": user, "password": password})
             assert r.status_code == 200, r.text
             self.tokens[user] = r.json()["access_token"]

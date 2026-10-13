@@ -3,6 +3,7 @@ import { api } from '../api';
 import { useAuth } from '../AuthContext';
 import { BrandMark, Icon } from '../components/Icon';
 import { Alert, Field } from '../components/ui';
+import { InstallButton } from '../pwa';
 
 interface Meta {
   version: string;
@@ -103,6 +104,7 @@ export function Login() {
           <button className="btn btn-primary btn-lg" disabled={busy}>
             {busy ? 'Signing in…' : 'Sign in / Ingia'}
           </button>
+          <InstallButton variant="button" />
           {meta && <p className="muted small login-version">Version {meta.version}</p>}
         </form>
       </section>

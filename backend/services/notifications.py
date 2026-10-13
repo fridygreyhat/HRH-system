@@ -22,14 +22,25 @@ def validate_template(event_name: str, text: str) -> None:
     if event_name not in EVENTS:
         raise HTTPException(status_code=404, detail=f"Unknown SMS event {event_name}")
     try:
-        used = template_variables(text)
+        fields = list(string.Formatter().parse(text))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=f"Template syntax error: {e}")
+    for _, name, spec, conversion in fields:
+        if name is None:
+            continue  # literal text
+        if not name or spec or conversion:
+            # Only plain {name} placeholders: no {} , {name:...} widths/formats or {name!r} conversions.
+            raise HTTPException(status_code=422, detail="Use only plain placeholders such as {provider}; formatting like {provider:>10} is not allowed")
+    used = {name for _, name, _, _ in fields if name}
     unknown = used - set(EVENTS[event_name]["variables"])
     if unknown:
         raise HTTPException(status_code=422, detail=f"Unknown variables {sorted(unknown)}; allowed: {EVENTS[event_name]['variables']}")
     if len(text) > 320:
         raise HTTPException(status_code=422, detail="Keep SMS templates under 320 characters (2 SMS segments)")
+    try:
+        _format(text, {v: "x" for v in EVENTS[event_name]["variables"]})  # must render with sample values
+    except (ValueError, IndexError, KeyError) as e:
+        raise HTTPException(status_code=422, detail=f"Template cannot be rendered: {e}")
 
 
 def active_template(db: Session, event_name: str, language: str) -> tuple[Optional[SMSTemplate], str]:
@@ -44,9 +55,18 @@ def active_template(db: Session, event_name: str, language: str) -> tuple[Option
     return None, EVENTS[event_name].get(language if language in LANGUAGES else "en") or EVENTS[event_name]["en"]
 
 
-def render(text: str, context: dict) -> str:
+def _format(text: str, context: dict) -> str:
+    return text.format_map(_Missing(context))
+
+
+def render(text: str, context: dict, fallback: Optional[str] = None) -> str:
+    """Fill a template. A template that cannot render falls back to the default text: an SMS problem never blocks work."""
     safe = {k: _clean(v) for k, v in context.items()}
-    return text.format_map(_Missing(safe))
+    try:
+        return _format(text, safe)
+    except (ValueError, IndexError, KeyError):
+        logger.exception("SMS template failed to render; using the default text")
+        return _format(fallback, safe) if fallback is not None else ""
 
 
 def _clean(value) -> str:
@@ -79,7 +99,7 @@ def enqueue(
         destination_phone=phone,
         language=template.language if template else language,
         template_id=template.id if template else None,
-        message_body=render(text, context),
+        message_body=render(text, context, fallback=EVENTS[event_name]["en"] if language not in LANGUAGES else EVENTS[event_name][language]),
         status="PENDING",
         next_attempt_at=utcnow(),
         related_type=related[0] if related else None,

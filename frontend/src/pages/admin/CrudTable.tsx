@@ -20,6 +20,8 @@ export interface RefSpec {
   label?: (row: Row, lists: Record<string, Row[]>) => string;
 }
 
+export type FormValues = Record<string, string | boolean>;
+
 export interface FieldSpec {
   key: string;
   label: string;
@@ -55,9 +57,10 @@ export interface TableSpec {
   extraPaths?: string[];
   /** Cross-field validation on the payload; return an error message or null. */
   validate?: (payload: Row) => string | null;
+  /** Extra controls under the form fields, e.g. filling coordinates from the device. */
+  formExtras?: (values: FormValues, set: (changes: FormValues) => void) => React.ReactNode;
 }
 
-type FormValues = Record<string, string | boolean>;
 
 function optionsFor(f: FieldSpec, lists: Record<string, Row[]>): Option[] {
   if (f.options) return f.options;
@@ -221,6 +224,7 @@ function CrudForm({
             />
           ))}
       </div>
+      {spec.formExtras?.(values, (changes) => setValues((prev) => ({ ...prev, ...changes })))}
       {bools.length > 0 && (
         <fieldset className="checks">
           <legend>Options</legend>

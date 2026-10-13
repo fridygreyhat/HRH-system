@@ -13,12 +13,14 @@ from ...core.roles import (
     ALL_ROLES,
     CENTRAL_ADMIN,
     CSO_FINANCE,
+    FACILITY_IN_CHARGE,
     FHI360_FINANCE,
     OVERSIGHT,
     PROVIDER,
     ROLE_DESCRIPTIONS,
     RPM,
     SUPER_ADMIN,
+    SUPERVISOR,
     SYSTEM_ADMIN,
 )
 from ...core.security import CurrentUser, get_current_user, get_user_roles, hash_password, load_current_user, require_roles
@@ -132,6 +134,61 @@ _crud("funding-sources", FundingSource, (FHI360_FINANCE,), FundingSource.name)
 _crud("claim-categories", ClaimCategory, (FHI360_FINANCE,), ClaimCategory.name)
 
 
+# --- Facility location, set on site -------------------------------------------------------
+# A CTC In-Charge / Facility In-Charge standing at their facility records its position from the device GPS,
+# so work-log entries can be compared with the facility area. Central admins may set any facility.
+
+MAX_LOCATION_ACCURACY_M = 100
+FACILITY_LOCATION_ROLES = (SUPERVISOR, FACILITY_IN_CHARGE)
+
+
+class FacilityLocationIn(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    accuracy_m: float = Field(ge=0)
+    radius_meters: int = Field(default=300, ge=50, le=5000)
+
+
+def _facility_location_out(db: Session, f: Facility) -> dict:
+    ward = db.get(Ward, f.ward_id)
+    district = db.get(District, ward.district_id) if ward else None
+    return {"id": f.id, "name": f.name, "ward": ward.name if ward else None, "district": district.name if district else None,
+            "geofence_lat": f.geofence_lat, "geofence_lon": f.geofence_lon, "geofence_radius_meters": f.geofence_radius_meters}
+
+
+def _may_locate(current: CurrentUser, facility_id: int) -> bool:
+    if CENTRAL_ADMIN in current.roles:
+        return True
+    return any(r in current.roles for r in FACILITY_LOCATION_ROLES) and facility_id in current.scope_values("facility_id")
+
+
+@router.get("/my-facilities")
+def my_facilities(db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(*FACILITY_LOCATION_ROLES))):
+    """Facilities this CTC In-Charge / Facility In-Charge is responsible for, with their recorded location."""
+    ids = current.scope_values("facility_id")
+    rows = db.query(Facility).filter(Facility.id.in_(ids)).order_by(Facility.name).all() if ids else []
+    return [_facility_location_out(db, f) for f in rows]
+
+
+@router.put("/facilities/{facility_id}/location")
+def set_facility_location(facility_id: int, body: FacilityLocationIn, db: Session = Depends(get_db),
+                          current: CurrentUser = Depends(require_roles(CENTRAL_ADMIN, *FACILITY_LOCATION_ROLES))):
+    facility = db.get(Facility, facility_id)
+    if not facility:
+        raise HTTPException(status_code=404, detail="Facility not found")
+    if not _may_locate(current, facility.id):
+        raise HTTPException(status_code=403, detail="You can only set the location of a facility you are responsible for")
+    if body.accuracy_m > MAX_LOCATION_ACCURACY_M:
+        raise HTTPException(status_code=422, detail=f"The location is too imprecise (±{round(body.accuracy_m)} m). Go outside or wait for a "
+                                                    f"better GPS signal and try again (needs ±{MAX_LOCATION_ACCURACY_M} m or better).")
+    before = _facility_location_out(db, facility)
+    facility.geofence_lat, facility.geofence_lon, facility.geofence_radius_meters = body.lat, body.lon, body.radius_meters
+    system_audit.record(db, current, "facility", facility.id, "set_location", before=before,
+                        after={**body.model_dump(), "source": "device GPS"})
+    _commit(db)
+    return _facility_location_out(db, facility)
+
+
 @router.get("/payment-routes")
 def payment_routes(db: Session = Depends(get_db), _: CurrentUser = Depends(get_current_user)):
     return [to_dict(r) for r in db.query(PaymentRoute).order_by(PaymentRoute.code)]
@@ -188,6 +245,8 @@ class FieldIn(BaseModel):
 def add_field(cadre_id: int, body: FieldIn, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(CENTRAL_ADMIN))):
     if not db.get(Cadre, cadre_id):
         raise HTTPException(status_code=404, detail="Cadre not found")
+    if db.query(CadreFormField).filter(CadreFormField.key == body.key, CadreFormField.is_service.is_(True)).first():
+        raise HTTPException(status_code=409, detail="That key belongs to a service; manage it under Services")
     row = CadreFormField(cadre_id=cadre_id, **body.model_dump())
     db.add(row)
     system_audit.record(db, current, "cadre_form_field", f"{cadre_id}:{body.key}", "create", after=body.model_dump())
@@ -201,6 +260,8 @@ def update_field(cadre_id: int, key: str, body: FieldIn, db: Session = Depends(g
     row = db.query(CadreFormField).filter(CadreFormField.cadre_id == cadre_id, CadreFormField.key == key).first()
     if not row:
         raise HTTPException(status_code=404, detail="Field not found")
+    if row.is_service:
+        raise HTTPException(status_code=409, detail="This is a service; manage it under Services")
     if body.key != key or body.field_type != row.field_type:
         raise HTTPException(status_code=422, detail="A field's key and type cannot change; add a new field and deactivate this one")
     before = to_dict(row)
@@ -210,6 +271,78 @@ def update_field(cadre_id: int, key: str, body: FieldIn, db: Session = Depends(g
     return to_dict(row)
 
 
+# --- Services (paid per unit by FHI360) -----------------------------------------------------
+# A service is one cadre form field per cadre that may record it, sharing the key and labels.
+
+
+class ServiceIn(BaseModel):
+    key: str = Field(pattern=r"^[a-z][a-z0-9_]{1,79}$")
+    label_en: str = Field(min_length=1, max_length=255)
+    label_sw: Optional[str] = Field(default=None, max_length=255)
+    sort_order: int = 1000
+    cadre_ids: List[int] = []  # cadres that record it; empty = retired
+
+
+def _service_rows(db: Session, key: str) -> list[CadreFormField]:
+    return db.query(CadreFormField).filter(CadreFormField.key == key, CadreFormField.is_service.is_(True)).all()
+
+
+def _service_out(rows: list[CadreFormField]) -> dict:
+    first = rows[0]
+    return {"key": first.key, "label_en": first.label_en, "label_sw": first.label_sw, "sort_order": first.sort_order,
+            "cadre_ids": sorted(r.cadre_id for r in rows if r.is_active)}
+
+
+@router.get("/services")
+def services(db: Session = Depends(get_db), _: CurrentUser = Depends(get_current_user)):
+    by_key: dict[str, list[CadreFormField]] = {}
+    for row in db.query(CadreFormField).filter(CadreFormField.is_service.is_(True)).order_by(CadreFormField.sort_order, CadreFormField.key):
+        by_key.setdefault(row.key, []).append(row)
+    return [_service_out(rows) for rows in by_key.values()]
+
+
+def _apply_service(db: Session, body: ServiceIn, rows: list[CadreFormField]) -> list[CadreFormField]:
+    if set(body.cadre_ids) - {c.id for c in db.query(Cadre)}:
+        raise HTTPException(status_code=422, detail="Unknown cadre")
+    existing = {r.cadre_id: r for r in rows}
+    for row in rows:
+        row.label_en, row.label_sw, row.sort_order = body.label_en, body.label_sw, body.sort_order
+        row.is_active = row.cadre_id in body.cadre_ids
+    for cadre_id in set(body.cadre_ids) - set(existing):
+        row = CadreFormField(cadre_id=cadre_id, key=body.key, label_en=body.label_en, label_sw=body.label_sw,
+                             field_type="INTEGER", sort_order=body.sort_order, is_active=True, is_service=True)
+        db.add(row)
+        rows.append(row)
+    return rows
+
+
+@router.post("/services", status_code=201)
+def add_service(body: ServiceIn, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(CENTRAL_ADMIN))):
+    if db.query(CadreFormField).filter(CadreFormField.key == body.key).first():
+        raise HTTPException(status_code=409, detail="A form field or service with this key already exists")
+    if not body.cadre_ids:
+        raise HTTPException(status_code=422, detail="Choose at least one cadre that records this service")
+    rows = _apply_service(db, body, [])
+    system_audit.record(db, current, "service", body.key, "create", after=body.model_dump())
+    _commit(db)
+    return _service_out(rows)
+
+
+@router.put("/services/{key}")
+def update_service(key: str, body: ServiceIn, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(CENTRAL_ADMIN))):
+    """Labels, order and cadres may change; the key is fixed because rate rules and recorded data use it."""
+    rows = _service_rows(db, key)
+    if not rows:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if body.key != key:
+        raise HTTPException(status_code=422, detail="A service's key cannot change; add a new service instead")
+    before = _service_out(rows)
+    rows = _apply_service(db, body, rows)
+    system_audit.record(db, current, "service", key, "update", before=before, after=body.model_dump())
+    _commit(db)
+    return _service_out(rows)
+
+
 # --- Rate rules (maker-checker) -----------------------------------------------------------
 
 
@@ -217,6 +350,7 @@ class RateRuleIn(BaseModel):
     category_id: int
     cadre_id: Optional[int] = None
     region_id: Optional[int] = None
+    facility_id: Optional[int] = None  # a rate for one facility (beats region and national rates)
     component_name: str = Field(min_length=1, max_length=255)
     unit_type: str = Field(pattern="^(PER_DAY|PER_HOUR|PER_UNIT|FIXED)$")
     measure_key: Optional[str] = None
@@ -252,12 +386,37 @@ def propose_rate_rule(body: RateRuleIn, db: Session = Depends(get_db), current: 
             raise HTTPException(status_code=422, detail=f"'{body.measure_key}' is not a field on {where}")
     if body.effective_end_date and body.effective_end_date < body.effective_start_date:
         raise HTTPException(status_code=422, detail="End date is before start date")
+    _cso_rule_scope(db, current, body.category_id)
+    if body.facility_id:
+        facility_region = _facility_region(db, body.facility_id)
+        if facility_region is None:
+            raise HTTPException(status_code=422, detail="Unknown facility")
+        if body.region_id and body.region_id != facility_region:
+            raise HTTPException(status_code=422, detail="The facility is not in the chosen region")
+        body.region_id = facility_region  # a facility rate is also a rate of its region (decided by that RPM)
     rule = RateRule(**body.model_dump(), status="PENDING_APPROVAL", created_by=current.id)
     db.add(rule)
     db.flush()
     system_audit.record(db, current, "rate_rule", rule.id, "propose", after=body.model_dump())
     _commit(db)
     return to_dict(rule)
+
+
+def _facility_region(db: Session, facility_id: int) -> Optional[int]:
+    facility = db.get(Facility, facility_id)
+    ward = db.get(Ward, facility.ward_id) if facility else None
+    district = db.get(District, ward.district_id) if ward else None
+    return district.region_id if district else None
+
+
+def _cso_rule_scope(db: Session, current: CurrentUser, category_id: int) -> None:
+    """CSO finance manages only the rates of CSO-paid (Route C) categories, never FHI360's."""
+    if FHI360_FINANCE in current.roles:
+        return
+    category = db.get(ClaimCategory, category_id)
+    route = db.get(PaymentRoute, category.route_id) if category and category.route_id else None
+    if not route or route.code != "C":
+        raise HTTPException(status_code=403, detail="CSO finance can only manage rates for CSO-paid (Route C) categories")
 
 
 def _decide_rule(db: Session, current: CurrentUser, rule_id: int, approve: bool, comment: Optional[str]) -> RateRule:
@@ -268,6 +427,9 @@ def _decide_rule(db: Session, current: CurrentUser, rule_id: int, approve: bool,
         raise HTTPException(status_code=409, detail=f"Rule is {rule.status}")
     if rule.created_by == current.id:
         raise HTTPException(status_code=403, detail="A rate rule must be approved by someone other than its proposer")
+    # A regional rate is decided by that region's RPM (or oversight), not by an RPM elsewhere.
+    if rule.region_id is not None and OVERSIGHT not in current.roles and rule.region_id not in current.scope_values("region_id"):
+        raise HTTPException(status_code=403, detail="This rate applies to a region outside your scope")
     rule.status = "ACTIVE" if approve else "REJECTED"
     rule.approved_by, rule.approved_at = current.id, utcnow()
     system_audit.record(db, current, "rate_rule", rule.id, "approve" if approve else "reject", reason=comment)
@@ -296,6 +458,7 @@ def retire_rate_rule(rule_id: int, body: RetireIn, db: Session = Depends(get_db)
     rule = db.query(RateRule).filter(RateRule.id == rule_id).with_for_update().first()
     if not rule or rule.status != "ACTIVE":
         raise HTTPException(status_code=409, detail="Only active rules can be retired")
+    _cso_rule_scope(db, current, rule.category_id)
     if body.effective_end_date < rule.effective_start_date:
         raise HTTPException(status_code=422, detail="End date is before the rule's start")
     before = to_dict(rule)
@@ -371,6 +534,12 @@ def _guard_super_admin(db: Session, current: CurrentUser, user: User) -> None:
     """Only a super administrator may change a super administrator's account."""
     if SUPER_ADMIN in get_user_roles(db, user.id) and not current.unrestricted:
         raise HTTPException(status_code=403, detail="Only a super administrator can change a super administrator's account")
+
+
+def _guard_self(current: CurrentUser, user: User, what: str) -> None:
+    """Nobody changes their own access: another administrator must do it (separation of duties)."""
+    if user.id == current.id:
+        raise HTTPException(status_code=422, detail=f"You cannot change your own {what}; ask another administrator")
 
 
 def _set_roles(db: Session, user: User, roles: list[str], actor: CurrentUser) -> None:
@@ -460,6 +629,8 @@ def link_staff(user_id: int, body: StaffLinkIn, db: Session = Depends(get_db), c
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    _guard_super_admin(db, current, user)
+    _guard_self(current, user, "staff link")
     staff = _link_staff(db, current, user, body.staff_id, body.staff)
     system_audit.record(db, current, "user", user.id, "link_staff", after={"staff_id": staff.id})
     _commit(db)
@@ -472,10 +643,7 @@ def set_roles(user_id: int, body: RolesIn, db: Session = Depends(get_db), curren
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     _guard_super_admin(db, current, user)
-    if user.id == current.id and not ({SYSTEM_ADMIN, SUPER_ADMIN} & set(body.roles)):
-        raise HTTPException(status_code=422, detail="You cannot remove your own administrator role")
-    if user.id == current.id and current.unrestricted and SUPER_ADMIN not in body.roles:
-        raise HTTPException(status_code=422, detail="You cannot remove your own super administrator role")
+    _guard_self(current, user, "roles")
     before = sorted(get_user_roles(db, user.id))
     _set_roles(db, user, body.roles, current)
     system_audit.record(db, current, "user_roles", user.id, "set", before={"roles": before}, after={"roles": body.roles}, reason=body.reason)
@@ -489,6 +657,7 @@ def set_scopes(user_id: int, body: ScopesIn, db: Session = Depends(get_db), curr
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     _guard_super_admin(db, current, user)
+    _guard_self(current, user, "scopes")
     before = [to_dict(s) for s in load_current_user(db, user).scopes]
     _set_scopes(db, user, body.scopes, current)
     system_audit.record(db, current, "user_scopes", user.id, "set", before={"scopes": before}, after={"scopes": [s.model_dump() for s in body.scopes]}, reason=body.reason)
@@ -503,6 +672,7 @@ def set_review_cadres(user_id: int, body: ReviewCadresIn, db: Session = Depends(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     _guard_super_admin(db, current, user)
+    _guard_self(current, user, "technical area")
     before = sorted(load_current_user(db, user).review_cadres)
     _set_review_cadres(db, user, body.cadre_ids, current)
     system_audit.record(db, current, "user_review_cadres", user.id, "set", before={"cadre_ids": before}, after={"cadre_ids": sorted(set(body.cadre_ids))}, reason=body.reason)
@@ -578,6 +748,7 @@ def unlock(user_id: int, db: Session = Depends(get_db), current: CurrentUser = D
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    _guard_super_admin(db, current, user)
     user.failed_login_count, user.locked_until = 0, None
     system_audit.record(db, current, "user", user.id, "unlock")
     _commit(db)
@@ -597,12 +768,30 @@ class SettingIn(BaseModel):
     reason: str = Field(min_length=3)
 
 
+# Safe ranges for settings that protect accounts and codes: they can be tuned, not switched off.
+SETTING_LIMITS = {
+    "login_max_failures": (3, 10),
+    "login_lockout_minutes": (5, 1440),
+    "otp_length": (4, 8),
+    "otp_ttl_minutes": (2, 30),
+    "otp_max_attempts": (3, 10),
+    "otp_resend_cooldown_seconds": (30, 600),
+    "otp_max_sends_per_version": (1, 10),
+    "reminder_after_hours": (1, 720),
+    "reminder_repeat_hours": (1, 720),
+    "sms_max_attempts": (1, 10),
+}
+
+
 @router.put("/settings/{key}")
 def put_setting(key: str, body: SettingIn, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(SYSTEM_ADMIN))):
     if key not in DEFAULTS:
         raise HTTPException(status_code=404, detail="Unknown setting")
     if type(body.value) is not type(DEFAULTS[key]):
         raise HTTPException(status_code=422, detail=f"{key} must be a {type(DEFAULTS[key]).__name__}")
+    if key in SETTING_LIMITS and not (SETTING_LIMITS[key][0] <= body.value <= SETTING_LIMITS[key][1]):
+        low, high = SETTING_LIMITS[key]
+        raise HTTPException(status_code=422, detail=f"{key} must be between {low} and {high}")
     row = db.get(SystemSetting, key)
     before = row.value if row else DEFAULTS[key]
     if row:

@@ -19,6 +19,7 @@ interface Lookups {
   categories: ClaimCategory[];
   cadres: Cadre[];
   regions: Named[];
+  facilities: Named[];
 }
 
 function ProposeForm({ lookups, onDone, onCancel }: { lookups: Lookups; onDone: () => void; onCancel: () => void }) {
@@ -26,6 +27,7 @@ function ProposeForm({ lookups, onDone, onCancel }: { lookups: Lookups; onDone: 
     category_id: '',
     cadre_id: '',
     region_id: '',
+    facility_id: '',
     component_name: '',
     unit_type: 'PER_DAY' as RateRule['unit_type'],
     measure_key: '',
@@ -55,6 +57,7 @@ function ProposeForm({ lookups, onDone, onCancel }: { lookups: Lookups; onDone: 
         category_id: Number(form.category_id),
         cadre_id: form.cadre_id ? Number(form.cadre_id) : null,
         region_id: form.region_id ? Number(form.region_id) : null,
+        facility_id: form.facility_id ? Number(form.facility_id) : null,
         component_name: form.component_name.trim(),
         unit_type: form.unit_type,
         measure_key: form.unit_type === 'PER_UNIT' ? form.measure_key : null,
@@ -73,7 +76,8 @@ function ProposeForm({ lookups, onDone, onCancel }: { lookups: Lookups; onDone: 
   return (
     <form className="stack" onSubmit={submit}>
       <p className="notice notice-info">
-        Your proposal stays inactive until an RPM or Oversight user other than you approves it. Only ACTIVE rules price claims.
+        Your proposal stays inactive until an RPM or Oversight user other than you approves it. Only ACTIVE rules price claims. Timesheets
+        need no rate: they pay the monthly salary on each staff record.
       </p>
       <div className="grid-2">
         <Field label="Claim category *">
@@ -103,6 +107,16 @@ function ProposeForm({ lookups, onDone, onCancel }: { lookups: Lookups; onDone: 
             {lookups.regions.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Facility" hint="Set for a rate that applies at one facility only (e.g. a service rate); it beats region and national rates">
+          <select value={form.facility_id} onChange={set('facility_id')}>
+            <option value="">All facilities</option>
+            {lookups.facilities.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
               </option>
             ))}
           </select>
@@ -170,6 +184,7 @@ export function RateRulesSection() {
   const categories = useApi<ClaimCategory[]>('/admin/claim-categories');
   const cadres = useApi<Cadre[]>('/admin/cadres');
   const regions = useApi<Named[]>('/admin/regions');
+  const facilities = useApi<Named[]>('/admin/facilities');
   const [status, setStatus] = useState('');
   const [proposing, setProposing] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
@@ -178,11 +193,13 @@ export function RateRulesSection() {
 
   const maps = useMemo(() => {
     const m = (rows: { id: number; name: string }[] | null) => new Map((rows || []).map((r) => [String(r.id), r.name]));
-    return { category: m(categories.data), cadre: m(cadres.data), region: m(regions.data) };
-  }, [categories.data, cadres.data, regions.data]);
-  const lookupError = categories.error || cadres.error || regions.error;
+    return { category: m(categories.data), cadre: m(cadres.data), region: m(regions.data), facility: m(facilities.data) };
+  }, [categories.data, cadres.data, regions.data, facilities.data]);
+  const lookupError = categories.error || cadres.error || regions.error || facilities.error;
   const lookups: Lookups | null =
-    categories.data && cadres.data && regions.data ? { categories: categories.data, cadres: cadres.data, regions: regions.data } : null;
+    categories.data && cadres.data && regions.data && facilities.data
+      ? { categories: categories.data, cadres: cadres.data, regions: regions.data, facilities: facilities.data }
+      : null;
 
   const rows = (data || []).filter((r) => !status || r.status === status);
   const counts = (data || []).reduce<Record<string, number>>((acc, r) => ({ ...acc, [r.status]: (acc[r.status] || 0) + 1 }), {});
@@ -247,7 +264,7 @@ export function RateRulesSection() {
                   <tr>
                     <th>Category</th>
                     <th>Cadre</th>
-                    <th>Region</th>
+                    <th>Region / facility</th>
                     <th>Component</th>
                     <th>Unit</th>
                     <th>Measure</th>
@@ -267,7 +284,10 @@ export function RateRulesSection() {
                       <tr key={r.id}>
                         <td>{refName(maps.category, r.category_id)}</td>
                         <td>{r.cadre_id ? refName(maps.cadre, r.cadre_id) : <span className="muted">All cadres</span>}</td>
-                        <td>{r.region_id ? refName(maps.region, r.region_id) : <span className="muted">All regions</span>}</td>
+                        <td>
+                          {r.region_id ? refName(maps.region, r.region_id) : <span className="muted">All regions</span>}
+                          {r.facility_id && <div className="small">{refName(maps.facility, r.facility_id)}</div>}
+                        </td>
                         <td>{r.component_name}</td>
                         <td className="nowrap">{UNIT_TYPES[r.unit_type] || r.unit_type}</td>
                         <td>{r.measure_key ? <code>{r.measure_key}</code> : '—'}</td>

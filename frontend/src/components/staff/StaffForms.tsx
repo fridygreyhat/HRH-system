@@ -10,7 +10,7 @@ export const PHONE_PATTERN = '^\\+?\\d{9,15}$';
 const PHONE_RE = new RegExp(PHONE_PATTERN);
 export const PAYMENT_METHODS = ['MOBILE_WALLET', 'BANK'];
 export const ENROLLMENT_SOURCES = ['MANUAL', 'ROSTER_IMPORT', 'ENGAGEMENT_LIST'];
-export const PAYMENT_CRITICAL = ['cadre_id', 'salary_scale', 'payment_method', 'payment_provider', 'payment_account', 'verified_phone', 'status'];
+export const PAYMENT_CRITICAL = ['cadre_id', 'salary_scale', 'monthly_salary', 'payment_method', 'payment_provider', 'payment_account', 'verified_phone', 'status'];
 
 const isOther = (s: string) => s.trim().toLowerCase() === 'other';
 const blankToNull = (s: string): string | null => (s.trim() ? s.trim() : null);
@@ -96,6 +96,7 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
     occupation: '',
     occupation_other: '',
     salary_scale: '',
+    monthly_salary: '',
     employment_start_date: todayLocal(),
     enrollment_source: 'MANUAL',
     payment_method: '',
@@ -119,6 +120,7 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
         occupation: blankToNull(f.occupation),
         occupation_other: isOther(f.occupation) ? blankToNull(f.occupation_other) : null,
         salary_scale: blankToNull(f.salary_scale),
+        monthly_salary: f.monthly_salary.trim() ? Number(f.monthly_salary) : null,
         employment_start_date: f.employment_start_date,
         enrollment_source: f.enrollment_source,
         payment_method: blankToNull(f.payment_method),
@@ -170,6 +172,9 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
           <Field label="Salary scale">
             <input value={f.salary_scale} onChange={set('salary_scale')} maxLength={50} />
           </Field>
+          <Field label="Monthly salary (TZS)" hint="Paid for each approved monthly timesheet">
+            <input type="number" min={0} step="0.01" inputMode="decimal" value={f.monthly_salary} onChange={set('monthly_salary')} />
+          </Field>
           <Field label="Employment start date (required)">
             <input type="date" value={f.employment_start_date} onChange={set('employment_start_date')} required />
           </Field>
@@ -210,6 +215,7 @@ type EditKey =
   | 'occupation_other'
   | 'cadre_id'
   | 'salary_scale'
+  | 'monthly_salary'
   | 'payment_method'
   | 'payment_provider'
   | 'payment_account'
@@ -244,6 +250,7 @@ export function EditStaffModal({
     occupation_other: staff.occupation_other || '',
     cadre_id: String(staff.cadre_id),
     salary_scale: staff.salary_scale || '',
+    monthly_salary: staff.monthly_salary != null ? String(Number(staff.monthly_salary)) : '',
     payment_method: staff.payment_method || '',
     payment_provider: staff.payment_provider || '',
     payment_account: staff.payment_account || '',
@@ -272,6 +279,7 @@ export function EditStaffModal({
     const changes: Record<string, string | number | null> = {};
     changed.forEach((k) => {
       if (k === 'cadre_id') changes[k] = Number(f.cadre_id);
+      else if (k === 'monthly_salary') changes[k] = f.monthly_salary.trim() ? Number(f.monthly_salary) : null;
       else if (k === 'first_name' || k === 'last_name' || k === 'verified_phone' || k === 'status') changes[k] = f[k].trim();
       else changes[k] = blankToNull(f[k]);
     });
@@ -283,17 +291,17 @@ export function EditStaffModal({
     onSaved(parts.join(' ') || 'Saved.');
   };
 
-  const lockedNote = csoRequest ? ' (needs HRH approval)' : '';
+  // Payment-critical fields never change directly: a different HRH admin approves them (for admins and CSOs alike).
+  const lockedNote = ' (needs approval)';
 
   return (
     <Modal title={`Edit ${staff.legal_name}`} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
-        {csoRequest && (
-          <div className="notice notice-info">
-            Changes to payment-critical fields — cadre, salary scale, payment method, provider and account, verified phone and status — are not applied
-            directly. They are sent to HRH administrators as a change request for approval. Name and occupation changes are saved immediately.
-          </div>
-        )}
+        <div className="notice notice-info">
+          Changes to payment-critical fields — cadre, salary scale, monthly salary, payment method, provider and account, and verified phone — are not
+          applied directly. They become a change request that a different HRH administrator approves. Name and occupation changes are saved
+          immediately.
+        </div>
         <div className="grid-2">
           <Field label="First name">
             <input value={f.first_name} onChange={set('first_name')} required maxLength={100} />
@@ -323,6 +331,11 @@ export function EditStaffModal({
           <Field label={`Salary scale${lockedNote}`}>
             <input value={f.salary_scale} onChange={set('salary_scale')} maxLength={50} />
           </Field>
+          {showPayment && (
+            <Field label={`Monthly salary (TZS)${lockedNote}`} hint="Paid for each approved monthly timesheet">
+              <input type="number" min={0} step="0.01" inputMode="decimal" value={f.monthly_salary} onChange={set('monthly_salary')} />
+            </Field>
+          )}
           <Field label={`Verified phone${lockedNote}`} hint="9–15 digits, optional leading +">
             <input type="tel" value={f.verified_phone} onChange={set('verified_phone')} required pattern={PHONE_PATTERN} />
           </Field>
@@ -350,13 +363,13 @@ export function EditStaffModal({
         {changed.length > 0 && (
           <p className="small muted">
             Changing: {changed.map((k) => humanize(k)).join(', ')}
-            {csoRequest && criticalChanged.length > 0 && ` — ${criticalChanged.map((k) => humanize(k)).join(', ')} will go to HRH for approval`}.
+            {criticalChanged.length > 0 && ` — ${criticalChanged.map((k) => humanize(k)).join(', ')} will go to a different HRH admin for approval`}.
           </p>
         )}
         <Alert>{error}</Alert>
         <FormButtons
           busy={busy}
-          label={csoRequest && criticalChanged.length ? 'Save / request approval' : 'Save changes'}
+          label={criticalChanged.length ? 'Save / request approval' : 'Save changes'}
           busyLabel="Saving…"
           onCancel={onClose}
           disabled={!changed.length || reason.trim().length < 3}

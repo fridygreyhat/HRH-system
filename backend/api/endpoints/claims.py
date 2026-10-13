@@ -31,7 +31,7 @@ from ...models import (
 )
 from ...services import claims as cl
 from ...services import payments as pay
-from ...services.scope import assignment_for_period, claim_visibility, worklog_visibility
+from ...services.scope import assignment_for_period, claim_visibility, staff_visibility, worklog_visibility
 from ...services.trace import trace_claim
 from ...services.worklog_workflow import APPROVED as LOG_APPROVED, period_label
 
@@ -121,10 +121,13 @@ def list_claims(
     payment_status: Optional[str] = None,
     route: Optional[str] = None,
     period_id: Optional[int] = None,
+    form_type: Optional[str] = None,  # e.g. SERVICES: the claims created from services on approved work logs
     db: Session = Depends(get_db),
     current: CurrentUser = Depends(get_current_user),
 ):
     query = db.query(PaymentClaim).filter(claim_visibility(current))
+    if form_type:
+        query = query.filter(PaymentClaim.category_id.in_(db.query(ClaimCategory.id).filter(ClaimCategory.form_type == form_type)))
     for column, value in ((PaymentClaim.status, status), (PaymentClaim.payment_status, payment_status), (PaymentClaim.route_code, route), (PaymentClaim.period_id, period_id)):
         if value:
             query = query.filter(column == value)
@@ -164,7 +167,8 @@ def _context(db: Session, current: CurrentUser, body: ClaimCreate):
         raise HTTPException(status_code=422, detail=f"'{category.name}' claims must be linked to an approved work log")
     if not (body.staff_id and body.period_id):
         raise HTTPException(status_code=422, detail="staff_id and period_id are required for claims without a work log")
-    staff, period = db.get(Staff, body.staff_id), db.get(PayPeriod, body.period_id)
+    staff = db.query(Staff).filter(Staff.id == body.staff_id, staff_visibility(current)).first()  # only staff you may see
+    period = db.get(PayPeriod, body.period_id)
     if not staff or not period:
         raise HTTPException(status_code=404, detail="Staff member or period not found")
     if not (body.evidence_text or "").strip():

@@ -11,27 +11,32 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import true
+from sqlalchemy import or_, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ...core import audit as system_audit
 from ...core.roles import CSO_FINANCE, FHI360_FINANCE, OVERSIGHT, RPM
 from ...core.security import CurrentUser, require_roles
-from ...core.serialize import to_dict
+from ...core.serialize import spreadsheet_safe, to_dict
+from ...core.uploads import read_csv_upload
 from ...db.session import get_db
 from ...models import BudgetLine, BudgetSyncLog, BudgetTransaction, ClaimCategory, Organization, PayPeriod, Region, User, utcnow
 from ...services import budgets as bg
 
 router = APIRouter()
 READ_ROLES = (FHI360_FINANCE, CSO_FINANCE, RPM, OVERSIGHT)
+MAX_AMOUNT = Decimal(10) ** 13  # budget amounts are NUMERIC(15, 2)
 TRACKER_COLUMNS = ["code", "name", "category", "period_start", "region", "allocated_amount", "external_ref"]
 
 
 def _visibility(current: CurrentUser):
-    if current.has_any(FHI360_FINANCE, RPM, OVERSIGHT):
+    if current.has_any(FHI360_FINANCE, OVERSIGHT):
         return true()
-    return BudgetLine.organization_id.in_(current.scope_values("organization_id"))
+    visible = [BudgetLine.organization_id.in_(current.scope_values("organization_id"))]
+    if RPM in current.roles:  # their region's lines and national (region-less) lines
+        visible.append(or_(BudgetLine.region_id.is_(None), BudgetLine.region_id.in_(current.scope_values("region_id"))))
+    return or_(*visible)
 
 
 def _can_manage(current: CurrentUser, line_org: Organization) -> bool:
@@ -134,7 +139,12 @@ def reallocate(body: ReallocateIn, db: Session = Depends(get_db), current: Curre
     if not source:
         raise HTTPException(status_code=404, detail="Budget line not found")
     org = db.get(Organization, source.organization_id)
-    if not (_can_manage(current, org) or (RPM in current.roles and source.region_id in current.scope_values("region_id"))):
+    target = db.get(BudgetLine, body.to_line_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Budget line not found")
+    # An RPM moves money only between lines of their own region(s).
+    rpm_ok = RPM in current.roles and {source.region_id, target.region_id} <= current.scope_values("region_id")
+    if not (_can_manage(current, org) or rpm_ok):
         raise HTTPException(status_code=403, detail="You are not authorized to reallocate this budget")
     src, dst = bg.reallocate(db, body.from_line_id, body.to_line_id, body.amount, current.id, body.reason)
     for line in (src, dst):
@@ -149,7 +159,7 @@ def reallocate(body: ReallocateIn, db: Session = Depends(get_db), current: Curre
 async def tracker_import(file: UploadFile = File(...), db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(FHI360_FINANCE))):
     """Import FHI360 activity-budget allocations from a tracker CSV export (columns: code,name,category,period_start,region,allocated_amount,external_ref)."""
     org = _fhi360_org(db)
-    content = (await file.read()).decode("utf-8-sig", errors="replace")
+    content = await read_csv_upload(file)
     reader = csv.DictReader(io.StringIO(content))
     missing = {"code", "name", "category", "period_start", "allocated_amount"} - set(reader.fieldnames or [])
     if missing:
@@ -157,36 +167,44 @@ async def tracker_import(file: UploadFile = File(...), db: Session = Depends(get
     log = BudgetSyncLog(sync_type="IMPORT", filename=file.filename, sync_status="SUCCESS", performed_by=current.id, log_data={"errors": []},
                         records_processed=0, success_count=0, error_count=0)
     errors = []
-    for line_no, row in enumerate(reader, start=2):
-        log.records_processed += 1
-        try:
-            with db.begin_nested():
-                category = db.query(ClaimCategory).filter(ClaimCategory.name == row["category"].strip()).first()
-                period = db.query(PayPeriod).filter(PayPeriod.start_date == date.fromisoformat(row["period_start"].strip())).first()
-                region = db.query(Region).filter(Region.name == (row.get("region") or "").strip()).first() if (row.get("region") or "").strip() else None
-                if not category or not period or ((row.get("region") or "").strip() and not region):
-                    raise ValueError("Unknown category, period or region")
-                amount = Decimal(row["allocated_amount"].strip())
-                line = db.query(BudgetLine).filter(
-                    BudgetLine.code == row["code"].strip(), BudgetLine.organization_id == org.id, BudgetLine.period_id == period.id,
-                    BudgetLine.region_id == region.id if region else BudgetLine.region_id.is_(None),
-                ).with_for_update().first()
-                if line is None:
-                    line = BudgetLine(code=row["code"].strip(), name=row["name"].strip(), source="FHI360_TRACKER", organization_id=org.id,
-                                      category_id=category.id, period_id=period.id, region_id=region.id if region else None, allocated_amount=0)
-                    db.add(line)
-                    db.flush()
-                if amount < line.committed_amount + line.spent_amount:
-                    raise ValueError(f"Allocation {amount} is below committed + spent ({line.committed_amount + line.spent_amount})")
-                delta = amount - line.allocated_amount
-                line.allocated_amount = amount
-                line.external_ref = (row.get("external_ref") or "").strip() or line.external_ref
-                line.sync_status, line.last_synced_at = "IMPORTED", utcnow()
-                if delta:
-                    db.add(BudgetTransaction(budget_line_id=line.id, kind="IMPORT_ADJUST", amount=delta, actor_id=current.id, reason=f"Tracker import {file.filename}"))
-                log.success_count += 1
-        except (ValueError, KeyError, InvalidOperation) as e:
-            errors.append({"line": line_no, "error": str(e)})
+    try:
+        for line_no, row in enumerate(reader, start=2):
+            log.records_processed += 1
+            try:
+                with db.begin_nested():
+                    category = db.query(ClaimCategory).filter(ClaimCategory.name == row["category"].strip()).first()
+                    period = db.query(PayPeriod).filter(PayPeriod.start_date == date.fromisoformat(row["period_start"].strip())).first()
+                    region = db.query(Region).filter(Region.name == (row.get("region") or "").strip()).first() if (row.get("region") or "").strip() else None
+                    if not category or not period or ((row.get("region") or "").strip() and not region):
+                        raise ValueError("Unknown category, period or region")
+                    if not (row.get("allocated_amount") or "").strip():
+                        raise ValueError("allocated_amount is empty; enter the amount allocated in the HQ tracker")
+                    amount = Decimal(row["allocated_amount"].strip())
+                    if not amount.is_finite() or amount < 0 or amount >= MAX_AMOUNT:
+                        raise ValueError(f"allocated_amount must be a number between 0 and {MAX_AMOUNT - 1}")
+                    line = db.query(BudgetLine).filter(
+                        BudgetLine.code == row["code"].strip(), BudgetLine.organization_id == org.id, BudgetLine.period_id == period.id,
+                        BudgetLine.region_id == region.id if region else BudgetLine.region_id.is_(None),
+                    ).with_for_update().first()
+                    if line is None:
+                        line = BudgetLine(code=row["code"].strip(), name=row["name"].strip(), source="FHI360_TRACKER", organization_id=org.id,
+                                          category_id=category.id, period_id=period.id, region_id=region.id if region else None, allocated_amount=0)
+                        db.add(line)
+                        db.flush()
+                    if amount < line.committed_amount + line.spent_amount:
+                        raise ValueError(f"Allocation {amount} is below committed + spent ({line.committed_amount + line.spent_amount})")
+                    delta = amount - line.allocated_amount
+                    line.allocated_amount = amount
+                    line.external_ref = (row.get("external_ref") or "").strip() or line.external_ref
+                    line.sync_status, line.last_synced_at = "IMPORTED", utcnow()
+                    if delta:
+                        db.add(BudgetTransaction(budget_line_id=line.id, kind="IMPORT_ADJUST", amount=delta, actor_id=current.id, reason=f"Tracker import {file.filename}"))
+                    log.success_count += 1
+            except (ValueError, KeyError, InvalidOperation, AttributeError) as e:
+                errors.append({"line": line_no, "error": "A required cell is empty" if isinstance(e, AttributeError) else str(e)})
+    except csv.Error as e:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=f"The file is not a valid CSV: {e}")
     log.error_count = len(errors)
     log.sync_status = "SUCCESS" if not errors else ("PARTIAL" if log.success_count else "FAILED")
     log.log_data = {"errors": errors}
@@ -195,6 +213,28 @@ async def tracker_import(file: UploadFile = File(...), db: Session = Depends(get
     system_audit.record(db, current, "budget_sync", None, "import", after={"file": file.filename, "ok": log.success_count, "errors": len(errors)})
     db.commit()
     return to_dict(log)
+
+
+@router.get("/tracker/template")
+def tracker_template(db: Session = Depends(get_db), _: CurrentUser = Depends(require_roles(FHI360_FINANCE))):
+    """A ready-to-fill import file: one row per FHI360-budgeted category and open pay period, using the exact names in
+    the system. Finance fills allocated_amount (and region / external_ref when needed); rows left without an amount are reported, not imported."""
+    categories = (
+        db.query(ClaimCategory)
+        .filter(ClaimCategory.is_active.is_(True), ClaimCategory.budget_owner == "PAYOR", ClaimCategory.payor_org_id.isnot(None))
+        .order_by(ClaimCategory.name)
+        .all()
+    )
+    periods = db.query(PayPeriod).filter(PayPeriod.status == "OPEN").order_by(PayPeriod.start_date).all()
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(TRACKER_COLUMNS)
+    for category in categories:
+        prefix = "".join(w[0] for w in category.name.replace("(", " ").split() if w[0].isalnum()).upper()[:6]
+        for period in periods:
+            writer.writerow([f"{prefix}-{period.start_date:%Y%m}", f"{category.name} – {period.period_label or period.start_date}",
+                             category.name, period.start_date, "", "", ""])
+    return Response(buffer.getvalue(), media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="fhi360-tracker-import-template.csv"'})
 
 
 @router.post("/tracker/export")
@@ -210,8 +250,8 @@ def tracker_export(period_id: Optional[int] = None, db: Session = Depends(get_db
     writer.writerow(["code", "name", "period_start", "region", "external_ref", "allocated_amount", "committed_amount", "spent_amount", "currency"])
     for line in lines:
         period = db.get(PayPeriod, line.period_id)
-        writer.writerow([line.code, line.name, period.start_date, db.get(Region, line.region_id).name if line.region_id else "", line.external_ref or "",
-                         line.allocated_amount, line.committed_amount, line.spent_amount, line.currency])
+        writer.writerow([spreadsheet_safe(v) for v in (line.code, line.name, period.start_date, db.get(Region, line.region_id).name if line.region_id else "",
+                         line.external_ref or "", line.allocated_amount, line.committed_amount, line.spent_amount, line.currency)])
         line.sync_status, line.last_synced_at = "EXPORTED", utcnow()
     db.add(BudgetSyncLog(sync_type="EXPORT", filename="tracker-export.csv", records_processed=len(lines), success_count=len(lines),
                          sync_status="SUCCESS", performed_by=current.id, completed_at=utcnow()))

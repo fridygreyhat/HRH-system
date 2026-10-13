@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { CrudTable, FieldSpec, Option, TableSpec } from './CrudTable';
+import { captureLocation } from '../../components/worklogs/DayEntryForm';
+import { CrudTable, FieldSpec, FormValues, Option, TableSpec } from './CrudTable';
 import { Row, refName, nameMap } from './common';
 
 const CENTRAL = ['CENTRAL_ADMIN'];
@@ -12,6 +13,30 @@ const GEOFENCE_FIELDS: FieldSpec[] = [
   { key: 'geofence_lon', label: 'Geofence longitude', type: 'number', step: '0.00000001', hint: 'Decimal degrees, e.g. 35.69' },
   { key: 'geofence_radius_meters', label: 'Geofence radius (m)', type: 'integer', hint: 'Leave all three geofence fields blank for no geofence' },
 ];
+
+/** Fill the geofence from this device's GPS: for an admin standing at the facility. */
+function UseMyLocation({ values, set }: { values: FormValues; set: (changes: FormValues) => void }) {
+  const [state, setState] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const fill = async () => {
+    setBusy(true);
+    setState(null);
+    const fix = await captureLocation();
+    setBusy(false);
+    if (!fix) return setState('Could not read your location. Allow location for this site and turn on GPS.');
+    if (fix.gps_accuracy_m > 100) return setState(`Too imprecise (±${fix.gps_accuracy_m} m). Go outside or wait for a better signal.`);
+    set({ geofence_lat: fix.gps_lat.toFixed(8), geofence_lon: fix.gps_lon.toFixed(8), geofence_radius_meters: String(values.geofence_radius_meters || '300') });
+    return setState(`Filled from your device (±${fix.gps_accuracy_m} m). Save to keep it.`);
+  };
+  return (
+    <div className="row">
+      <button type="button" className="btn btn-secondary btn-sm" onClick={fill} disabled={busy}>
+        {busy ? 'Reading GPS…' : 'Use my current location'}
+      </button>
+      <span className="muted small">{state || 'Only while standing at the facility.'}</span>
+    </div>
+  );
+}
 
 function validateGeofence(p: Row): string | null {
   const parts = [p.geofence_lat, p.geofence_lon, p.geofence_radius_meters];
@@ -92,6 +117,7 @@ export const TABLES: TableSpec[] = [
     extraPaths: ['/admin/districts'],
     description: 'The geofence is used to flag facility work-log entries recorded outside the facility area. It never blocks an entry.',
     validate: validateGeofence,
+    formExtras: (values, set) => <UseMyLocation values={values} set={set} />,
     fields: [
       { key: 'name', label: 'Name', type: 'text', required: true, maxLength: 255 },
       { key: 'ward_id', label: 'Ward', type: 'select', required: true, ref: { path: '/admin/wards', label: wardLabel } },
@@ -164,7 +190,7 @@ export const TABLES: TableSpec[] = [
       'A category decides the payment route, payor, budget owner and budget line of its claims. A category without a route is flagged as an exception on every claim.',
     fields: [
       { key: 'name', label: 'Name', type: 'text', required: true, maxLength: 255 },
-      { key: 'form_type', label: 'Form type', type: 'text', maxLength: 50, hint: 'e.g. CHW_PNP, HCP_PNP, COORDINATION, SALARY, COMMUNITY_SERVICE' },
+      { key: 'form_type', label: 'Form type', type: 'text', maxLength: 50, hint: 'SALARY = monthly timesheet (pays the staff monthly salary) and SERVICES = paid services: both are created automatically when the RPM approves. Others: CHW_PNP, HCP_PNP, COORDINATION, COMMUNITY_SERVICE' },
       {
         key: 'route_id',
         label: 'Payment route',

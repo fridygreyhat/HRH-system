@@ -7,6 +7,8 @@ export interface CadreField {
   label_en: string;
   label_sw: string | null;
   field_type: 'INTEGER' | 'BOOLEAN';
+  /** A service paid by FHI360 per unit, shown in its own section of the daily form */
+  is_service?: boolean;
 }
 
 export interface Cadre {
@@ -335,6 +337,7 @@ export interface RateRule {
   category_id: number;
   cadre_id: number | null;
   region_id: number | null;
+  facility_id: number | null;
   component_name: string;
   unit_type: 'PER_DAY' | 'PER_HOUR' | 'PER_UNIT' | 'FIXED';
   measure_key: string | null;
@@ -479,6 +482,7 @@ export interface StaffDetail {
   occupation: string | null;
   occupation_other: string | null;
   salary_scale: string | null;
+  monthly_salary?: number | string | null;
   status: string;
   employment_start_date: string | null;
   employment_end_date: string | null;

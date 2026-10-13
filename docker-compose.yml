@@ -3,10 +3,10 @@ services:
     image: postgres:15
     environment:
       POSTGRES_USER: hrh_user
-      POSTGRES_PASSWORD: hrh_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: hrh_db
-    ports:
-      - "5432:5432"
+    # No published port: only the backend and worker reach the database, over the private Docker network.
+    # For a database tool, use: docker compose exec db psql -U hrh_user -d hrh_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -20,19 +20,21 @@ services:
       context: ./backend
       args:
         INSTALL_DEV: "true"
+    # Direct API access from this computer only (the dev server on :3001); users go through nginx on :3000.
     ports:
-      - "8001:8000"
+      - "127.0.0.1:8001:8000"
     environment: &backend_env
-      DATABASE_URL: postgresql+psycopg2://hrh_user:hrh_password@db:5432/hrh_db
-      SECRET_KEY: ${SECRET_KEY:-dev-insecure-secret-change-me-0123456789}
+      DATABASE_URL: postgresql+psycopg2://hrh_user:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/hrh_db
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env (at least 32 random characters)}
       APP_TIMEZONE: Africa/Dar_es_Salaam
       CORS_ORIGINS: http://localhost:3000,http://localhost:3001
-      FORWARDED_ALLOW_IPS: "*"
+      # Trust forwarded client addresses only from the private Docker network (nginx), never from outside.
+      FORWARDED_ALLOW_IPS: "172.16.0.0/12,192.168.0.0/16,10.0.0.0/8"
       SMS_GATEWAY_TYPE: ${SMS_GATEWAY_TYPE:-mock}
       # Development only: show SMS confirmation codes on screen when no SMS gateway is configured.
       EXPOSE_DEV_OTP: ${EXPOSE_DEV_OTP:-false}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env (used only to create the first admin)}
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}

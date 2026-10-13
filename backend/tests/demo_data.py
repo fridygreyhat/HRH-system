@@ -124,7 +124,7 @@ def seed_test_data(db: Session) -> None:
         "form_type": "CHW_PNP", "route_id": routes["A"].id, "funding_source_id": funding.id, "payor_org_id": fhi360.id,
         "budget_owner": "PAYOR", "origin_channel": "FACILITY", "budget_line_code": "DEMO-A-01", "requires_work_log": True})
     cat_b, _ = _get_or_create(db, ClaimCategory, name="DEMO – Facility payroll (Route B)", defaults={
-        "form_type": "SALARY", "route_id": routes["B"].id, "funding_source_id": funding.id, "payor_org_id": fhi360.id,
+        "form_type": "HOURLY_PAYROLL", "route_id": routes["B"].id, "funding_source_id": funding.id, "payor_org_id": fhi360.id,
         "budget_owner": "EXECUTOR", "origin_channel": "FACILITY", "budget_line_code": "DEMO-B-01", "requires_work_log": True})
     cat_c, _ = _get_or_create(db, ClaimCategory, name="DEMO – Community service (Route C)", defaults={
         "form_type": "COMMUNITY_SERVICE", "route_id": routes["C"].id, "funding_source_id": funding.id,

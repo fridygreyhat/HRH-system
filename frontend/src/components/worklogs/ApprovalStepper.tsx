@@ -7,6 +7,7 @@ import { Icon } from '../Icon';
 /**
  * Visual map of the approval journey every cadre follows:
  * Submitted → CTC verification → Provider confirmation (SMS code) → Technical review → RPM authorization → Approved.
+ * Provider confirmation is hidden while the provider_otp_required setting is off.
  * Who acted and when comes from the audit trail of the current submission cycle.
  */
 const STEPS = [
@@ -35,13 +36,13 @@ type StepState = 'done' | 'current' | 'upcoming' | 'warn' | 'danger' | 'muted';
 
 const OTP_STEP = 2;
 
-function states(status: string, audit: WorkLogAudit[], otpSkipped = false): { current: number; state: StepState[]; note: string | null } {
-  const result = baseStates(status, audit);
-  // With provider confirmation switched off, a log that never waited for a code shows that step as not required.
-  if (otpSkipped && status !== 'PENDING_PROVIDER_OTP_CONFIRMATION' && !audit.some((a) => a.action === 'confirm_otp')) {
-    result.state = result.state.map((s, i) => (i === OTP_STEP && s !== 'danger' ? 'muted' : s));
-  }
-  return result;
+/** With provider confirmation switched off, the step is hidden unless this log is waiting on it or already passed it. */
+function otpHidden(status: string, audit: WorkLogAudit[], otpSkipped: boolean): boolean {
+  return otpSkipped && status !== 'PENDING_PROVIDER_OTP_CONFIRMATION' && !audit.some((a) => a.action === 'confirm_otp');
+}
+
+function states(status: string, audit: WorkLogAudit[]): { current: number; state: StepState[]; note: string | null } {
+  return baseStates(status, audit);
 }
 
 function baseStates(status: string, audit: WorkLogAudit[]): { current: number; state: StepState[]; note: string | null } {
@@ -88,7 +89,8 @@ export function ApprovalStepper({
   const { lang, me } = useAuth();
   const l = lang === 'sw' ? 'sw' : 'en';
   const otpSkipped = me?.client_settings.provider_otp_required === false;
-  const { current, state, note } = states(status, audit, otpSkipped);
+  const { current, state, note } = states(status, audit);
+  const hideOtp = otpHidden(status, audit, otpSkipped);
   const by = completedBy(audit);
   const approved = status === 'APPROVED';
 
@@ -96,13 +98,15 @@ export function ApprovalStepper({
     <div className="stepper-wrap">
       <ol className="stepper" aria-label={l === 'sw' ? 'Hatua za idhini' : 'Approval steps'}>
         {STEPS.map((step, i) => {
+          if (hideOtp && i === OTP_STEP) return null;
           const s = state[i];
+          const number = hideOtp && i > OTP_STEP ? i : i + 1;
           const row = s === 'done' ? by[step.action] : undefined;
           const who = step.action === 'endorse' && technicalReviewer ? technicalReviewer : step.who[l];
           return (
             <li key={step.action} className={`step step-${s}`} aria-current={s === 'current' || s === 'warn' ? 'step' : undefined}>
               <span className="step-marker" aria-hidden="true">
-                {s === 'done' ? <Icon name="check" size={15} /> : s === 'danger' ? <Icon name="close" size={14} /> : s === 'warn' ? <Icon name="alert" size={14} /> : i + 1}
+                {s === 'done' ? <Icon name="check" size={15} /> : s === 'danger' ? <Icon name="close" size={14} /> : s === 'warn' ? <Icon name="alert" size={14} /> : number}
               </span>
               <div className="step-text">
                 <span className="step-title">{step[l]}</span>
@@ -119,8 +123,6 @@ export function ApprovalStepper({
                         <span className={hoursInStatus > 48 ? 'step-late' : undefined}> · {hoursAge(hoursInStatus)}</span>
                       )}
                     </>
-                  ) : s === 'muted' && i === OTP_STEP && otpSkipped ? (
-                    l === 'sw' ? 'Haihitajiki' : 'Not required'
                   ) : s === 'danger' ? (
                     note
                   ) : (
@@ -147,16 +149,15 @@ export function ApprovalStepper({
   );
 }
 
-/** Five dots for list rows: done, current (or warning) and upcoming steps. */
+/** One dot per step for list rows: done, current (or warning) and upcoming steps. */
 export function MiniStepper({ status }: { status: string }) {
   const { me } = useAuth();
-  const { state } = states(status, [], me?.client_settings.provider_otp_required === false);
+  const { state } = states(status, []);
+  const hideOtp = otpHidden(status, [], me?.client_settings.provider_otp_required === false);
   const done = status === 'APPROVED';
   return (
     <span className="mini-stepper" aria-hidden="true">
-      {state.map((s, i) => (
-        <span key={i} className={`mini-dot mini-${s}`} />
-      ))}
+      {state.map((s, i) => (hideOtp && i === OTP_STEP ? null : <span key={i} className={`mini-dot mini-${s}`} />))}
       <span className={`mini-dot mini-${done ? 'done' : 'upcoming'}`} />
     </span>
   );

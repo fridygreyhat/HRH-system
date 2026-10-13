@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { qs } from '../api';
 import { useAuth } from '../AuthContext';
 import { AsyncState, Field, StatusBadge, Tabs } from '../components/ui';
+import { FacilityLocationCard } from '../components/FacilityLocation';
 import { WorkLogDrawer } from '../components/worklogs/WorkLogDrawer';
 import { dateTime, hoursAge, num, WORKLOG_STATUS_LABELS, WORKLOG_STATUSES } from '../format';
 import { useApi } from '../hooks';
@@ -104,6 +105,8 @@ export function ReviewWorkLogs() {
           </button>
         </div>
       </header>
+
+      {hasRole('SUPERVISOR', 'FACILITY_IN_CHARGE') && <FacilityLocationCard />}
 
       {tab === 'all' && (
         <div className="filters" role="search">

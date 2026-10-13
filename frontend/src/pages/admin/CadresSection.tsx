@@ -214,7 +214,7 @@ export function CadresSection() {
       <Alert kind="success">{notice}</Alert>
       <AsyncState data={data} error={error} loading={loading} empty="No cadres configured.">
         {(cadres) =>
-          cadres.map((c) => (
+          cadres.map((c) => ({ ...c, fields: c.fields.filter((f) => !f.is_service) })).map((c) => (
             <Section
               key={c.id}
               title={`${c.name} (${c.code})`}
@@ -243,7 +243,7 @@ export function CadresSection() {
                 ]}
               />
               {c.fields.length === 0 ? (
-                <p className="muted">No extra measures on this form.</p>
+                <p className="muted">No extra measures on this form. Paid services are managed under Services.</p>
               ) : (
                 <div className="table-wrap">
                   <table className="table">

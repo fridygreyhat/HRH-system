@@ -1,4 +1,6 @@
+import csv
 from datetime import date
+from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -12,6 +14,7 @@ from ...core.roles import CENTRAL_ADMIN, CSO_FINANCE, FHI360_FINANCE, PROVIDER, 
 from ...core.security import CurrentUser, get_current_user, hash_password, require_roles
 from ...core.serialize import mask_phone, to_dict
 from ...core.timeutil import local_today
+from ...core.uploads import read_csv_upload
 from ...db.session import get_db
 from ...models import Cadre, District, Facility, Role, RosterImport, Section, Staff, StaffAssignment, StaffChangeRequest, User, UserRole, Ward
 from ...services import staff_registry as reg
@@ -43,6 +46,7 @@ class StaffCreate(BaseModel):
     occupation: Optional[str] = None
     occupation_other: Optional[str] = None
     salary_scale: Optional[str] = None
+    monthly_salary: Optional[Decimal] = Field(default=None, ge=0, lt=10 ** 13)  # paid for an approved monthly timesheet
     employment_start_date: date
     enrollment_source: str = Field(default="MANUAL", pattern="^(ROSTER_IMPORT|ENGAGEMENT_LIST|MANUAL)$")
     payment_method: Optional[str] = None
@@ -169,9 +173,13 @@ async def import_roster(
 ):
     if enrollment_source not in ("ROSTER_IMPORT", "ENGAGEMENT_LIST"):
         raise HTTPException(status_code=422, detail="enrollment_source must be ROSTER_IMPORT or ENGAGEMENT_LIST")
-    content = (await file.read()).decode("utf-8-sig", errors="replace")
+    content = await read_csv_upload(file)
     allowed = None if CENTRAL_ADMIN in current.roles else current.scope_values("region_id")
-    result = reg.import_roster(db, current, file.filename or "roster.csv", content, enrollment_source, allowed)
+    try:
+        result = reg.import_roster(db, current, file.filename or "roster.csv", content, enrollment_source, allowed)
+    except csv.Error as e:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=f"The file is not a valid CSV: {e}")
     db.commit()
     return to_dict(result)
 
@@ -189,6 +197,12 @@ def change_requests(status: str = "PENDING", db: Session = Depends(get_db), curr
     out = []
     for r in query.order_by(StaffChangeRequest.id.desc()).limit(200):
         staff = db.get(Staff, r.staff_id)
+        if current.has_any(*ADMINS) and r.requested_by != current.id:
+            try:
+                _check_admin_for_staff(db, current, staff)  # regional admins see only their region's requests
+            except HTTPException:
+                continue
+        # Full values: the deciding admin checks the new account against the worker's documents.
         out.append({**to_dict(r), "staff_name": staff.legal_name, "requested_by_name": db.get(User, r.requested_by).full_name})
     return out
 
@@ -239,7 +253,7 @@ def get_staff(staff_id: int, db: Session = Depends(get_db), current: CurrentUser
     admin_in_scope = CENTRAL_ADMIN in current.roles or (REGIONAL_ADMIN in current.roles and any(a.region_id in current.scope_values("region_id") for a in assignments))
     sees_payment = current.staff_id == staff.id or FHI360_FINANCE in current.roles or (CSO_FINANCE in current.roles and in_org) or admin_in_scope
     out = {
-        **to_dict(staff, exclude=() if sees_payment else ("payment_method", "payment_provider", "payment_account")),
+        **to_dict(staff, exclude=() if sees_payment else ("payment_method", "payment_provider", "payment_account", "monthly_salary")),
         "legal_name": staff.legal_name,
         "cadre": db.get(Cadre, staff.cadre_id).code,
         "verified_phone": staff.verified_phone if _sees_contact(current) or current.staff_id == staff.id else mask_phone(staff.verified_phone),
@@ -254,13 +268,11 @@ def get_staff(staff_id: int, db: Session = Depends(get_db), current: CurrentUser
 
 @router.patch("/{staff_id}")
 def update_staff(staff_id: int, body: StaffUpdate, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(*ADMINS, CSO_FINANCE))):
-    """HRH admins change staff directly. CSO edits to payment-critical fields become change requests for HRH approval."""
+    """Names and occupation change directly. Payment-critical fields (account, phone, cadre, salary scale) always become a
+    change request that a different HRH admin approves, whoever asks, so no single person can redirect a payment."""
     staff = _get(db, current, staff_id)
     if current.has_any(*ADMINS):
         _check_admin_for_staff(db, current, staff)
-        reg.update_staff(db, current, staff, body.changes, body.reason)
-        db.commit()
-        return {"applied": True, "staff": _summary(db, current, staff)}
     critical = {k: v for k, v in body.changes.items() if k in reg.PAYMENT_CRITICAL_FIELDS}
     direct = {k: v for k, v in body.changes.items() if k not in reg.PAYMENT_CRITICAL_FIELDS}
     if direct:

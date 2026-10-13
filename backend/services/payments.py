@@ -27,6 +27,8 @@ from . import claims as cl
 from .worklog_workflow import period_label
 
 ALLOWED_PROOF_TYPES = {"application/pdf": ".pdf", "image/png": ".png", "image/jpeg": ".jpg"}
+# The file's first bytes must match its declared type (the browser's content type alone can be faked).
+PROOF_SIGNATURES = {".pdf": b"%PDF-", ".png": b"\x89PNG\r\n\x1a\n", ".jpg": b"\xff\xd8\xff"}
 RECONCILER_ROLE = {"A": FHI360_FINANCE, "B": FHI360_FINANCE, "C": CSO_FINANCE}
 
 
@@ -173,6 +175,8 @@ async def store_proof(db: Session, current: CurrentUser, claim: PaymentClaim, up
         raise HTTPException(status_code=413, detail=f"File is larger than {config.MAX_UPLOAD_BYTES // (1024 * 1024)} MB")
     if not data:
         raise HTTPException(status_code=422, detail="The file is empty")
+    if not data.startswith(PROOF_SIGNATURES[extension]):
+        raise HTTPException(status_code=415, detail="The file content is not a valid PDF, PNG or JPEG")
     if payment_record_id and not db.query(PaymentRecord).filter(PaymentRecord.id == payment_record_id, PaymentRecord.claim_id == claim.id).count():
         raise HTTPException(status_code=404, detail="Payment record not found on this claim")
 

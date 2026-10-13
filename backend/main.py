@@ -11,7 +11,10 @@ from .db.session import get_db
 
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI(title="HRH Digital Work-Log, Payment Claims and Payroll Routing", version="2.0.0")
+# Interactive API docs map every endpoint, so they are off unless ENABLE_API_DOCS=true (e.g. on a developer machine).
+_docs = config.ENABLE_API_DOCS
+app = FastAPI(title="HRH Digital Work-Log, Payment Claims and Payroll Routing", version="2.0.0",
+              docs_url="/docs" if _docs else None, redoc_url="/redoc" if _docs else None, openapi_url="/openapi.json" if _docs else None)
 
 app.add_middleware(
     CORSMiddleware,
@@ -34,7 +37,7 @@ app.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
 
 @app.get("/")
 def read_root():
-    return {"message": "HRH backend is running", "version": app.version, "docs": "/docs"}
+    return {"message": "HRH backend is running"}
 
 
 @app.get("/meta")
@@ -48,5 +51,6 @@ def health_check(db: Session = Depends(get_db)):
     try:
         db.execute(text("SELECT 1"))
         return {"status": "healthy", "database": "connected"}
-    except Exception as e:
-        return {"status": "unhealthy", "database": str(e)}
+    except Exception:
+        logging.getLogger(__name__).exception("Health check: database unavailable")
+        return {"status": "unhealthy", "database": "unavailable"}

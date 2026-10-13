@@ -21,6 +21,8 @@ class User(Base):
     must_change_password = Column(Boolean, nullable=False, default=False, server_default=false())
     # Tokens carry this timestamp; changing or resetting the password invalidates every earlier session.
     password_changed_at = Column(DateTime(timezone=True))
+    # Tokens also carry this counter; signing out (or a security event) increments it, ending every session.
+    session_version = Column(Integer, nullable=False, default=0, server_default=text("0"))
     created_at = created_at()
 
 

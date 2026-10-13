@@ -28,7 +28,7 @@ def test_only_a_super_admin_manages_super_admins(api, db):
     db.commit()
 
     admin = next(u for u in api.get("/admin/users", "sysadmin2") if u["username"] == "admin")
-    api.put(f"/admin/users/{plain['id']}/roles", "sysadmin2", {"roles": ["SYSTEM_ADMIN", "SUPER_ADMIN"], "reason": "self promotion"}, expect=403)
+    api.put(f"/admin/users/{plain['id']}/roles", "sysadmin2", {"roles": ["SYSTEM_ADMIN", "SUPER_ADMIN"], "reason": "self promotion"}, expect=422)  # nobody changes their own roles
     api.post(f"/admin/users/{admin['id']}/reset-password", "sysadmin2", {"new_password": "Takeover-1"}, expect=403)
     api.post(f"/admin/users/{admin['id']}/deactivate", "sysadmin2", expect=403)
 

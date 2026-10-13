@@ -28,14 +28,18 @@ from ..models import (
     PaymentRoute,
     PayPeriod,
     RateRule,
+    Role,
     Staff,
     StaffAssignment,
+    User,
+    UserRole,
+    UserScope,
     WorkLog,
     WorkLogEntry,
     WorkLogMeasure,
     utcnow,
 )
-from . import budgets
+from . import budgets, notifications
 from .forms import cadre_fields
 from .scope import assignment_in_role_scope
 
@@ -56,6 +60,14 @@ CANCELLABLE = {DRAFT, VALIDATION_NEEDED, PENDING_COMMUNITY, AWAITING_APPROVAL, A
 
 # Who prepares/approves claims on each route (approver must be a different person from the preparer).
 ROUTE_FINANCE_ROLE = {"A": FHI360_FINANCE, "B": FHI360_FINANCE, "C": CSO_FINANCE}
+# Claim category form type for services (SNS testing, CART refill, ...) recorded on the work log and paid per unit.
+# After RPM approval such a claim is created automatically for FHI360 Finance to review and pay.
+SERVICES_FORM_TYPE = "SERVICES"
+# Claim category form type for the monthly timesheet: pays the staff record's monthly salary, without a rate rule.
+SALARY_FORM_TYPE = "SALARY"
+# Claims created automatically on RPM approval: the RPM is the first of the two people, so they wait for one finance approval.
+ORIGIN_RPM_APPROVAL = "RPM_APPROVAL"
+
 # Who records payment execution on each route.
 ROUTE_EXECUTOR_ROLE = {"A": FHI360_FINANCE, "B": CSO_FINANCE, "C": CSO_FINANCE}
 
@@ -125,7 +137,10 @@ def resolve(
 
 
 def calculate(db, category, staff, period, assignment, work_log, declared_units) -> tuple[list[dict], list[str]]:
+    if category.form_type == SALARY_FORM_TYPE:
+        return _salary_component(staff)
     region_id = assignment.region_id if assignment else None
+    facility_id = assignment.facility_id if assignment else None
     rules = (
         db.query(RateRule)
         .filter(
@@ -133,6 +148,7 @@ def calculate(db, category, staff, period, assignment, work_log, declared_units)
             RateRule.status == "ACTIVE",
             or_(RateRule.cadre_id.is_(None), RateRule.cadre_id == staff.cadre_id),
             or_(RateRule.region_id.is_(None), RateRule.region_id == region_id),
+            or_(RateRule.facility_id.is_(None), RateRule.facility_id == facility_id),
             RateRule.effective_start_date <= period.end_date,
             or_(RateRule.effective_end_date.is_(None), RateRule.effective_end_date >= period.start_date),
         )
@@ -141,20 +157,25 @@ def calculate(db, category, staff, period, assignment, work_log, declared_units)
     if not rules:
         return [], [f"No active approved rate rule for '{category.name}' matching this cadre, region and period"]
 
+    def specificity(rule: RateRule) -> int:  # a facility's own rate beats its region's, which beats a national one
+        return 4 * (rule.facility_id is not None) + 2 * (rule.region_id is not None) + (rule.cadre_id is not None)
+
     best: dict[str, RateRule] = {}
     for rule in rules:
-        specificity = (rule.cadre_id is not None) + (rule.region_id is not None)
         current = best.get(rule.component_name)
-        if current is None or specificity > (current.cadre_id is not None) + (current.region_id is not None):
+        if current is None or specificity(rule) > specificity(current):
             best[rule.component_name] = rule
 
     exceptions: list[str] = []
-    form_keys = {f.key for f in cadre_fields(db, staff.cadre_id)}
+    services = category.form_type == SERVICES_FORM_TYPE
+    form_keys = {f.key for f in cadre_fields(db, staff.cadre_id, include_inactive=services)}
     components = []
     for name, rule in sorted(best.items()):
+        if services and rule.measure_key and rule.measure_key not in form_keys:
+            continue  # a service this cadre does not record
         units = _units(db, rule, work_log, declared_units, form_keys, exceptions)
-        if units is None:
-            continue
+        if units is None or (services and not units):
+            continue  # a service not done this period adds no line
         amount = (units * rule.rate_value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         if rule.cap_amount is not None:
             amount = min(amount, rule.cap_amount)
@@ -173,6 +194,24 @@ def calculate(db, category, staff, period, assignment, work_log, declared_units)
             }
         )
     return components, exceptions
+
+
+def _salary_component(staff: Staff) -> tuple[list[dict], list[str]]:
+    """A monthly timesheet pays the provider's agreed monthly salary from their staff record; no rate rule is involved."""
+    if staff.monthly_salary is None:
+        return [], [f"No monthly salary is recorded for {staff.legal_name}; an HRH admin adds it on the staff record"]
+    return [{
+        "rate_rule_id": None,
+        "component_name": "Monthly salary",
+        "unit_type": "FIXED",
+        "measure_key": None,
+        "units": Decimal(1),
+        "rate": staff.monthly_salary,
+        "cap_amount": None,
+        "amount": staff.monthly_salary,
+        "currency": "TZS",
+        "effective_start_date": None,
+    }], []
 
 
 def estimate_for_work_log(db: Session, log: WorkLog) -> dict:
@@ -214,6 +253,68 @@ def _units(db, rule: RateRule, work_log, declared, form_keys, exceptions) -> Opt
     )
 
 
+def create_claims_on_approval(db: Session, current: CurrentUser, log: WorkLog) -> list[PaymentClaim]:
+    """On RPM approval, send the approved work log to finance as payment claims, one per configured category:
+
+    - the monthly timesheet (SALARY categories): always, paying the staff record's monthly salary;
+    - services (SERVICES categories): only when services were recorded, priced per unit (facility rates first).
+
+    The RPM's approval is the first of two decisions, so a claim without exceptions waits for one finance approval.
+    """
+    staff = db.get(Staff, log.staff_id)
+    service_keys = [f.key for f in cadre_fields(db, staff.cadre_id, include_inactive=True) if f.is_service]
+    services_recorded = bool(service_keys) and bool(
+        db.query(func.coalesce(func.sum(WorkLogMeasure.value), 0))
+        .join(WorkLogEntry, WorkLogEntry.id == WorkLogMeasure.entry_id)
+        .filter(WorkLogEntry.work_log_id == log.id, WorkLogMeasure.field_key.in_(service_keys))
+        .scalar()
+    )
+    wanted = [SALARY_FORM_TYPE] + ([SERVICES_FORM_TYPE] if services_recorded else [])
+    categories = db.query(ClaimCategory).filter(
+        ClaimCategory.is_active.is_(True), ClaimCategory.form_type.in_(wanted), ClaimCategory.requires_work_log.is_(True)
+    )
+    period = db.get(PayPeriod, log.period_id)
+    assignment = db.get(StaffAssignment, log.assignment_id) if log.assignment_id else None
+    created = []
+    for category in categories:
+        live = db.query(PaymentClaim).filter(
+            PaymentClaim.staff_id == staff.id, PaymentClaim.category_id == category.id,
+            PaymentClaim.period_id == period.id, PaymentClaim.status != CANCELLED,
+        )
+        if live.first():
+            continue
+        claim = PaymentClaim(
+            work_log_id=log.id, staff_id=staff.id, category_id=category.id, period_id=period.id,
+            assignment_id=assignment.id if assignment else None,
+            community_area_id=assignment.community_area_id if assignment else None,
+            origin=ORIGIN_RPM_APPROVAL, created_by=current.id,
+        )
+        db.add(claim)
+        db.flush()
+        r = resolve(db, category, staff, period, assignment, log, None)
+        apply_resolution(db, claim, r)
+        note = "Created automatically when the RPM approved the work log"
+        audit(db, current, claim, "create", RPM, None, None, "; ".join([note, *r.exceptions]))
+        _notify_finance(db, claim, category, staff, period)
+        created.append(claim)
+    return created
+
+
+def _notify_finance(db: Session, claim: PaymentClaim, category: ClaimCategory, staff: Staff, period: PayPeriod) -> None:
+    """Tell the finance team that acts first on this claim's route: FHI360 for routes A/B, the assigned CSO for route C."""
+    role = ROUTE_FINANCE_ROLE.get(claim.route_code or "", FHI360_FINANCE)
+    users = (
+        db.query(User).join(UserRole, UserRole.user_id == User.id).join(Role, Role.id == UserRole.role_id)
+        .filter(Role.name == role, User.is_active.is_(True))
+    )
+    if role == CSO_FINANCE:
+        users = users.join(UserScope, UserScope.user_id == User.id).filter(UserScope.organization_id == claim.executor_org_id)
+    event = "SERVICE_CLAIM_CREATED" if category.form_type == SERVICES_FORM_TYPE else "TIMESHEET_CLAIM_CREATED"
+    for user in users.distinct():
+        notifications.enqueue(db, event, user, None, related=("payment_claim", claim.id, claim.status),
+                              provider=staff.legal_name, period=period.period_label or str(period.start_date))
+
+
 def apply_resolution(db: Session, claim: PaymentClaim, r: Resolution) -> None:
     claim.route_code = r.route_code
     claim.funding_source_id = r.funding_source_id
@@ -249,7 +350,7 @@ def settled_status(claim: PaymentClaim, r: Resolution) -> str:
         return VALIDATION_NEEDED
     if needs_community_verification(claim) and not claim.verified_at:
         return PENDING_COMMUNITY
-    return DRAFT
+    return AWAITING_APPROVAL if claim.origin == ORIGIN_RPM_APPROVAL else DRAFT
 
 
 def needs_community_verification(claim: PaymentClaim) -> bool:
@@ -318,7 +419,7 @@ def check_action(db: Session, current: CurrentUser, claim: PaymentClaim, action:
     if action in ("approve", "send_back"):
         if s != AWAITING_APPROVAL:
             return f"Cannot {action} a claim in status {s}"
-        if claim.created_by == current.id:
+        if claim.created_by == current.id or _submitted_by(db, claim) == current.id:
             return "The approver must be a different person from the preparer"
         return finance_role_ok(current, claim)
     if action == "release":
@@ -330,6 +431,17 @@ def check_action(db: Session, current: CurrentUser, claim: PaymentClaim, action:
     if action == "cancel":
         return finance_role_ok(current, claim) if s in CANCELLABLE else f"Cannot cancel a claim in status {s}"
     return f"Unknown action {action}"
+
+
+def _submitted_by(db: Session, claim: PaymentClaim) -> Optional[int]:
+    """Who sent the claim for approval: the preparer of an automatically created claim."""
+    row = (
+        db.query(ClaimAudit.actor_id)
+        .filter(ClaimAudit.claim_id == claim.id, ClaimAudit.action == "submit")
+        .order_by(ClaimAudit.timestamp.desc(), ClaimAudit.id.desc())
+        .first()
+    )
+    return row[0] if row else None
 
 
 CLAIM_ACTIONS = ["verify_community", "revalidate", "submit", "approve", "send_back", "release", "mark_ready", "cancel"]

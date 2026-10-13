@@ -9,7 +9,7 @@ from .conftest import ENTRY, approved_log, draft_log, submit_and_verify
 
 # 1. Cadre forms, valid dates, server totals
 def test_each_cadre_gets_its_supplied_form(api):
-    fields = {c["code"]: [f["key"] for f in c["fields"]] for c in api.get("/admin/cadres", "chw1")}
+    fields = {c["code"]: [f["key"] for f in c["fields"] if not f["is_service"]] for c in api.get("/admin/cadres", "chw1")}
     assert len(fields["CHW"]) == 5 and "clients_returned_to_care" in fields["CHW"]
     assert fields["DATA_CLERK"][-1] == "ctc_hts_dataset_uploaded"
     assert len(fields["HCP"]) == 13 and "weekend_clinic_attended" in fields["HCP"]
@@ -45,6 +45,33 @@ def test_chw_records_hours_directly(api, period):
     api.put(f"/worklogs/{log['id']}/entries/{start}", "chw1", {"evidence_text": "Home visits", "start_time": "08:00", "end_time": "09:00"}, expect=422)
     log = api.put(f"/worklogs/{log['id']}/entries/{start}", "chw1", ENTRY["CHW"](start))
     assert log["entries"][0]["hours_worked"] == 8.5
+
+
+@pytest.mark.parametrize("provider, cadre", [("chw1", "CHW"), ("clerk1", "DATA_CLERK"), ("hcp1", "HCP")])
+def test_day_needs_only_hours_not_every_box(api, period, provider, cadre):
+    log = api.post("/worklogs", provider, {"period_id": period["id"]})
+    start = period["start_date"]
+    full = ENTRY[cadre](start)
+    one_activity = dict(list(full["measures"].items())[:1])
+    hours = {k: v for k, v in full.items() if k in ("hours_worked", "start_time", "end_time")}
+    log = api.put(f"/worklogs/{log['id']}/entries/{start}", provider, {**hours, "measures": one_activity})
+    assert log["entries"][0]["evidence_text"] == "" and log["entries"][0]["measures"] == one_activity
+    api.put(f"/worklogs/{log['id']}/entries/{start}", provider, {"measures": one_activity}, expect=422)  # hours still required
+
+
+def test_days_before_contract_start_are_refused(api, period, db):
+    log = api.post("/worklogs", "chw1", {"period_id": period["id"]})
+    start = date.fromisoformat(period["start_date"])
+    original = db.execute(text("select start_date from staff_assignments where id = :id"), {"id": log["assignment"]["id"]}).scalar()
+    db.execute(text("update staff_assignments set start_date = :d where id = :id"), {"d": start + timedelta(days=1), "id": log["assignment"]["id"]})
+    db.commit()
+    try:
+        r = api.put(f"/worklogs/{log['id']}/entries/{start}", "chw1", ENTRY["CHW"](start), expect=422)
+        assert "outside your contract" in r["detail"]
+        api.put(f"/worklogs/{log['id']}/entries/{start + timedelta(days=1)}", "chw1", ENTRY["CHW"](start))
+    finally:
+        db.execute(text("update staff_assignments set start_date = :d where id = :id"), {"d": original, "id": log["assignment"]["id"]})
+        db.commit()
 
 
 # 2–3. Same ordered pipeline for every cadre, no bypass, scope enforced
@@ -235,3 +262,33 @@ def test_audit_tables_are_append_only(api, period, db):
         with pytest.raises(Exception, match="append-only"):
             db.execute(text(f"delete from {table}"))
         db.rollback()
+
+
+def test_ctc_in_charge_sets_facility_location_on_site(api, period, db):
+    mine = api.get("/admin/my-facilities", "supervisor1")
+    assert len(mine) == 1 and mine[0]["geofence_radius_meters"] == 300
+    fid = mine[0]["id"]
+    original = db.execute(text("select geofence_lat, geofence_lon, geofence_radius_meters from facilities where id = :id"), {"id": fid}).one()
+    try:
+        here = {"lat": -7.8, "lon": 35.7, "radius_meters": 200}
+        r = api.put(f"/admin/facilities/{fid}/location", "supervisor1", {**here, "accuracy_m": 250}, expect=422)
+        assert "too imprecise" in r["detail"]
+        api.put(f"/admin/facilities/{fid}/location", "rpm1", {**here, "accuracy_m": 10}, expect=403)
+        other = next(f["id"] for f in api.get("/admin/facilities", "supervisor1") if f["id"] != fid)
+        api.put(f"/admin/facilities/{other}/location", "supervisor1", {**here, "accuracy_m": 10}, expect=403)
+        saved = api.put(f"/admin/facilities/{fid}/location", "supervisor1", {**here, "accuracy_m": 12})
+        assert (saved["geofence_lat"], saved["geofence_lon"], saved["geofence_radius_meters"]) == (-7.8, 35.7, 200)
+        assert api.get("/admin/my-facilities", "facilityic1")[0]["geofence_lat"] == -7.8
+
+        # Entries are now judged against the position recorded on site.
+        log = api.post("/worklogs", "clerk1", {"period_id": period["id"]})
+        start = date.fromisoformat(period["start_date"])
+        near = {**ENTRY["DATA_CLERK"](start), "gps_lat": -7.8005, "gps_lon": 35.7, "gps_accuracy_m": 10}
+        log = api.put(f"/worklogs/{log['id']}/entries/{start}", "clerk1", near)
+        far = {**near, "gps_lat": -7.77, "gps_lon": 35.69}
+        log = api.put(f"/worklogs/{log['id']}/entries/{start + timedelta(days=1)}", "clerk1", far)
+        assert [e["location_status"] for e in log["entries"]] == ["WITHIN_GEOFENCE", "OUTSIDE_GEOFENCE"]
+    finally:
+        db.execute(text("update facilities set geofence_lat = :a, geofence_lon = :b, geofence_radius_meters = :c where id = :id"),
+                   {"a": original[0], "b": original[1], "c": original[2], "id": fid})
+        db.commit()

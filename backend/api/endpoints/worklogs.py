@@ -60,7 +60,8 @@ class EntryIn(BaseModel):
     start_time: Optional[time] = None
     end_time: Optional[time] = None
     hours_worked: Optional[Decimal] = Field(default=None, gt=0, le=24)
-    evidence_text: str = Field(min_length=3, max_length=2000)
+    # Optional: a provider fills only what they did that day (hours stay required).
+    evidence_text: str = Field(default="", max_length=2000)
     comment: Optional[str] = Field(default=None, max_length=1000)
     measures: dict[str, Union[bool, int, float]] = {}
     gps_lat: Optional[float] = Field(default=None, ge=-90, le=90)
@@ -297,6 +298,9 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
         raise HTTPException(status_code=422, detail=f"{entry_date} is outside the period {period.start_date} – {period.end_date}")
     if entry_date > local_today():
         raise HTTPException(status_code=422, detail=f"{entry_date} is in the future")
+    placement = db.get(StaffAssignment, log.assignment_id)
+    if entry_date < placement.start_date or (placement.end_date and entry_date > placement.end_date):
+        raise HTTPException(status_code=422, detail=f"{entry_date} is outside your contract ({placement.start_date} – {placement.end_date or 'ongoing'})")
     if ID_PATTERN.search(body.evidence_text) or (body.comment and ID_PATTERN.search(body.comment)):
         raise HTTPException(status_code=422, detail="Evidence looks like it contains an ID or phone number. Do not record patient or client identifiers.")
 

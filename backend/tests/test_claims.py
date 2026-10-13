@@ -105,7 +105,7 @@ def test_route_c_community_claim(api, period, db):
     chw = db.query(Staff).filter(Staff.verified_phone == "+255710000101").one()
     body = {"category_id": category_id(db, "C"), "staff_id": chw.id, "period_id": period["id"],
             "evidence_text": "Community PrEP outreach sessions", "declared_units": {"days": 4, "clients_followed_up": 10}}
-    api.post("/claims", "csofin3", body, expect=403)  # assigned to another CSO
+    api.post("/claims", "csofin3", body, expect=404)  # assigned to another CSO: not even visible
     claim = api.post("/claims", "csofin1", body)
     assert claim["status"] == "PENDING_COMMUNITY_VERIFICATION" and claim["amount"] == 37000  # 4x8,000 + 10x500 (DEMO)
     api.post(f"/claims/{claim['id']}/actions/submit", "csofin1", expect=409)
@@ -236,7 +236,8 @@ def test_approved_exported_handed_off_paid_are_distinct(api, period, db):
     _batch_for(api, "fhifin1", "A", claim["id"])
     claim = api.get(f"/claims/{claim['id']}", "fhifin1")
     assert (claim["status"], claim["payment_status"]) == ("EXPORTED", "PENDING")
-    api.call("POST", f"/claims/{claim['id']}/proofs", "fhifin1", files={"file": ("p.png", b"\x89PNG fake", "image/png")})
+    api.call("POST", f"/claims/{claim['id']}/proofs", "fhifin1", files={"file": ("p.png", b"<html><script>alert(1)</script>", "image/png")}, expect=415)
+    api.call("POST", f"/claims/{claim['id']}/proofs", "fhifin1", files={"file": ("p.png", b"\x89PNG\r\n\x1a\n fake", "image/png")})
     assert api.get(f"/claims/{claim['id']}", "fhifin1")["payment_status"] == "PENDING"  # proof alone ≠ paid
     claim = api.post(f"/claims/{claim['id']}/payments", "fhifin1", {"amount": claim["amount"], "payment_reference": "FHI-77", "payment_date": "2023-03-01"})
     assert claim["payment_status"] == "PAID"  # payment action + proof
@@ -290,3 +291,20 @@ def test_provider_sees_dev_code_and_no_payment_when_nothing_outstanding(api, per
     claim = api.post(f"/claims/{claim['id']}/payments", "fhifin1", {"amount": claim["amount"], "payment_reference": "FHI-5", "payment_date": "2023-04-01"})
     assert claim["payment_status"] == "PROOF_REQUIRED"
     assert "record_payment" not in claim["payment_actions"] and "upload_proof" in claim["payment_actions"]
+
+
+def test_tracker_template_round_trips(api, period):
+    r = api.call("GET", "/budgets/tracker/template", "fhifin1")
+    assert "fhi360-tracker-import-template.csv" in r.headers["content-disposition"]
+    lines = r.text.splitlines()
+    assert lines[0] == "code,name,category,period_start,region,allocated_amount,external_ref"
+    row = next(l for l in lines[1:] if ",DEMO – PnP activity (Route A)," in l and f",{period['start_date']}," in l)
+    filled = row.split(",")
+    filled[5], filled[6] = "4500000", "HQ-T1"
+    blank = next(l for l in lines[1:] if l != row)
+    log = api.call("POST", "/budgets/tracker/import", "fhifin1", files={"file": ("t.csv", "\n".join([lines[0], ",".join(filled), blank]), "text/csv")})
+    assert (log["success_count"], log["error_count"]) == (1, 1)
+    assert "allocated_amount is empty" in log["log_data"]["errors"][0]["error"]
+    line = next(l for l in api.get(f"/budgets/lines?period_id={period['id']}", "fhifin1") if l["code"] == filled[0])
+    assert (line["allocated_amount"], line["external_ref"]) == (4500000, "HQ-T1")
+    api.call("GET", "/budgets/tracker/template", "csofin1", expect=403)

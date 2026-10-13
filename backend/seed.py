@@ -75,6 +75,16 @@ CADRES = [
     },
 ]
 
+# Services paid by FHI360 per client, recorded in the work log's Services section. Every cadre starts enabled;
+# admins narrow them (or add services) under Admin → Services. Kiswahili labels should be reviewed by a native speaker.
+SERVICES = [
+    ("svc_sns_testing", "SNS testing (clients tested)", "Upimaji wa SNS (wateja waliopimwa)"),
+    ("svc_index_testing", "Index testing (clients tested)", "Upimaji wa Index (wateja waliopimwa)"),
+    ("svc_weekend_clinic", "Weekend clinic (clients served)", "Kliniki ya mwisho wa wiki (wateja waliohudumiwa)"),
+    ("svc_tb_outreach", "TB outreach (clients reached)", "Huduma za TB kwa jamii (wateja waliofikiwa)"),
+    ("svc_cart_refill", "CART refill (clients refilled)", "Ujazaji wa dawa CART (wateja waliojaziwa)"),
+]
+
 ROUTES = [
     ("A", "FHI360-funded activity payments", "Configured activity-based payments prepared for and recorded by FHI360 Finance"),
     ("B", "Facility payroll: facility → FHI360 → CSO", "FHI360 processes and hands off approved payroll to the assigned CSO, which pays and records proof"),
@@ -138,6 +148,11 @@ def seed(db: Session) -> None:
         for order, field in enumerate(spec["fields"]):
             key, en, sw, *ftype = field
             _get_or_create(db, CadreFormField, cadre_id=cadre.id, key=key, defaults={"label_en": en, "label_sw": sw, "sort_order": order, "field_type": ftype[0] if ftype else "INTEGER"})
+    db.flush()
+    for order, (key, en, sw) in enumerate(SERVICES, start=1000):
+        if not db.query(CadreFormField).filter(CadreFormField.key == key).first():  # never undo an admin's choice of cadres
+            for cadre in db.query(Cadre):
+                db.add(CadreFormField(cadre_id=cadre.id, key=key, label_en=en, label_sw=sw, sort_order=order, field_type="INTEGER", is_service=True))
     for code, name, description in ROUTES:
         _get_or_create(db, PaymentRoute, code=code, defaults={"name": name, "description": description})
     for event, meta in EVENTS.items():
@@ -148,6 +163,8 @@ def seed(db: Session) -> None:
     _seed_locations(db)
     _get_or_create(db, Organization, name="FHI360", defaults={"type": "FHI360", "code": "FHI360"})
     # The bootstrap password is configuration (and its default is public), so it must be replaced at first sign-in.
+    if not db.query(User).filter(User.username == config.ADMIN_USERNAME).first() and (len(config.ADMIN_PASSWORD) < 12 or config.ADMIN_PASSWORD == "admin12345"):
+        raise RuntimeError("Set ADMIN_PASSWORD (12+ characters, not the published default) to create the first administrator")
     _user(db, config.ADMIN_USERNAME, "System Administrator", config.ADMIN_PHONE, [SYSTEM_ADMIN, SUPER_ADMIN], config.ADMIN_PASSWORD, must_change_password=True)
     db.commit()
 

@@ -101,6 +101,7 @@ const PATHS: Record<string, React.ReactNode> = {
     </>
   ),
   chart: <path d="M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6" />,
+  download: <path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14" />,
   refresh: <path d="M20 11a8 8 0 0 0-14.3-4.5L4 8.5M4 4v4.5h4.5M4 13a8 8 0 0 0 14.3 4.5l1.7-2M20 20v-4.5h-4.5" />,
   phone: (
     <>

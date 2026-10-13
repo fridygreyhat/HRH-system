@@ -727,3 +727,8 @@ details > summary { cursor: pointer; font-weight: 600; }
   font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
+
+/* Progressive web app: offline notice and install help */
+.offline-banner { position: sticky; top: 0; z-index: 1000; background: var(--warn-bg); color: var(--warn-fg); border-bottom: 1px solid var(--warn-fg); padding: 0.5rem 1rem; font-size: 0.9rem; text-align: center; }
+.install-wrap { position: relative; display: inline-flex; }
+.install-wrap .install-help { position: absolute; top: calc(100% + 6px); right: 0; width: min(280px, 80vw); z-index: 50; }

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useAuth } from '../AuthContext';
 import { Alert } from '../components/ui';
 import { dateOnly, dateTime, datesBetween, dayOfMonth, num, timeShort, weekday } from '../format';
 import { useApi } from '../hooks';
@@ -38,6 +39,8 @@ function SignBox({ titleSw, titleEn, row, name, at }: { titleSw: string; titleEn
 /** Print-optimised mirror of the paper work-log form: dates as columns, rows for hours and each form field. */
 export function PrintWorkLog({ logId }: { logId: number }) {
   const { data: log, error, loading } = useApi<WorkLogDetail>(`/worklogs/${logId}`);
+  const { me } = useAuth();
+  const otpRequired = me?.client_settings.provider_otp_required !== false;
 
   const toolbar = (
     <div className="print-toolbar no-print">
@@ -166,7 +169,9 @@ export function PrintWorkLog({ logId }: { logId: number }) {
         <div className="signoff">
           <SignBox titleSw="Imeandaliwa na kuthibitishwa na" titleEn="Prepared and attested by provider" name={log.staff.name} at={log.attested_at} />
           <SignBox titleSw="Uhakiki wa CTC" titleEn="CTC verification" row={signOff(log, 'verify')} />
-          <SignBox titleSw="Uthibitisho wa mtoa huduma (SMS)" titleEn="Provider confirmation (SMS code)" row={signOff(log, 'confirm_otp')} />
+          {(otpRequired || signOff(log, 'confirm_otp')) && (
+            <SignBox titleSw="Uthibitisho wa mtoa huduma (SMS)" titleEn="Provider confirmation (SMS code)" row={signOff(log, 'confirm_otp')} />
+          )}
           {log.cadre.requires_facility_endorsement && (
             <SignBox titleSw="Mfawidhi wa kituo" titleEn="Facility in-charge endorsement" row={signOff(log, 'facility_endorse')} />
           )}

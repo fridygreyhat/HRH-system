@@ -3,6 +3,7 @@ import csv
 import io
 import re
 from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 from fastapi import HTTPException
@@ -12,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..core import audit as system_audit
 from ..core.security import CurrentUser
-from ..core.serialize import to_dict
+from ..core.serialize import mask_payment_fields, to_dict
 from ..core.settings import get_setting
 from ..models import (
     Cadre,
@@ -31,7 +32,7 @@ from ..models import (
 )
 
 # Changing these affects who pays, how much, or where; CSOs may only request them.
-PAYMENT_CRITICAL_FIELDS = {"cadre_id", "salary_scale", "payment_method", "payment_provider", "payment_account", "verified_phone"}
+PAYMENT_CRITICAL_FIELDS = {"cadre_id", "salary_scale", "monthly_salary", "payment_method", "payment_provider", "payment_account", "verified_phone"}
 PHONE_PATTERN = re.compile(r"^\+?\d{9,15}$")
 
 
@@ -51,6 +52,13 @@ def validate_changes(db: Session, staff: Staff, changes: dict) -> None:
     for name in ("first_name", "last_name"):
         if name in changes and not str(changes[name] or "").strip():
             raise HTTPException(status_code=422, detail=f"{name} cannot be empty")
+    if "monthly_salary" in changes and changes["monthly_salary"] is not None:
+        try:
+            salary = Decimal(str(changes["monthly_salary"]))
+        except InvalidOperation:
+            raise HTTPException(status_code=422, detail="monthly_salary must be a number")
+        if not salary.is_finite() or salary < 0 or salary >= Decimal(10) ** 13:
+            raise HTTPException(status_code=422, detail="monthly_salary must be zero or more")
     if changes.get("payment_method") not in (None, "MOBILE_WALLET", "BANK"):
         raise HTTPException(status_code=422, detail="payment_method must be MOBILE_WALLET or BANK")
     check_payment_method(db, changes.get("cadre_id", staff.cadre_id), changes.get("payment_method", staff.payment_method))
@@ -69,7 +77,7 @@ def update_staff(db: Session, current: CurrentUser, staff: Staff, changes: dict,
     before = {k: getattr(staff, k) for k in changes}
     for key, value in changes.items():
         setattr(staff, key, value)
-    system_audit.record(db, current, "staff", staff.id, "update", before=before, after=changes, reason=reason)
+    system_audit.record(db, current, "staff", staff.id, "update", before=mask_payment_fields(before), after=mask_payment_fields(changes), reason=reason)
     return staff
 
 
@@ -78,7 +86,7 @@ def request_change(db: Session, current: CurrentUser, staff: Staff, changes: dic
     request = StaffChangeRequest(staff_id=staff.id, changes=jsonable_encoder(changes), reason=reason, requested_by=current.id)
     db.add(request)
     db.flush()
-    system_audit.record(db, current, "staff_change_request", request.id, "create", after=changes, reason=reason)
+    system_audit.record(db, current, "staff_change_request", request.id, "create", after=mask_payment_fields(changes), reason=reason)
     return request
 
 
@@ -188,6 +196,9 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
                 staff = db.query(Staff).filter(Staff.verified_phone == phone).first()
                 if staff:
                     current_row = db.query(StaffAssignment).filter(StaffAssignment.staff_id == staff.id, StaffAssignment.end_date.is_(None)).first()
+                    # A regional admin may only move people who currently work in their own region.
+                    if allowed_region_ids is not None and (current_row is None or current_row.region_id not in allowed_region_ids):
+                        raise ValueError("This phone belongs to a staff member outside your administrative region")
                     if current_row and all(getattr(current_row, k) == v for k, v in assignment.items()):
                         continue  # unchanged
                     rotate(db, current, staff, assignment, start, f"Roster import {filename} line {line_no}")
@@ -209,8 +220,8 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
                     db.flush()
                     db.add(StaffAssignment(staff_id=staff.id, start_date=start, created_by=current.id, **assignment))
                     result.created_count += 1
-        except (ValueError, KeyError, HTTPException) as e:
-            detail = e.detail if isinstance(e, HTTPException) else str(e)
+        except (ValueError, KeyError, AttributeError, HTTPException) as e:
+            detail = e.detail if isinstance(e, HTTPException) else ("A required cell is empty" if isinstance(e, AttributeError) else str(e))
             errors.append({"line": line_no, "error": detail})
     result.error_count = len(errors)
     result.errors = errors

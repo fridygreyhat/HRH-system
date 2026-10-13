@@ -3,7 +3,7 @@ import { api } from '../../api';
 import { useAuth } from '../../AuthContext';
 import { dateOnly, weekday } from '../../format';
 import { useAction } from '../../hooks';
-import { ReturnFlag, WorkLogDetail, WorkLogEntry } from '../../types';
+import { CadreField, ReturnFlag, WorkLogDetail, WorkLogEntry } from '../../types';
 import { Alert, Field } from '../ui';
 import { FieldLabel, flagFieldLabel } from './shared';
 
@@ -52,7 +52,7 @@ interface Props {
   onClose: () => void;
 }
 
-/** One day's entry: hours (or start/end), one input per cadre field, evidence and optional GPS. */
+/** One day's entry: hours (or start/end) are required; every activity box, evidence and GPS are optional. */
 export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved, onClose }: Props) {
   const { t, lang } = useAuth();
   const direct = log.cadre.hours_mode === 'DIRECT';
@@ -107,6 +107,41 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
 
   const busy = save.busy || remove.busy;
 
+  const activities = log.cadre.fields.filter((f) => !f.is_service);
+  const services = log.cadre.fields.filter((f) => f.is_service);
+  const renderMeasure = (f: CadreField) =>
+    f.field_type === 'BOOLEAN' ? (
+      <div key={f.key} className={`field${flaggedFields.has(f.key) ? ' flagged-field' : ''}`} role="group" aria-label={f.label_en}>
+        <span className="field-label">
+          <FieldLabel field={f} lang={lang} />
+        </span>
+        <div className="yesno">
+          {[true, false].map((v) => (
+            <button
+              key={String(v)}
+              type="button"
+              aria-pressed={measures[f.key] === v}
+              onClick={() => setMeasures({ ...measures, [f.key]: measures[f.key] === v ? undefined : v })}
+            >
+              {v ? t('yes') : t('no')}
+            </button>
+          ))}
+        </div>
+      </div>
+    ) : (
+      <Field key={f.key} label={<FieldLabel field={f} lang={lang} />} className={flaggedFields.has(f.key) ? 'flagged-field' : undefined}>
+        <input
+          type="number"
+          inputMode="numeric"
+          min="0"
+          max="10000"
+          step="1"
+          value={String(measures[f.key] ?? '')}
+          onChange={(e) => setMeasures({ ...measures, [f.key]: e.target.value })}
+        />
+      </Field>
+    );
+
   return (
     <form className="card stack" onSubmit={submit} aria-label={`${t('editingDay')} ${dateOnly(date)}`} id="day-form">
       <div className="row-between">
@@ -147,47 +182,22 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
         </div>
       )}
 
-      <div className="measure-grid">
-        {log.cadre.fields.map((f) =>
-          f.field_type === 'BOOLEAN' ? (
-            <div key={f.key} className={`field${flaggedFields.has(f.key) ? ' flagged-field' : ''}`} role="group" aria-label={f.label_en}>
-              <span className="field-label">
-                <FieldLabel field={f} lang={lang} />
-              </span>
-              <div className="yesno">
-                {[true, false].map((v) => (
-                  <button
-                    key={String(v)}
-                    type="button"
-                    aria-pressed={measures[f.key] === v}
-                    onClick={() => setMeasures({ ...measures, [f.key]: measures[f.key] === v ? undefined : v })}
-                  >
-                    {v ? t('yes') : t('no')}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <Field key={f.key} label={<FieldLabel field={f} lang={lang} />} className={flaggedFields.has(f.key) ? 'flagged-field' : undefined}>
-              <input
-                type="number"
-                inputMode="numeric"
-                min="0"
-                max="10000"
-                step="1"
-                value={String(measures[f.key] ?? '')}
-                onChange={(e) => setMeasures({ ...measures, [f.key]: e.target.value })}
-              />
-            </Field>
-          ),
-        )}
-      </div>
+      {activities.length > 0 && <p className="field-hint">{t('measuresOptional')}</p>}
+      <div className="measure-grid">{activities.map(renderMeasure)}</div>
+
+      {services.length > 0 && (
+        <fieldset className="stack">
+          <legend>{t('servicesTitle')}</legend>
+          <p className="field-hint">{t('servicesHint')}</p>
+          <div className="measure-grid">{services.map(renderMeasure)}</div>
+        </fieldset>
+      )}
 
       <p className="notice" role="note">
         ⚠ {t('evidenceWarning')}
       </p>
       <Field label={t('evidence')} className={flaggedFields.has('evidence') ? 'flagged-field' : undefined}>
-        <textarea rows={3} required minLength={3} maxLength={2000} value={evidence} onChange={(e) => setEvidence(e.target.value)} />
+        <textarea rows={3} maxLength={2000} value={evidence} onChange={(e) => setEvidence(e.target.value)} />
       </Field>
       <Field label={t('comment')} className={flaggedFields.has('comment') ? 'flagged-field' : undefined}>
         <textarea rows={2} maxLength={1000} value={comment} onChange={(e) => setComment(e.target.value)} />
@@ -213,7 +223,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
 
       <Alert>{save.error || remove.error}</Alert>
       <div className="row">
-        <button className="btn btn-primary" disabled={busy || evidence.trim().length < 3}>
+        <button className="btn btn-primary" disabled={busy}>
           {save.busy ? t('saving') : t('saveDay')}
         </button>
         {entry && (

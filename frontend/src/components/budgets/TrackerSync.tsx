@@ -40,6 +40,12 @@ export function TrackerPanel({ periodId, onChanged }: { periodId: string; onChan
   const [exported, setExported] = useState<string | null>(null);
   const imp = useAction();
   const exp = useAction();
+  const tpl = useAction();
+
+  const downloadTemplate = async () => {
+    const file = await tpl.run(() => api.blob('/budgets/tracker/template', 'GET', 'fhi360-tracker-import-template.csv'));
+    if (file) saveBlob(file);
+  };
 
   const doImport = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,6 +93,13 @@ export function TrackerPanel({ periodId, onChanged }: { periodId: string; onChan
             . * required. <code>category</code> and <code>region</code> use the exact names in the system; <code>period_start</code> is YYYY-MM-DD.
           </p>
           <pre className="json small">{TRACKER_COLUMNS.join(',')}</pre>
+          <div className="row">
+            <button type="button" className="btn btn-secondary btn-sm" onClick={downloadTemplate} disabled={tpl.busy}>
+              {tpl.busy ? 'Preparing…' : 'Download template'}
+            </button>
+            <span className="muted small">Pre-filled with each FHI360 category and open pay period. Fill in allocated_amount, then import.</span>
+          </div>
+          <Alert>{tpl.error}</Alert>
           <Field label="Tracker CSV file">
             <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={(e) => setFile(e.target.files?.[0] || null)} required />
           </Field>

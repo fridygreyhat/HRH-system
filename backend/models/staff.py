@@ -1,5 +1,5 @@
 """Staff registry: one identity per person, effective-dated assignments, cadre form templates."""
-from sqlalchemy import Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, false
 from sqlalchemy.dialects.postgresql import JSONB
 
 from .base import Base, created_at, updated_at
@@ -38,6 +38,8 @@ class CadreFormField(Base):
     field_type = Column(String(20), nullable=False, default="INTEGER")
     sort_order = Column(Integer, nullable=False, default=0)
     is_active = Column(Boolean, default=True, nullable=False)
+    # A paid service (SNS testing, CART refill, ...): shown in its own section and paid by FHI360 per unit.
+    is_service = Column(Boolean, default=False, nullable=False, server_default=false())
 
 
 class Staff(Base):
@@ -56,6 +58,7 @@ class Staff(Base):
     occupation = Column(String(100))
     occupation_other = Column(String(100))
     salary_scale = Column(String(50))
+    monthly_salary = Column(Numeric(15, 2))  # paid for an approved monthly timesheet (SALARY claim category)
     status = Column(String(20), default="ACTIVE", nullable=False)
     employment_start_date = Column(Date)
     employment_end_date = Column(Date)

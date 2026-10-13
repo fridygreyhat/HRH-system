@@ -12,7 +12,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from ..core.roles import FACILITY_IN_CHARGE, PROVIDER, RPM, SUPERVISOR, TECHNICAL_OFFICER
@@ -33,6 +33,7 @@ from ..models import (
     utcnow,
 )
 from . import notifications
+from .claims import create_claims_on_approval
 from .forms import build_snapshot
 from .scope import assignment_in_role_scope, assignments_in_role_scope, users_in_scope_for
 
@@ -100,11 +101,34 @@ def check_action(db: Session, current: CurrentUser, log: WorkLog, action: str) -
         return "You cannot review your own work log"
     if not assignment_in_role_scope(db, current, role, log.assignment_id):
         return "This work log is outside your assigned scope"
+    if action in STAGE_DECISIONS and _decided_another_stage(db, current, log, action):
+        return "You already decided an earlier step of this work log; a different person must do this step"
     if action == "endorse" and db.get(Cadre, log.cadre_id).requires_facility_endorsement and not _has_facility_endorsement(db, log):
         return "The Facility In-Charge endorsement required by this cadre's form has not been recorded"
     if action == "reopen" and db.query(PaymentClaim).filter(PaymentClaim.work_log_id == log.id, PaymentClaim.status != "CANCELLED").count():
         return "Cancel the claims linked to this work log before reopening it"
     return None
+
+
+# Each approval step is decided by a different person, even when one user holds several reviewer roles.
+STAGE_DECISIONS = {"verify", "endorse", "authorize"}
+
+
+def _decided_another_stage(db: Session, current: CurrentUser, log: WorkLog, action: str) -> bool:
+    """Whether `current` already took a different approval step in this submission cycle."""
+    last_submit = (
+        db.query(func.max(WorkLogAudit.id)).filter(WorkLogAudit.work_log_id == log.id, WorkLogAudit.action == "submit").scalar() or 0
+    )
+    return db.query(
+        db.query(WorkLogAudit.id)
+        .filter(
+            WorkLogAudit.work_log_id == log.id,
+            WorkLogAudit.id > last_submit,
+            WorkLogAudit.actor_id == current.id,
+            WorkLogAudit.action.in_(STAGE_DECISIONS - {action}),
+        )
+        .exists()
+    ).scalar()
 
 
 def _has_facility_endorsement(db: Session, log: WorkLog) -> bool:
@@ -213,6 +237,9 @@ def transition(
     audit(db, current, log, action, role, old, comment, details)
     db.flush()
     _notify(db, log, action, comment)
+    if next_status == APPROVED:
+        # The approved log goes to finance: the timesheet (monthly salary) and any services, each on its own route.
+        create_claims_on_approval(db, current, log)
     return log
 
 

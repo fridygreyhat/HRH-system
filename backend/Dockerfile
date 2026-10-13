@@ -12,6 +12,10 @@ RUN pip install --no-cache-dir -r requirements.txt \
 
 COPY . ./backend
 
+# Run as an unprivileged user; it owns only the upload folder (payment proofs).
+RUN useradd --system --uid 10001 --home /app hrh && mkdir -p /data/uploads && chown hrh /data/uploads
+USER hrh
+
 EXPOSE 8000
 
 # Apply migrations and the idempotent seed, then serve.

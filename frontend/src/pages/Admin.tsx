@@ -4,6 +4,7 @@ import { CadresSection } from './admin/CadresSection';
 import { ConfigSection } from './admin/ConfigSection';
 import { AuditSection, OutboxSection } from './admin/LogsSections';
 import { RateRulesSection } from './admin/RateRulesSection';
+import { ServicesSection } from './admin/ServicesSection';
 import { SettingsSection } from './admin/SettingsSection';
 import { SmsTemplatesSection } from './admin/SmsTemplatesSection';
 import { UsersSection } from './admin/UsersSection';
@@ -21,6 +22,7 @@ const SECTIONS: AdminSection[] = [
   { key: 'users', label: 'Users', roles: ['SYSTEM_ADMIN'], render: () => <UsersSection /> },
   { key: 'config', label: 'Configuration', roles: ADMIN_AREA, render: () => <ConfigSection /> },
   { key: 'cadres', label: 'Cadre forms', roles: ADMIN_AREA, render: () => <CadresSection /> },
+  { key: 'services', label: 'Services', roles: ADMIN_AREA, render: () => <ServicesSection /> },
   { key: 'rates', label: 'Rate rules', roles: ['FHI360_FINANCE', 'CSO_FINANCE', 'RPM', 'OVERSIGHT'], render: () => <RateRulesSection /> },
   { key: 'settings', label: 'Settings', roles: ['SYSTEM_ADMIN', 'OVERSIGHT'], render: () => <SettingsSection /> },
   { key: 'sms', label: 'SMS templates', roles: ['RPM', 'OVERSIGHT', 'SYSTEM_ADMIN'], render: () => <SmsTemplatesSection /> },

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from ..core import audit as system_audit
 from ..core.roles import CSO_FINANCE, FHI360_FINANCE, OVERSIGHT
+from ..core.serialize import spreadsheet_safe
 from ..core.security import CurrentUser
 from ..core.timeutil import local_today
 from ..models import (
@@ -146,8 +147,12 @@ def _csv(lines: list[dict]) -> str:
     buffer = io.StringIO()
     writer = csv.DictWriter(buffer, fieldnames=CSV_COLUMNS)
     writer.writeheader()
-    writer.writerows(lines)
+    writer.writerows({k: spreadsheet_safe(v) for k, v in line.items()} for line in lines)
     return buffer.getvalue()
+
+
+def to_csv(batch: PayrollBatch) -> str:
+    return _csv(batch.export_snapshot["lines"])
 
 
 def to_xlsx(batch: PayrollBatch) -> bytes:
@@ -161,7 +166,7 @@ def to_xlsx(batch: PayrollBatch) -> bytes:
     for cell in ws[1]:
         cell.font = Font(bold=True)
     for line in batch.export_snapshot["lines"]:
-        row = [line.get(c, "") for c in CSV_COLUMNS]
+        row = [spreadsheet_safe(line.get(c, "")) for c in CSV_COLUMNS]
         row[CSV_COLUMNS.index("amount")] = float(line["amount"])
         ws.append(row)
     ws.append([])

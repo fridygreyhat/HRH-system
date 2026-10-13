@@ -36,6 +36,18 @@ EVENTS: dict[str, dict] = {
         "en": "HRH: Your work log for {period} has been approved. This is not a payment confirmation.",
         "sw": "HRH: Kumbukumbu yako ya kazi ya {period} imeidhinishwa. Huu si uthibitisho wa malipo.",
     },
+    "TIMESHEET_CLAIM_CREATED": {
+        "recipient": "Finance (FHI360 or CSO by payment route)",
+        "variables": ["provider", "period"],
+        "en": "HRH: The {period} timesheet of {provider} was approved by the RPM and awaits your review for payment.",
+        "sw": "HRH: Kumbukumbu ya kazi ya {provider} ya {period} imeidhinishwa na RPM na inasubiri mapitio yako kwa malipo.",
+    },
+    "SERVICE_CLAIM_CREATED": {
+        "recipient": "FHI360 Finance",
+        "variables": ["provider", "period"],
+        "en": "HRH: The services {provider} recorded for {period} were approved by the RPM and await your review for payment.",
+        "sw": "HRH: Huduma alizorekodi {provider} kwa {period} zimeidhinishwa na RPM na zinasubiri mapitio yako kwa malipo.",
+    },
     "WORKLOG_RETURNED": {
         "recipient": "Provider",
         "variables": ["period", "comment"],

@@ -44,7 +44,8 @@ class ClaimCategory(Base):
     )
     id = Column(Integer, primary_key=True)
     name = Column(String(255), unique=True, nullable=False)
-    form_type = Column(String(50))  # CHW_PNP, HCP_PNP, COORDINATION, SALARY, COMMUNITY_SERVICE
+    # SALARY (monthly timesheet) and SERVICES claims are created on RPM approval; others (CHW_PNP, HCP_PNP, ...) by finance.
+    form_type = Column(String(50))
     route_id = Column(Integer, ForeignKey("payment_routes.id"))  # NULL = not configured → exception
     funding_source_id = Column(Integer, ForeignKey("funding_sources.id"))
     payor_org_id = Column(Integer, ForeignKey("organizations.id"))  # Route A/B final payor; NULL for C (assigned CSO)
@@ -70,6 +71,7 @@ class RateRule(Base):
     category_id = Column(Integer, ForeignKey("claim_categories.id"), nullable=False, index=True)
     cadre_id = Column(Integer, ForeignKey("cadres.id"))  # NULL = any cadre
     region_id = Column(Integer, ForeignKey("regions.id"))  # NULL = any region
+    facility_id = Column(Integer, ForeignKey("facilities.id"))  # NULL = any facility (e.g. per-facility service rates)
     component_name = Column(String(255), nullable=False)
     unit_type = Column(String(20), nullable=False)
     measure_key = Column(String(80))
@@ -122,6 +124,7 @@ class PaymentClaim(Base):
     exception_reason = Column(Text)
     calculation_snapshot = Column(JSONB)
     batch_id = Column(Integer, ForeignKey("payroll_batches.id"), index=True)
+    origin = Column(String(20), nullable=False, default="MANUAL", server_default="MANUAL")  # MANUAL | RPM_APPROVAL
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     verified_by = Column(Integer, ForeignKey("users.id"))
     verified_at = Column(DateTime(timezone=True))
