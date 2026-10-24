@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .api.endpoints import admin, auth, batches, budgets, claims, dashboard, staff, worklogs, rates
+from .api.endpoints import admin, auth, batches, budgets, claims, dashboard, staff, worklogs, rates, finance
 from .core import config
 from .db.session import get_db
 
@@ -25,6 +25,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(worklogs.router, prefix="/worklogs", tags=["Work logs"])
 app.include_router(rates.router, prefix="/rates", tags=["Activity rates"])
+app.include_router(finance.router, prefix="/finance", tags=["Regional Finance"])
 app.include_router(claims.router, prefix="/claims", tags=["Payment claims"])
 app.include_router(batches.router, prefix="/batches", tags=["Payroll batches"])
 app.include_router(budgets.router, prefix="/budgets", tags=["Budgets"])

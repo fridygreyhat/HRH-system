@@ -17,7 +17,7 @@ import {
 } from '../../format';
 import { useApi } from '../../hooks';
 import { navigate } from '../../nav';
-import { ClaimCategory, ReturnFlag, WorkLogDetail, WorkLogSnapshot } from '../../types';
+import { ChannelResponse, ClaimCategory, FinancePayorsResponse, ReturnFlag, WorkLogDetail, WorkLogSnapshot } from '../../types';
 import { Alert, AuditTimeline, DevCodeNotice, Drawer, Facts, Field, Modal, ReasonDialog, Section, StatusBadge } from '../ui';
 import { EntriesView, FLAG_GENERAL_FIELDS, FlagsList, TotalsPanel } from './shared';
 
@@ -180,13 +180,17 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [reviewReached, setReviewReached] = useState(false);
   const [categoryId, setCategoryId] = useState('');
+  const [targetPayorId, setTargetPayorId] = useState('');
   const reviewMarker = useRef<HTMLDivElement | null>(null);
   const categories = useApi<ClaimCategory[]>(log?.workflow_version === 2 && (Boolean(log.finance_snapshot) || log.available_actions.includes('finance_review')) ? '/admin/claim-categories' : null);
+  const routingActionAvailable = Boolean(log?.available_actions.some((item) => item === 'route_fhi360' || item === 'route_cso'));
+  const payors = useApi<FinancePayorsResponse>(routingActionAvailable ? `/finance/payors?work_log_id=${logId}` : null);
 
   useEffect(() => {
     setReviewConfirmed(false);
     setReviewReached(false);
     setCategoryId(log ? snapshotCategoryId(log) : '');
+    setTargetPayorId('');
   }, [log]);
 
   useEffect(() => {
@@ -202,6 +206,25 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
   const perform = async (comment: string) => {
     if (!log || !action) return;
     try {
+      if (action === 'route_fhi360' || action === 'route_cso') {
+        if (!targetPayorId) throw new Error('Choose the destination payor before channeling this work log.');
+        const pendingClaim = log.claims.find((claim) => claim.status === 'PENDING_ROUTING');
+        const result = await api.post<ChannelResponse>('/finance/channel', {
+          work_log_id: log.id,
+          ...(pendingClaim ? { claim_id: pendingClaim.id } : {}),
+          target_payor_id: Number(targetPayorId),
+          review_confirmed: true,
+          review_type: log.work_type,
+          expected_version: log.version,
+          comment: comment || null,
+        });
+        setNotice(`Channelled to ${result.payor_name} · ${result.currency} ${result.amount}.`);
+        setAction(null);
+        setTargetPayorId('');
+        await reload();
+        onChanged?.();
+        return;
+      }
       const result = await api.post<WorkLogDetail>(`/worklogs/${log.id}/actions/${action}`, {
         comment: comment || null,
         expected_version: log.version,
@@ -482,6 +505,21 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
           }}
         >
           {action === 'return' && <FlagEditor log={log} flags={flags} onChange={setFlags} />}
+          {(action === 'route_fhi360' || action === 'route_cso') && (
+            <div className="stack">
+              <Alert>{payors.error}</Alert>
+              {payors.error && <button type="button" className="btn btn-secondary btn-sm" onClick={payors.reload}>Retry eligible payors</button>}
+              {payors.loading && <p className="muted small" role="status">Loading eligible payors…</p>}
+              {payors.data?.routing_exception && <div className="alert alert-warn" role="alert">{payors.data.routing_exception}</div>}
+              <Field label="Destination payor" hint="Choose explicitly. The correct organization is based on the provider’s verified assignment.">
+                <select required value={targetPayorId} onChange={(event) => setTargetPayorId(event.target.value)} disabled={payors.loading || Boolean(payors.error)}>
+                  <option value="">Choose destination payor…</option>
+                  {(payors.data?.eligible_payors || []).map((payor) => <option key={payor.id} value={payor.id}>{payor.name} · {payor.type}</option>)}
+                </select>
+              </Field>
+              {!payors.loading && !payors.error && payors.data?.eligible_payors.length === 0 && <p className="muted small">No eligible destination is available. Resolve the routing exception before channeling.</p>}
+            </div>
+          )}
         </ReasonDialog>
       )}
       {log && version !== null && <VersionModal log={log} version={version} onClose={() => setVersion(null)} />}

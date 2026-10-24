@@ -113,7 +113,15 @@ from the real bootstrap password.
 - Technical, RPM, Regional Finance and new channel-finance records enforce
   **Region × Cadre** scopes. Configure reviewer cadres and region scopes for
   these users; CSO Finance additionally requires the assigned CSO organization.
-- Routing creates a budget-committed READY claim; it is not a bank transfer.
+- Finance review prepares a `PENDING_ROUTING` claim without committing budget.
+  The Regional Finance Routing Queue shows the provider, captured cadre, assigned
+  facility and region. Channeling requires an explicit eligible `target_payor_id`:
+  the assigned CSO for Payroll or FHI360 for Services, never an arbitrary payor.
+  The `/finance/pending-routing`, `/finance/payors`, `/finance/regions` and
+  `/finance/channel` APIs enforce the same scope and approval controls as the UI.
+  Every channel action records the actor, timestamp and chosen payor. Returning
+  a finance-reviewed log cancels only its unpaid pending proposal, retaining audit.
+- Routing makes the claim budget-committed and READY; it is not a bank transfer.
   Insufficient budget holds both the claim and log. Only a fully recorded actual
   payment, with required evidence, marks the log PAID.
 - Reviewer controls remain below daily entries and monthly totals. The UI requires

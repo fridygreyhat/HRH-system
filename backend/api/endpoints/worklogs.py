@@ -84,6 +84,7 @@ class ActionIn(BaseModel):
     review_confirmed: bool = False
     review_type: Optional[str] = None
     category_id: Optional[int] = None
+    target_payor_id: Optional[int] = Field(default=None, gt=0)
     # Field-level correction flags for returns: [{"entry_date": "2026-08-03", "field": "clients_screened", "note": "..."}]
     flags: list[dict] = []
     # Submission only
@@ -488,7 +489,8 @@ def perform_action(log_id: int, action: str, body: ActionIn = ActionIn(), db: Se
 
     details = {"flags": body.flags} if body.flags else {}
     if log.workflow_version >= 2:
-        details.update(review_confirmed=body.review_confirmed, review_type=body.review_type, category_id=body.category_id)
+        details.update(review_confirmed=body.review_confirmed, review_type=body.review_type, category_id=body.category_id,
+                       target_payor_id=body.target_payor_id)
     if action == "submit":
         if not body.attest:
             raise HTTPException(status_code=422, detail="Confirm that the entries are true and complete before submitting")

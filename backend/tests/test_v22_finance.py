@@ -66,6 +66,7 @@ def route_log(api, db, v22, log, route):
     body = {"review_confirmed": True, "review_type": log["work_type"], "category_id": category_id(db, route)}
     reviewed = api.post(f"/worklogs/{log['id']}/actions/finance_review", v22["finance"], body)
     assert reviewed["status"] == "FINANCE_REVIEWED"
+    body["target_payor_id"] = reviewed["finance_snapshot"]["payor_org_id"]
     channel = "fhi360" if log["work_type"] == "SERVICES" else "cso"
     wrong = "cso" if channel == "fhi360" else "fhi360"
     api.post(f"/worklogs/{log['id']}/actions/route_{wrong}", v22["finance"], body, expect=403)

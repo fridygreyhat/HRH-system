@@ -22,7 +22,10 @@ def test_stage_notifications_are_queued_and_delivered_by_the_worker(api, period,
     approved = _outbox(db, log["id"], "WORKLOG_APPROVED")
     assert len(approved) == 1
 
-    process_outbox(db)
+    # Other acceptance scenarios share this test database and may already have
+    # queued more messages than one normal (50-message) worker batch.
+    pending_count = db.execute(text("select count(*) from sms_outbox where status = 'PENDING'")).scalar_one()
+    process_outbox(db, limit=max(50, pending_count))
     db.expire_all()
     # The submission message became stale (status moved on) and is suppressed; the approval is sent.
     assert _outbox(db, log["id"], "WORKLOG_SUBMITTED")[0][1] == "SUPPRESSED"

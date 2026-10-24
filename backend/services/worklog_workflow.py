@@ -253,12 +253,13 @@ def transition(
         if action == "finance_review":
             finance_gate.review(db, current, log, (details or {}).get("category_id"))
         elif action.startswith("route_"):
-            details = {**(details or {}), **finance_gate.route(db, current, log, "FHI360" if action == "route_fhi360" else "CSO")}
+            details = {**(details or {}), **finance_gate.route(db, current, log, "FHI360" if action == "route_fhi360" else "CSO", (details or {}).get("target_payor_id"))}
         elif action == "release" and log.finance_snapshot:
-            details = {**(details or {}), **finance_gate.route(db, current, log, log.finance_snapshot["channel"])}
+            details = {**(details or {}), **finance_gate.route(db, current, log, log.finance_snapshot["channel"], log.finance_snapshot["payor_org_id"])}
         elif action == "release":
             log.status = PENDING_FINANCE
         elif next_status == RETURNED:
+            finance_gate.cancel_pending(db, current, log, comment)
             log.finance_snapshot = None
             log.routed_channel = None
     log.status_changed_at = now

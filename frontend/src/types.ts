@@ -115,6 +115,51 @@ export interface WorkLogSummary {
   hours_in_status: number;
 }
 
+export interface RoutingPayor {
+  id: number;
+  name: string;
+  type: string;
+}
+
+export interface RoutingQueueItem {
+  work_log_id: number;
+  claim_id: number | null;
+  workflow_version: 2;
+  work_type: 'SERVICES' | 'PAYROLL';
+  provider_name: string;
+  cadre_id: number;
+  cadre_code: string;
+  cadre_name: string;
+  facility_id: number | null;
+  facility_name: string | null;
+  region_id: number;
+  region_name: string;
+  period_label: string;
+  status: string;
+  amount: string;
+  currency: string;
+  eligible_payors: RoutingPayor[];
+  routing_exception: string | null;
+}
+
+export interface FinancePayorsResponse {
+  work_log_id: number;
+  eligible_payors: RoutingPayor[];
+  routing_exception: string | null;
+}
+
+export interface ChannelResponse {
+  work_log_id: number;
+  claim_id: number;
+  status: string;
+  claim_status: string;
+  payor_id: number;
+  payor_name: string;
+  channel: string;
+  amount: string;
+  currency: string;
+}
+
 export interface WorkLogEntry {
   id: number;
   entry_date: string;
