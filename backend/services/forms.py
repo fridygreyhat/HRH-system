@@ -1,5 +1,7 @@
 """Cadre form templates, server-side totals and frozen review snapshots."""
 from decimal import Decimal
+from collections import defaultdict
+from datetime import timedelta
 
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
@@ -19,6 +21,8 @@ from ..models import (
     WorkLogEntry,
     WorkLogMeasure,
 )
+from .activities import ACTIVITIES, CASCADES
+from ..core.settings import get_setting
 
 
 def cadre_fields(db: Session, cadre_id: int, include_inactive: bool = False) -> list[CadreFormField]:
@@ -47,6 +51,7 @@ def cadre_out(db: Session, cadre: Cadre, include_inactive: bool = False) -> dict
         "occupation_options": cadre.occupation_options,
         "is_active": cadre.is_active,
         "fields": [field_out(f) for f in cadre_fields(db, cadre.id, include_inactive)],
+        "activities": ACTIVITIES.get(cadre.code, []),
     }
 
 
@@ -119,6 +124,8 @@ def build_snapshot(db: Session, log: WorkLog) -> dict:
         "entries": [
             {
                 "date": str(e.entry_date),
+                "activity_key": e.activity_key,
+                "activity_location": e.activity_location,
                 "start_time": e.start_time.isoformat() if e.start_time else None,
                 "end_time": e.end_time.isoformat() if e.end_time else None,
                 "hours": str(e.hours_worked),
@@ -131,3 +138,56 @@ def build_snapshot(db: Session, log: WorkLog) -> dict:
         ],
         "totals": {k: (str(v) if not isinstance(v, dict) else {kk: str(vv) for kk, vv in v.items()}) for k, v in totals(db, log).items()},
     })
+
+
+def review_summary(db: Session, log: WorkLog) -> dict:
+    """Monthly totals and non-blocking flags for implausible measure funnels/hours."""
+    rows = entries_with_measures(db, log.id)
+    totals_by_key = totals(db, log)["measures"]
+    daily_max = Decimal(str(get_setting(db, "max_daily_hours")))
+    weekly_max = Decimal(str(get_setting(db, "max_weekly_hours")))
+    period = db.get(PayPeriod, log.period_id)
+    week_start = period.start_date - timedelta(days=period.start_date.weekday())
+    week_end = period.end_date + timedelta(days=6 - period.end_date.weekday())
+    week_hours: dict[object, Decimal] = defaultdict(Decimal)
+    history = (
+        db.query(WorkLogEntry.entry_date, WorkLogEntry.hours_worked)
+        .join(WorkLog, WorkLog.id == WorkLogEntry.work_log_id)
+        .filter(WorkLog.staff_id == log.staff_id, WorkLogEntry.entry_date >= week_start, WorkLogEntry.entry_date <= week_end)
+        .all()
+    )
+    for day, hours in history:
+        monday = day - timedelta(days=day.weekday())
+        week_hours[monday] += Decimal(hours)
+
+    anomalies = []
+    fields = {f.key: f.label_en for f in cadre_fields(db, log.cadre_id)}
+    for entry, measures in rows:
+        if entry.hours_worked > daily_max:
+            anomalies.append({"date": str(entry.entry_date), "code": "DAILY_HOURS", "message": f"{entry.hours_worked} hours exceeds the {daily_max}-hour daily limit."})
+        monday = entry.entry_date - timedelta(days=entry.entry_date.weekday())
+        if week_hours[monday] > weekly_max:
+            anomalies.append({"date": str(entry.entry_date), "code": "WEEKLY_HOURS", "message": f"{week_hours[monday]} hours in the week exceeds the {weekly_max}-hour weekly limit."})
+        for lower, upper, description in CASCADES.get(entry.activity_key, []):
+            if lower in measures and upper in measures and measures[lower] > measures[upper]:
+                anomalies.append({
+                    "date": str(entry.entry_date), "code": "CASCADE",
+                    "message": f"{fields.get(lower, lower)} exceeds {fields.get(upper, upper)}. {description}.",
+                })
+    activity_totals: dict[str, dict[str, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
+    for entry, measures in rows:
+        if entry.activity_key:
+            for key, value in measures.items():
+                activity_totals[entry.activity_key][key] += value
+    for activity_key, measures in activity_totals.items():
+        for lower, upper, description in CASCADES.get(activity_key, []):
+            if lower in measures and upper in measures and measures[lower] > measures[upper]:
+                anomalies.append({
+                    "date": None, "code": "MONTHLY_CASCADE",
+                    "message": f"Monthly total: {fields.get(lower, lower)} exceeds {fields.get(upper, upper)}. {description}.",
+                })
+    return {
+        "metrics": {key: str(value) for key, value in totals_by_key.items()},
+        "anomalies": anomalies,
+        "limits": {"daily_hours": str(daily_max), "weekly_hours": str(weekly_max), "backdate_grace_hours": get_setting(db, "backdate_grace_hours")},
+    }

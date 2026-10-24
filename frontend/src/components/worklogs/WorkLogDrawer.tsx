@@ -1,5 +1,5 @@
 import { ApprovalStepper } from './ApprovalStepper';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { api, ApiError } from '../../api';
 import {
   dateOnly,
@@ -172,6 +172,11 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
   const [devOtp, setDevOtp] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
   const [version, setVersion] = useState<number | null>(null);
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
+
+  useEffect(() => {
+    setReviewConfirmed(false);
+  }, [log?.id, log?.version, log?.status]);
 
   const perform = async (comment: string) => {
     if (!log || !action) return;
@@ -219,6 +224,31 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
             </button>
           </div>
           <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} technicalReviewer={log.cadre?.technical_reviewer_title} />
+          <Section title="Monthly provider summary">
+            <div className="row">
+              <span className="badge badge-neutral">{num(log.review_summary?.metrics ? log.totals.days : log.entry_count)} days worked</span>
+              <span className="badge badge-neutral">{num(log.totals.hours)} total hours</span>
+              <span className="badge badge-neutral">Daily limit: {log.review_summary?.limits.daily_hours} h</span>
+              <span className="badge badge-neutral">Weekly limit: {log.review_summary?.limits.weekly_hours} h</span>
+            </div>
+            <dl className="totals-list">
+              {log.cadre.fields.filter((field) => Number(log.review_summary?.metrics?.[field.key] ?? 0) > 0).map((field) => (
+                <div key={field.key}>
+                  <dt>{field.label_en}</dt>
+                  <dd>{num(Number(log.review_summary.metrics[field.key]))}</dd>
+                </div>
+              ))}
+            </dl>
+            {log.review_summary?.anomalies?.length > 0 && (
+              <div className="alert alert-warn" role="status">
+                <strong>Review flags — check these before deciding.</strong>
+                <ul>{log.review_summary.anomalies.map((anomaly, index) => (
+                  <li key={`${anomaly.date || 'monthly'}-${anomaly.code}-${index}`}>{anomaly.date ? `${dateOnly(anomaly.date)} · ` : ''}{anomaly.message}</li>
+                ))}</ul>
+              </div>
+            )}
+            <p className="muted small">Hour limits are enforced when entries are saved. Measure flags highlight possible data issues and do not automatically reject a log.</p>
+          </Section>
           {conflict && (
             <div className="alert alert-warn" role="alert">
               This work log changed since you opened it, so your action was not applied. Reload and review it again.{' '}
@@ -229,19 +259,6 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
           )}
           <Alert kind="success">{notice}</Alert>
           <DevCodeNotice code={devOtp} label="Development code sent to the provider (test mode only — real providers receive it by SMS)" />
-
-          {log.available_actions.length > 0 && (
-            <Section title="Your decision">
-              <div className="row">
-                {log.available_actions.map((a) => (
-                  <button key={a} className={`btn ${DESTRUCTIVE_ACTIONS.has(a) ? 'btn-secondary' : 'btn-primary'}`} onClick={() => setAction(a)}>
-                    {WORKLOG_ACTION_LABELS[a] || humanize(a)}
-                  </button>
-                ))}
-              </div>
-              <p className="muted small">Each work log is decided individually after reviewing its entries.</p>
-            </Section>
-          )}
 
           {log.location_exception_count > 0 && (
             <p className="notice">
@@ -332,6 +349,25 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
               statusKind="log"
             />
           </Section>
+
+          {log.available_actions.length > 0 && (
+            <Section title="Review and decide">
+              <p className="muted small">
+                Review the monthly summary, flags, and all daily entries above before recording your decision.
+              </p>
+              <label className="row">
+                <input type="checkbox" checked={reviewConfirmed} onChange={(e) => setReviewConfirmed(e.target.checked)} />
+                <span>I have cross-checked all entries and the monthly summary.</span>
+              </label>
+              <div className="row">
+                {log.available_actions.map((a) => (
+                  <button key={a} className={`btn ${DESTRUCTIVE_ACTIONS.has(a) ? 'btn-secondary' : 'btn-primary'}`} disabled={!reviewConfirmed} onClick={() => setAction(a)}>
+                    {WORKLOG_ACTION_LABELS[a] || humanize(a)}
+                  </button>
+                ))}
+              </div>
+            </Section>
+          )}
         </div>
       )}
 

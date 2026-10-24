@@ -56,7 +56,14 @@ interface Props {
 export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved, onClose }: Props) {
   const { t, lang } = useAuth();
   const direct = log.cadre.hours_mode === 'DIRECT';
+  const activities = log.cadre.activities || [];
+  const [activityKey, setActivityKey] = useState(entry?.activity_key || activities[0]?.key || '');
+  const selectedActivity = activities.find((activity) => activity.key === activityKey);
+  const visibleFields = selectedActivity
+    ? log.cadre.fields.filter((field) => selectedActivity.fields.includes(field.key))
+    : log.cadre.fields;
   const [hours, setHours] = useState(entry ? String(Number(entry.hours_worked)) : '');
+  const [activityLocation, setActivityLocation] = useState(entry?.activity_location || '');
   const [start, setStart] = useState(entry?.start_time?.slice(0, 5) || '');
   const [end, setEnd] = useState(entry?.end_time?.slice(0, 5) || '');
   const [measures, setMeasures] = useState<MeasureInput>(() => initialMeasures(log, entry));
@@ -81,10 +88,12 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const payload: Record<string, unknown> = {
+      activity_key: activityKey,
+      ...(activityKey === 'secondary_facility' ? { activity_location: activityLocation.trim() } : {}),
       evidence_text: evidence.trim(),
       comment: comment.trim() || null,
       measures: Object.fromEntries(
-        log.cadre.fields
+        visibleFields
           .filter((f) => measures[f.key] !== undefined && measures[f.key] !== '')
           .map((f) => [f.key, f.field_type === 'BOOLEAN' ? measures[f.key] === true : Number(measures[f.key])]),
       ),
@@ -132,6 +141,23 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
         </div>
       )}
 
+      {activities.length > 0 && (
+        <Field label={lang === 'sw' ? 'Aina ya shughuli' : 'Activity'} hint={lang === 'sw' ? 'Chagua shughuli ili kuonyesha viashiria vyake.' : 'Select an activity to show its specific indicators.'}>
+          <select required value={activityKey} onChange={(e) => setActivityKey(e.target.value)}>
+            {activities.map((activity) => (
+              <option key={activity.key} value={activity.key}>
+                {lang === 'sw' ? activity.label_sw : activity.label_en}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+      {activityKey === 'secondary_facility' && (
+        <Field label={lang === 'sw' ? 'Jina la kituo kingine' : 'Secondary facility name'}>
+          <input required maxLength={255} value={activityLocation} onChange={(e) => setActivityLocation(e.target.value)} />
+        </Field>
+      )}
+
       {direct ? (
         <Field label={<FieldLabel field={{ label_en: 'Hours worked', label_sw: 'Masaa uliyofanya kazi' }} lang={lang} />} className={flaggedFields.has('hours') ? 'flagged-field' : undefined}>
           <input type="number" inputMode="decimal" min="0.25" max="24" step="0.25" required value={hours} onChange={(e) => setHours(e.target.value)} />
@@ -148,7 +174,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
       )}
 
       <div className="measure-grid">
-        {log.cadre.fields.map((f) =>
+        {visibleFields.map((f) =>
           f.field_type === 'BOOLEAN' ? (
             <div key={f.key} className={`field${flaggedFields.has(f.key) ? ' flagged-field' : ''}`} role="group" aria-label={f.label_en}>
               <span className="field-label">

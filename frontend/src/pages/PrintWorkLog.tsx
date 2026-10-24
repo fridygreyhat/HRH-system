@@ -71,6 +71,18 @@ export function PrintWorkLog({ logId }: { logId: number }) {
     rows.push({ sw: 'Muda wa kumaliza', en: 'End time', cell: (d) => (byDate.get(d)?.end_time ? timeShort(byDate.get(d)?.end_time) : ''), total: '' });
   }
   rows.push({
+    sw: 'Aina ya shughuli',
+    en: 'Activity',
+    cell: (d) => log.cadre.activities?.find((activity) => activity.key === byDate.get(d)?.activity_key)?.label_en || '',
+    total: '',
+  });
+  rows.push({
+    sw: 'Kituo kingine',
+    en: 'Secondary facility',
+    cell: (d) => byDate.get(d)?.activity_location || '',
+    total: '',
+  });
+  rows.push({
     sw: 'Masaa uliyofanya kazi',
     en: 'Hours worked',
     cell: (d) => (byDate.has(d) ? num(byDate.get(d)?.hours_worked) : ''),

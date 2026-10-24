@@ -9,6 +9,13 @@ export interface CadreField {
   field_type: 'INTEGER' | 'BOOLEAN';
 }
 
+export interface CadreActivity {
+  key: string;
+  label_en: string;
+  label_sw: string;
+  fields: string[];
+}
+
 export interface Cadre {
   id: number;
   code: string;
@@ -22,6 +29,7 @@ export interface Cadre {
   uses_section: boolean;
   occupation_options: string[];
   fields: CadreField[];
+  activities: CadreActivity[];
 }
 
 export interface UserScope {
@@ -98,6 +106,8 @@ export interface WorkLogSummary {
 export interface WorkLogEntry {
   id: number;
   entry_date: string;
+  activity_key: string | null;
+  activity_location: string | null;
   start_time: string | null;
   end_time: string | null;
   hours_worked: number;
@@ -159,6 +169,11 @@ export interface WorkLogDetail extends WorkLogSummary {
   period: PayPeriod;
   entries: WorkLogEntry[];
   totals: { days: number; hours: number; measures: Record<string, number> };
+  review_summary: {
+    metrics: Record<string, string>;
+    anomalies: { date: string | null; code: string; message: string }[];
+    limits: { daily_hours: string; weekly_hours: string; backdate_grace_hours: number };
+  };
   location_exception_count: number;
   gps_visible: boolean;
   audit: WorkLogAudit[];
@@ -186,6 +201,8 @@ export interface WorkLogSnapshot {
     period_comment: string | null;
     entries: {
       date: string;
+      activity_key: string | null;
+      activity_location: string | null;
       start_time: string | null;
       end_time: string | null;
       hours: string;

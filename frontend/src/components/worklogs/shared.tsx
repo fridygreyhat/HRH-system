@@ -66,6 +66,11 @@ const isFlagged = (flags: ReturnFlag[], date: string, field?: string) => flags.s
 export function EntriesView({ log, lang, flags = [] }: { log: WorkLogDetail; lang: Lang; flags?: ReturnFlag[] }) {
   const { cadre, entries } = log;
   const startEnd = cadre.hours_mode !== 'DIRECT';
+  const activityFor = (key: string | null) => cadre.activities?.find((activity) => activity.key === key);
+  const fieldsFor = (key: string | null) => {
+    const activity = activityFor(key);
+    return activity ? cadre.fields.filter((field) => activity.fields.includes(field.key)) : cadre.fields;
+  };
   if (!entries.length) return <p className="muted">No daily entries.</p>;
   return (
     <>
@@ -76,11 +81,7 @@ export function EntriesView({ log, lang, flags = [] }: { log: WorkLogDetail; lan
               <th>Date</th>
               {startEnd && <th>Start–end</th>}
               <th className="num">Hours</th>
-              {cadre.fields.map((f) => (
-                <th key={f.key} className="num" title={f.label_sw || undefined}>
-                  {f.label_en}
-                </th>
-              ))}
+              <th>Activity and indicators</th>
               <th>Evidence / comment</th>
               <th>Location</th>
             </tr>
@@ -97,11 +98,18 @@ export function EntriesView({ log, lang, flags = [] }: { log: WorkLogDetail; lan
                   </td>
                 )}
                 <td className={`num${isFlagged(flags, e.entry_date, 'hours') ? ' flagged' : ''}`}>{num(e.hours_worked)}</td>
-                {cadre.fields.map((f) => (
-                  <td key={f.key} className={`num${isFlagged(flags, e.entry_date, f.key) ? ' flagged' : ''}`}>
-                    {measureValue(f, e.measures[f.key], lang)}
-                  </td>
-                ))}
+                <td>
+                  <strong>{activityFor(e.activity_key)?.[lang === 'sw' ? 'label_sw' : 'label_en'] || '—'}</strong>
+                  <ul className="small" style={{ margin: '0.25rem 0 0', paddingLeft: '1rem' }}>
+                    {fieldsFor(e.activity_key)
+                      .filter((field) => e.measures[field.key] !== undefined)
+                      .map((field) => (
+                        <li key={field.key} className={isFlagged(flags, e.entry_date, field.key) ? 'flagged' : undefined}>
+                          {lang === 'sw' ? field.label_sw : field.label_en}: {measureValue(field, e.measures[field.key], lang)}
+                        </li>
+                      ))}
+                  </ul>
+                </td>
                 <td className={isFlagged(flags, e.entry_date, 'evidence') ? 'flagged' : undefined}>
                   {e.evidence_text}
                   {e.comment && <div className="muted small">{e.comment}</div>}
@@ -128,11 +136,15 @@ export function EntriesView({ log, lang, flags = [] }: { log: WorkLogDetail; lan
             <dl>
               <dt>Hours{startEnd ? ` (${timeShort(e.start_time)}–${timeShort(e.end_time)})` : ''}</dt>
               <dd className={isFlagged(flags, e.entry_date, 'hours') ? 'flagged-field' : undefined}>{num(e.hours_worked)}</dd>
-              {cadre.fields.map((f) => (
+              {activityFor(e.activity_key) && (
+                <>
+                  <dt>Activity</dt>
+                  <dd>{activityFor(e.activity_key)?.[lang === 'sw' ? 'label_sw' : 'label_en']}</dd>
+                </>
+              )}
+              {fieldsFor(e.activity_key).map((f) => (
                 <React.Fragment key={f.key}>
-                  <dt>
-                    <FieldLabel field={f} lang={lang} />
-                  </dt>
+                  <dt><FieldLabel field={f} lang={lang} /></dt>
                   <dd className={isFlagged(flags, e.entry_date, f.key) ? 'flagged-field' : undefined}>{measureValue(f, e.measures[f.key], lang)}</dd>
                 </React.Fragment>
               ))}
@@ -160,7 +172,7 @@ export function TotalsPanel({ log, lang, title }: { log: WorkLogDetail; lang: La
           <dt>{lang === 'sw' ? 'Masaa / Hours' : 'Hours / Masaa'}</dt>
           <dd>{num(log.totals.hours)}</dd>
         </div>
-        {log.cadre.fields.map((f) => (
+        {log.cadre.fields.filter((f) => Number(log.totals.measures[f.key] ?? 0) > 0).map((f) => (
           <div key={f.key}>
             <dt>
               <FieldLabel field={f} lang={lang} />

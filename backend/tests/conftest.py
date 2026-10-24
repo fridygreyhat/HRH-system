@@ -11,7 +11,7 @@ import psycopg2
 import pytest
 
 BASE_URL = os.environ.get("DATABASE_URL", "postgresql+psycopg2://hrh_user:hrh_password@db:5432/hrh_db")
-TEST_DB = "hrh_test"
+TEST_DB = os.environ.get("HRH_TEST_DATABASE", "hrh_test")
 os.environ["DATABASE_URL"] = BASE_URL.rsplit("/", 1)[0] + "/" + TEST_DB
 # Tests read SMS codes from API responses (mock gateway only); sample data comes from tests/demo_data.py.
 os.environ.update({"SMS_GATEWAY_TYPE": "mock", "EXPOSE_DEV_OTP": "true", "UPLOAD_DIR": "/tmp/hrh-test-uploads"})
@@ -45,9 +45,12 @@ def client():
     with SessionLocal() as session:
         seed_test_data(session)
         # Tests act as the bootstrap administrator directly, so skip its first-sign-in password change.
-        from backend.models import User
+    from backend.models import SystemSetting, User
 
         session.query(User).filter(User.username == "admin").update({User.must_change_password: False})
+        # The acceptance suite uses archived periods; keep that separate from
+        # the production 48-hour grace policy.
+        session.merge(SystemSetting(key="backdate_grace_hours", value=1000000))
         session.commit()
     from fastapi.testclient import TestClient
 
@@ -142,9 +145,9 @@ def category_id(db, route: str) -> int:
 
 
 ENTRY = {
-    "CHW": lambda d: {"hours_worked": 8.5, "evidence_text": "Home visits and tracing in the community", "measures": {"clients_followed_up": 5, "ltfu_clients_assigned": 9, "clients_returned_to_care": 1}},
-    "DATA_CLERK": lambda d: {"start_time": "07:30", "end_time": "15:30", "evidence_text": "Updated CTC database and uploaded dataset", "measures": {"ctc_clients_registered": 8, "ctc_visits_updated": 8, "hts_clients_registered": 12, "pharmacy_visits_entered": 8, "ctc_hts_dataset_uploaded": True}},
-    "HCP": lambda d: {"start_time": "16:00", "end_time": "18:00", "evidence_text": "Index testing session at OPD", "measures": {"clients_tested_hiv": 6, "clients_tested_index": 6, "clients_tested_positive_new": 1, "hiv_positive_linked_art": 1}},
+    "CHW": lambda d: {"activity_key": "appointment_followup", "hours_worked": 8.5, "evidence_text": "Home visits and tracing in the community", "measures": {"clients_followed_up": 5, "ltfu_clients_assigned": 9, "clients_returned_to_care": 1}},
+    "DATA_CLERK": lambda d: {"activity_key": "ctc_data", "start_time": "07:30", "end_time": "15:30", "evidence_text": "Updated CTC database and uploaded dataset", "measures": {"ctc_clients_registered": 8, "ctc_visits_updated": 8, "hts_clients_registered": 12, "pharmacy_visits_entered": 8, "ctc_hts_dataset_uploaded": True}},
+    "HCP": lambda d: {"activity_key": "index_testing", "start_time": "16:00", "end_time": "18:00", "evidence_text": "Index testing session at OPD", "measures": {"clients_tested_hiv": 6, "clients_tested_index": 6, "hcp_index_appointments": 6, "hcp_index_positive": 1, "clients_tested_positive_new": 1, "hiv_positive_linked_art": 1}},
 }
 PROVIDER_CADRE = {"chw1": "CHW", "clerk1": "DATA_CLERK", "hcp1": "HCP", "hcp2": "HCP"}
 

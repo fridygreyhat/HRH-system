@@ -1,5 +1,5 @@
 import re
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional, Union
 
@@ -12,7 +12,7 @@ from ...core.roles import PROVIDER
 from ...core.security import CurrentUser, get_current_user, require_roles
 from ...core.serialize import to_dict
 from ...core.settings import get_setting
-from ...core.timeutil import local_today
+from ...core.timeutil import TZ, local_today
 from ...db.session import get_db
 from ...models import (
     Cadre,
@@ -34,7 +34,8 @@ from ...models import (
 from ...services import claims as claims_service
 from ...services import notifications
 from ...services import worklog_workflow as wf
-from ...services.forms import assignment_out, cadre_fields, cadre_out, entries_with_measures, totals
+from ...services.forms import assignment_out, cadre_fields, cadre_out, entries_with_measures, review_summary, totals
+from ...services.activities import activity_fields, activity_for
 from ...services.geo import LOCATION_EXCEPTIONS, location_status
 from ...services.otp import dev_code, issue_otp, verify_otp
 from ...services.scope import assignment_for_period, can_see_gps, worklog_visibility
@@ -57,6 +58,8 @@ class HeaderIn(BaseModel):
 
 
 class EntryIn(BaseModel):
+    activity_key: str = Field(min_length=1, max_length=80)
+    activity_location: Optional[str] = Field(default=None, max_length=255)
     start_time: Optional[time] = None
     end_time: Optional[time] = None
     hours_worked: Optional[Decimal] = Field(default=None, gt=0, le=24)
@@ -152,6 +155,7 @@ def _detail(db: Session, current: CurrentUser, log: WorkLog) -> dict:
         "period": to_dict(period),
         "entries": entries,
         "totals": totals(db, log),
+        "review_summary": review_summary(db, log),
         "location_exception_count": sum(1 for e in entries if e["location_exception"]),
         "gps_visible": show_gps,
         "audit": [{**to_dict(a), "actor_name": name} for a, name in audit_rows],
@@ -297,6 +301,14 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
         raise HTTPException(status_code=422, detail=f"{entry_date} is outside the period {period.start_date} – {period.end_date}")
     if entry_date > local_today():
         raise HTTPException(status_code=422, detail=f"{entry_date} is in the future")
+    backdate_hours = int(get_setting(db, "backdate_grace_hours"))
+    earliest_allowed = datetime.now(TZ) - timedelta(hours=backdate_hours)
+    entry_midnight = datetime.combine(entry_date, time.min, tzinfo=TZ)
+    if entry_midnight < earliest_allowed:
+        raise HTTPException(status_code=422, detail=f"Work-log entries may only be backdated {backdate_hours} hours.")
+    # Serialize edits by the staff member so concurrent submissions cannot
+    # each pass the daily/weekly cap using the same remaining hours.
+    db.query(Staff).filter(Staff.id == log.staff_id).with_for_update().one()
     if ID_PATTERN.search(body.evidence_text) or (body.comment and ID_PATTERN.search(body.comment)):
         raise HTTPException(status_code=422, detail="Evidence looks like it contains an ID or phone number. Do not record patient or client identifiers.")
 
@@ -314,9 +326,20 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
         start, end = body.start_time, body.end_time
 
     fields = {f.key: f for f in cadre_fields(db, cadre.id)}
+    activity = activity_for(cadre.code, body.activity_key)
+    if not activity:
+        raise HTTPException(status_code=422, detail=f"Select a valid activity for the {cadre.code} form.")
+    if body.activity_key == "secondary_facility" and not (body.activity_location or "").strip():
+        raise HTTPException(status_code=422, detail="Enter the name of the secondary facility.")
+    if body.activity_key != "secondary_facility" and body.activity_location:
+        raise HTTPException(status_code=422, detail="A secondary-facility name is only valid for that activity.")
+    allowed_fields = activity_fields(cadre.code, body.activity_key, set(fields))
     unknown = set(body.measures) - set(fields)
     if unknown:
         raise HTTPException(status_code=422, detail=f"Not on the {cadre.code} form: {sorted(unknown)}")
+    unlinked = set(body.measures) - allowed_fields
+    if unlinked:
+        raise HTTPException(status_code=422, detail=f"Measures are not part of the selected activity: {sorted(unlinked)}")
     values: dict[str, Decimal] = {}
     for key, raw in body.measures.items():
         if fields[key].field_type == "BOOLEAN":
@@ -328,12 +351,32 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
                 raise HTTPException(status_code=422, detail=f"{fields[key].label_en} must be a whole number between 0 and 10000")
             values[key] = Decimal(int(raw))
 
+    daily_max = Decimal(str(get_setting(db, "max_daily_hours")))
+    entry = db.query(WorkLogEntry).filter(WorkLogEntry.work_log_id == log.id, WorkLogEntry.entry_date == entry_date).first()
+    week_start = entry_date - timedelta(days=entry_date.weekday())
+    week_end = week_start + timedelta(days=6)
+    existing_hours = (
+        db.query(WorkLogEntry)
+        .join(WorkLog, WorkLog.id == WorkLogEntry.work_log_id)
+        .filter(WorkLog.staff_id == log.staff_id, WorkLogEntry.entry_date >= week_start, WorkLogEntry.entry_date <= week_end)
+        .all()
+    )
+    daily_total = sum(
+        (Decimal(row.hours_worked) for row in existing_hours if row.entry_date == entry_date and (not entry or row.id != entry.id)),
+        hours,
+    )
+    if daily_total > daily_max:
+        raise HTTPException(status_code=422, detail=f"Daily hours may not exceed {daily_max} (this date would total {daily_total}).")
+    weekly_total = sum((Decimal(row.hours_worked) for row in existing_hours if not entry or row.id != entry.id), hours)
+    weekly_max = Decimal(str(get_setting(db, "max_weekly_hours")))
+    if weekly_total > weekly_max:
+        raise HTTPException(status_code=422, detail=f"Weekly hours may not exceed {weekly_max} from Monday through Sunday (this entry would total {weekly_total}).")
+
     capture = "ENTRY" in get_setting(db, "gps_capture_events")
     lat, lon = (body.gps_lat, body.gps_lon) if capture else (None, None)
     assignment = db.get(StaffAssignment, log.assignment_id)
     facility = db.get(Facility, assignment.facility_id) if assignment.facility_id else None
 
-    entry = db.query(WorkLogEntry).filter(WorkLogEntry.work_log_id == log.id, WorkLogEntry.entry_date == entry_date).first()
     before = None
     if entry:
         before = {**to_dict(entry, exclude=("gps_lat", "gps_lon")), "measures": {m.field_key: m.value for m in db.query(WorkLogMeasure).filter(WorkLogMeasure.entry_id == entry.id)}}
@@ -341,6 +384,8 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
     else:
         entry = WorkLogEntry(work_log_id=log.id, entry_date=entry_date)
         db.add(entry)
+    entry.activity_key = body.activity_key
+    entry.activity_location = (body.activity_location or "").strip() or None
     entry.start_time, entry.end_time, entry.hours_worked = start, end, hours
     entry.evidence_text, entry.comment = body.evidence_text.strip(), (body.comment or "").strip() or None
     if capture:

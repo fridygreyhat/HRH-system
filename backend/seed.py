@@ -18,6 +18,7 @@ from .core.security import hash_password
 from .db.session import SessionLocal
 from .models import Cadre, CadreFormField, District, Organization, PaymentRoute, Role, Region, Section, SMSTemplate, User, UserRole, UserScope, Ward
 from .services.templates import EVENTS, LANGUAGES, PROTECTED_EVENTS
+from .services.activities import FIELD_SPECS
 
 logger = logging.getLogger(__name__)
 
@@ -135,9 +136,14 @@ def seed(db: Session) -> None:
         _get_or_create(db, Section, code=code, defaults={"name": name})
     for spec in CADRES:
         cadre, _ = _get_or_create(db, Cadre, code=spec["code"], defaults={k: v for k, v in spec.items() if k not in ("code", "fields")})
-        for order, field in enumerate(spec["fields"]):
+        fields = [*spec["fields"], *FIELD_SPECS[spec["code"]]]
+        for order, field in enumerate(fields):
             key, en, sw, *ftype = field
-            _get_or_create(db, CadreFormField, cadre_id=cadre.id, key=key, defaults={"label_en": en, "label_sw": sw, "sort_order": order, "field_type": ftype[0] if ftype else "INTEGER"})
+            row, created = _get_or_create(db, CadreFormField, cadre_id=cadre.id, key=key, defaults={"label_en": en, "label_sw": sw, "sort_order": order, "field_type": ftype[0] if ftype else "INTEGER"})
+            if not created:
+                row.label_en, row.label_sw = en, sw
+                row.field_type = ftype[0] if ftype else "INTEGER"
+                row.is_active = True
     for code, name, description in ROUTES:
         _get_or_create(db, PaymentRoute, code=code, defaults={"name": name, "description": description})
     for event, meta in EVENTS.items():

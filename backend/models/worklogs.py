@@ -70,6 +70,8 @@ class WorkLogEntry(Base):
     id = Column(Integer, primary_key=True)
     work_log_id = Column(Integer, ForeignKey("work_logs.id", ondelete="CASCADE"), nullable=False, index=True)
     entry_date = Column(Date, nullable=False)
+    activity_key = Column(String(80))
+    activity_location = Column(String(255))
     start_time = Column(Time)
     end_time = Column(Time)
     hours_worked = Column(Numeric(5, 2), nullable=False)
