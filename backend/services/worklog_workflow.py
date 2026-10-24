@@ -35,6 +35,7 @@ from ..models import (
 from . import notifications
 from .forms import build_snapshot, entries_with_measures, review_summary
 from .activities import activity_for
+from .work_hours import HOUR_POLICY_CODES
 from .scope import assignment_in_role_scope, assignments_in_role_scope, users_in_scope_for
 
 DRAFT = "DRAFT"
@@ -238,7 +239,7 @@ def _validate_submission(db: Session, log: WorkLog) -> None:
         missing = set(activity["required_fields"]) - set(measures)
         if missing:
             raise HTTPException(status_code=422, detail=f"Complete all required indicators for {entry.entry_date}: {', '.join(sorted(missing))}. Enter zero when none were recorded.")
-    hour_flags = [flag for flag in review_summary(db, log)["anomalies"] if flag["code"] in {"DAILY_HOURS", "WEEKLY_HOURS"}]
+    hour_flags = [flag for flag in review_summary(db, log)["anomalies"] if flag["code"] in HOUR_POLICY_CODES]
     if hour_flags:
         raise HTTPException(status_code=422, detail=hour_flags[0]["message"])
 

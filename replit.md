@@ -75,9 +75,12 @@ from the real bootstrap password.
   zero counts and explicit No checklist answers are valid.
 - The imported daily-entry model is retained: one activity per provider/date within
   each work log. Secondary-facility data entry also records the supporting facility.
-- User-specified limits are **8.5 hours/day** and **45 hours/Monday–Sunday week**,
-  summed across the provider's logs. The API serializes staff entry edits to prevent
-  concurrent writes from bypassing those limits.
+- The user confirmed **9 hours per weekday** and **45 hours total Monday–Friday**.
+  **Saturday weekend clinics must total 4–6 hours** and are counted separately
+  from the weekday limit. **Sunday work is not allowed.** This supersedes any older
+  descriptions mentioning 8.5 hours/day or a Monday–Sunday 45-hour cap.
+  Limits are summed across the provider's logs. The API serializes staff entry
+  edits to prevent concurrent writes from bypassing those limits.
 - New backdated entries have a **48-hour** grace period measured from activity
   completion. Date-only CHW entries use the end of the local workday. Corrections
   to previously recorded dates remain available in editable/returned logs, with

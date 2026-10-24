@@ -174,7 +174,7 @@ export interface WorkLogDetail extends WorkLogSummary {
     metrics: Record<string, string>;
     months: { month: string; days: number; hours: string; metrics: Record<string, string> }[];
     anomalies: { date: string | null; code: string; message: string }[];
-    limits: { daily_hours: string; weekly_hours: string; backdate_grace_hours: number };
+    limits: { daily_hours: string; weekly_hours: string; saturday_min_hours: string; saturday_max_hours: string; sunday_allowed: boolean; backdate_grace_hours: number };
   };
   location_exception_count: number;
   gps_visible: boolean;

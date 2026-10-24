@@ -36,6 +36,7 @@ from ...services import notifications
 from ...services import worklog_workflow as wf
 from ...services.forms import assignment_out, cadre_fields, cadre_out, entries_with_measures, review_summary, totals
 from ...services.activities import activity_fields, activity_for
+from ...services.work_hours import day_hours_violation, hour_limits
 from ...services.geo import LOCATION_EXCEPTIONS, location_status
 from ...services.otp import dev_code, issue_otp, verify_otp
 from ...services.scope import assignment_for_period, can_see_gps, worklog_visibility
@@ -356,7 +357,7 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
                 raise HTTPException(status_code=422, detail=f"{fields[key].label_en} must be a whole number between 0 and 10000")
             values[key] = Decimal(int(raw))
 
-    daily_max = Decimal(str(get_setting(db, "max_daily_hours")))
+    limits = hour_limits(db)
     week_start = entry_date - timedelta(days=entry_date.weekday())
     week_end = week_start + timedelta(days=6)
     existing_hours = (
@@ -369,12 +370,15 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
         (Decimal(row.hours_worked) for row in existing_hours if row.entry_date == entry_date and (not entry or row.id != entry.id)),
         hours,
     )
-    if daily_total > daily_max:
-        raise HTTPException(status_code=422, detail=f"Daily hours may not exceed {daily_max} (this date would total {daily_total}).")
-    weekly_total = sum((Decimal(row.hours_worked) for row in existing_hours if not entry or row.id != entry.id), hours)
-    weekly_max = Decimal(str(get_setting(db, "max_weekly_hours")))
-    if weekly_total > weekly_max:
-        raise HTTPException(status_code=422, detail=f"Weekly hours may not exceed {weekly_max} from Monday through Sunday (this entry would total {weekly_total}).")
+    violation = day_hours_violation(entry_date, daily_total, limits)
+    if violation:
+        raise HTTPException(status_code=422, detail=violation["message"])
+    weekly_total = sum(
+        (Decimal(row.hours_worked) for row in existing_hours if row.entry_date.weekday() < 5 and (not entry or row.id != entry.id)),
+        hours if entry_date.weekday() < 5 else Decimal(0),
+    )
+    if entry_date.weekday() < 5 and weekly_total > limits["weekly_hours"]:
+        raise HTTPException(status_code=422, detail=f"Weekday hours may not exceed {limits['weekly_hours']} from Monday through Friday; Saturday clinics are separate (this entry would total {weekly_total}).")
 
     capture = "ENTRY" in get_setting(db, "gps_capture_events")
     lat, lon = (body.gps_lat, body.gps_lon) if capture else (None, None)

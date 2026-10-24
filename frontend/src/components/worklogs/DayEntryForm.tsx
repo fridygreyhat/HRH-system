@@ -56,6 +56,12 @@ interface Props {
 export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved, onClose }: Props) {
   const { t, lang } = useAuth();
   const direct = log.cadre.hours_mode === 'DIRECT';
+  const dayOfWeek = new Date(`${date}T12:00:00Z`).getUTCDay();
+  const isSaturday = dayOfWeek === 6;
+  const isSunday = dayOfWeek === 0;
+  const limits = log.review_summary.limits;
+  const minimumHours = isSaturday ? Number(limits.saturday_min_hours) : 0.25;
+  const maximumHours = Number(isSaturday ? limits.saturday_max_hours : limits.daily_hours);
   const activities = log.cadre.activities || [];
   const [activityKey, setActivityKey] = useState(entry?.activity_key || activities[0]?.key || '');
   const selectedActivity = activities.find((activity) => activity.key === activityKey);
@@ -134,6 +140,12 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
         </button>
       </div>
 
+      <p className={isSunday ? 'alert alert-warn' : 'muted small'}>
+        {lang === 'sw'
+          ? `Jumatatu–Ijumaa: hadi saa ${limits.daily_hours} kwa siku na ${limits.weekly_hours} kwa wiki. Kliniki za Jumamosi: saa ${limits.saturday_min_hours}–${limits.saturday_max_hours}, hazihesabiwi kwenye kikomo cha siku za kazi. Kazi ya Jumapili hairuhusiwi.`
+          : `Monday–Friday: up to ${limits.daily_hours} hours per day and ${limits.weekly_hours} total. Saturday weekend clinics: ${limits.saturday_min_hours}–${limits.saturday_max_hours} hours, separate from the weekday limit. Sunday work is not allowed.`}
+      </p>
+
       {dayFlags.length > 0 && (
         <div className="alert alert-warn">
           <strong>{t('flagged')}:</strong>
@@ -167,7 +179,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
 
       {direct ? (
         <Field label={<FieldLabel field={{ label_en: 'Hours worked', label_sw: 'Masaa uliyofanya kazi' }} lang={lang} />} className={flaggedFields.has('hours') ? 'flagged-field' : undefined}>
-          <input type="number" inputMode="decimal" min="0.25" max="24" step="0.25" required value={hours} onChange={(e) => setHours(e.target.value)} />
+          <input type="number" inputMode="decimal" min={minimumHours} max={maximumHours} step="0.25" required value={hours} onChange={(e) => setHours(e.target.value)} />
         </Field>
       ) : (
         <div className={`grid-2${flaggedFields.has('hours') ? ' flagged-field' : ''}`}>
@@ -247,7 +259,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
 
       <Alert>{validationError || save.error || remove.error}</Alert>
       <div className="row">
-        <button className="btn btn-primary" disabled={busy || evidence.trim().length < 3}>
+        <button className="btn btn-primary" disabled={busy || isSunday || evidence.trim().length < 3}>
           {save.busy ? t('saving') : t('saveDay')}
         </button>
         {entry && (

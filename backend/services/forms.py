@@ -23,6 +23,7 @@ from ..models import (
     WorkLogMeasure,
 )
 from .activities import ACTIVITIES, CASCADES
+from .work_hours import day_hours_violation, hour_limits
 from ..core.settings import get_setting
 
 
@@ -145,12 +146,13 @@ def review_summary(db: Session, log: WorkLog, current=None) -> dict:
     """Monthly totals and non-blocking flags for implausible measure funnels/hours."""
     rows = entries_with_measures(db, log.id)
     totals_by_key = totals(db, log)["measures"]
-    daily_max = Decimal(str(get_setting(db, "max_daily_hours")))
-    weekly_max = Decimal(str(get_setting(db, "max_weekly_hours")))
+    limits = hour_limits(db)
+    weekly_max = limits["weekly_hours"]
     period = db.get(PayPeriod, log.period_id)
     week_start = period.start_date - timedelta(days=period.start_date.weekday())
     week_end = period.end_date + timedelta(days=6 - period.end_date.weekday())
     week_hours: dict[object, Decimal] = defaultdict(Decimal)
+    day_hours: dict[object, Decimal] = defaultdict(Decimal)
     history = (
         db.query(WorkLogEntry.entry_date, WorkLogEntry.hours_worked)
         .join(WorkLog, WorkLog.id == WorkLogEntry.work_log_id)
@@ -158,17 +160,20 @@ def review_summary(db: Session, log: WorkLog, current=None) -> dict:
         .all()
     )
     for day, hours in history:
+        day_hours[day] += Decimal(hours)
         monday = day - timedelta(days=day.weekday())
-        week_hours[monday] += Decimal(hours)
+        if day.weekday() < 5:
+            week_hours[monday] += Decimal(hours)
 
     anomalies = []
     fields = {f.key: f.label_en for f in cadre_fields(db, log.cadre_id)}
     for entry, measures in rows:
-        if entry.hours_worked > daily_max:
-            anomalies.append({"date": str(entry.entry_date), "code": "DAILY_HOURS", "message": f"{entry.hours_worked} hours exceeds the {daily_max}-hour daily limit."})
+        violation = day_hours_violation(entry.entry_date, day_hours[entry.entry_date], limits)
+        if violation:
+            anomalies.append(violation)
         monday = entry.entry_date - timedelta(days=entry.entry_date.weekday())
-        if week_hours[monday] > weekly_max:
-            anomalies.append({"date": str(entry.entry_date), "code": "WEEKLY_HOURS", "message": f"{week_hours[monday]} hours in the week exceeds the {weekly_max}-hour weekly limit."})
+        if entry.entry_date.weekday() < 5 and week_hours[monday] > weekly_max:
+            anomalies.append({"date": str(entry.entry_date), "code": "WEEKLY_HOURS", "message": f"{week_hours[monday]} Monday–Friday hours exceeds the {weekly_max}-hour weekday-week limit; Saturday clinics are separate."})
         for lower, upper, description in CASCADES.get(entry.activity_key, []):
             if lower in measures and upper in measures and measures[lower] > measures[upper]:
                 anomalies.append({
@@ -182,7 +187,7 @@ def review_summary(db: Session, log: WorkLog, current=None) -> dict:
         "metrics": {key: str(value) for key, value in totals_by_key.items()},
         "months": months,
         "anomalies": anomalies,
-        "limits": {"daily_hours": str(daily_max), "weekly_hours": str(weekly_max), "backdate_grace_hours": get_setting(db, "backdate_grace_hours")},
+        "limits": {**{key: str(value) for key, value in limits.items()}, "sunday_allowed": False, "backdate_grace_hours": get_setting(db, "backdate_grace_hours")},
     }
 
 

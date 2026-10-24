@@ -6,7 +6,7 @@ production: the selected test database is dropped and recreated.
 import calendar
 import itertools
 import os
-from datetime import date
+from datetime import date, timedelta
 from functools import partial
 from unittest.mock import patch
 
@@ -126,6 +126,8 @@ def make_period(api: Api, db, amounts: dict | None = None) -> dict:
     n = next(_months)
     year, month = 2023 - n // 12, 12 - n % 12
     start = date(year, month, 1)
+    # Ordinary test entries start on a Monday; weekend rules are tested explicitly.
+    start += timedelta(days=(7 - start.weekday()) % 7)
     end = date(year, month, calendar.monthrange(year, month)[1])
     p = api.post("/admin/pay-periods", "central1", {"start_date": str(start), "end_date": str(end), "period_label": f"TEST {start:%b %Y}", "status": "OPEN"})
     amounts = amounts or {}

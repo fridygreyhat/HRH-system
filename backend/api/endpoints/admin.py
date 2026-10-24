@@ -601,10 +601,15 @@ class SettingIn(BaseModel):
 def put_setting(key: str, body: SettingIn, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(SYSTEM_ADMIN))):
     if key not in DEFAULTS:
         raise HTTPException(status_code=404, detail="Unknown setting")
-    if key in {"max_daily_hours", "max_weekly_hours"}:
-        if isinstance(body.value, bool) or not isinstance(body.value, (int, float)) or not 0 < body.value <= (24 if key == "max_daily_hours" else 168):
+    if key in {"max_daily_hours", "max_weekly_hours", "saturday_min_hours", "saturday_max_hours"}:
+        if isinstance(body.value, bool) or not isinstance(body.value, (int, float)) or not 0 < body.value <= (120 if key == "max_weekly_hours" else 24):
             raise HTTPException(status_code=422, detail=f"{key} must be a number within its valid range")
         body.value = float(body.value)
+        if key in {"saturday_min_hours", "saturday_max_hours"}:
+            limits = all_settings(db)
+            limits[key] = body.value
+            if limits["saturday_min_hours"] > limits["saturday_max_hours"]:
+                raise HTTPException(status_code=422, detail="Saturday minimum hours may not exceed Saturday maximum hours")
     elif type(body.value) is not type(DEFAULTS[key]):
         raise HTTPException(status_code=422, detail=f"{key} must be a {type(DEFAULTS[key]).__name__}")
     row = db.get(SystemSetting, key)

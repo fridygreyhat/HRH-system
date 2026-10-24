@@ -226,8 +226,10 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
           <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} technicalReviewer={log.cadre?.technical_reviewer_title} />
           <Section title="Monthly provider summary">
             <div className="row">
-              <span className="badge badge-neutral">Daily limit: {log.review_summary?.limits.daily_hours} h</span>
-              <span className="badge badge-neutral">Weekly limit: {log.review_summary?.limits.weekly_hours} h</span>
+              <span className="badge badge-neutral">Weekday daily limit: {log.review_summary?.limits.daily_hours} h</span>
+              <span className="badge badge-neutral">Monday–Friday limit: {log.review_summary?.limits.weekly_hours} h</span>
+              <span className="badge badge-neutral">Saturday clinics: {log.review_summary?.limits.saturday_min_hours}–{log.review_summary?.limits.saturday_max_hours} h, counted separately</span>
+              <span className="badge badge-neutral">No Sunday work</span>
             </div>
             {(log.review_summary?.months || []).map((month) => (
               <div key={month.month} className="stack">

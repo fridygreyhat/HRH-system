@@ -1,9 +1,24 @@
 """Acceptance checks for the imported CHW, Data Clerk and HCP activity sheets."""
 
 from datetime import date, timedelta
+from decimal import Decimal
+
+import pytest
 
 from backend.core.timeutil import local_today
 from .conftest import ENTRY
+from backend.services.work_hours import day_hours_violation
+
+
+@pytest.mark.parametrize("offset,hours,code", [
+    (0, "9", None), (0, "9.01", "DAILY_HOURS"), (4, "9", None),
+    (5, "3.99", "SATURDAY_HOURS"), (5, "4", None), (5, "6", None),
+    (5, "6.01", "SATURDAY_HOURS"), (6, "0", "SUNDAY_WORK"), (6, "4", "SUNDAY_WORK"),
+])
+def test_weekday_and_weekend_boundaries(offset, hours, code):
+    limits = {"daily_hours": Decimal(9), "weekly_hours": Decimal(45), "saturday_min_hours": Decimal(4), "saturday_max_hours": Decimal(6)}
+    violation = day_hours_violation(date(2026, 10, 19) + timedelta(days=offset), Decimal(hours), limits)
+    assert (violation["code"] if violation else None) == code
 
 
 def test_cadre_activities_and_new_indicators_are_configured(api, db):
@@ -77,7 +92,7 @@ def test_daily_weekly_hour_limits_and_backdating_are_enforced(api, period):
         too_long = {**first, "hours_worked": 8.75}
         api.put(f"/worklogs/{log['id']}/entries/{second_day}", "chw1", too_long, expect=422)
     finally:
-        api.put("/admin/settings/max_daily_hours", "admin", {"value": 8.5, "reason": "Restore configured limit"})
+        api.put("/admin/settings/max_daily_hours", "admin", {"value": 9.0, "reason": "Restore configured limit"})
         api.put("/admin/settings/max_weekly_hours", "admin", {"value": 45.0, "reason": "Restore configured limit"})
 
     api.put("/admin/settings/backdate_grace_hours", "admin", {"value": 48, "reason": "Test backdating"})
@@ -125,3 +140,47 @@ def test_monthly_summary_combines_visible_logs_across_pay_periods(api, period):
     assert summary["month"] == start.strftime("%Y-%m")
     assert summary["days"] == 2
     assert float(summary["hours"]) == 4
+
+
+def test_full_weekdays_plus_saturday_clinic_are_allowed_but_sunday_is_not(api, period):
+    monday = date.fromisoformat(period["start_date"])
+    assert monday.weekday() == 0
+    log = api.post("/worklogs", "chw1", {"period_id": period["id"]})
+    for offset in range(5):
+        body = {**ENTRY["CHW"](None), "hours_worked": 9}
+        log = api.put(f"/worklogs/{log['id']}/entries/{monday + timedelta(days=offset)}", "chw1", body)
+    saturday = monday + timedelta(days=5)
+    body = {**ENTRY["CHW"](None), "hours_worked": 6}
+    log = api.put(f"/worklogs/{log['id']}/entries/{saturday}", "chw1", body)
+    assert float(log["totals"]["hours"]) == 51
+    assert not any(flag["code"] in {"DAILY_HOURS", "WEEKLY_HOURS", "SATURDAY_HOURS", "SUNDAY_WORK"} for flag in log["review_summary"]["anomalies"])
+    for invalid_hours in (3.75, 6.25):
+        api.put(f"/worklogs/{log['id']}/entries/{saturday}", "chw1", {**body, "hours_worked": invalid_hours}, expect=422)
+    api.put(f"/worklogs/{log['id']}/entries/{saturday + timedelta(days=1)}", "chw1", body, expect=422)
+    submitted = api.post(f"/worklogs/{log['id']}/actions/submit", "chw1", {"attest": True})
+    assert submitted["status"] == "PENDING_CTC_VERIFICATION"
+
+
+def test_timed_saturday_clinics_and_existing_sunday_entries(api, db, period):
+    saturday = date.fromisoformat(period["start_date"]) + timedelta(days=5)
+    log = api.post("/worklogs", "hcp1", {"period_id": period["id"]})
+    body = {**ENTRY["HCP"](None), "start_time": "08:00", "end_time": "12:00"}
+    path = f"/worklogs/{log['id']}/entries/{saturday}"
+    saved = api.put(path, "hcp1", body)
+    assert float(saved["entries"][0]["hours_worked"]) == 4
+    api.put(path, "hcp1", {**body, "end_time": "14:00"})
+    api.put(path, "hcp1", {**body, "end_time": "11:45"}, expect=422)
+    api.put(path, "hcp1", {**body, "end_time": "14:15"}, expect=422)
+    # An old Sunday record is retained for audit, but cannot be resubmitted.
+    from backend.models import WorkLogEntry
+    db.query(WorkLogEntry).filter(WorkLogEntry.work_log_id == log["id"]).update({"entry_date": saturday + timedelta(days=1)})
+    db.commit()
+    detail = api.get(f"/worklogs/{log['id']}", "hcp1")
+    assert any(flag["code"] == "SUNDAY_WORK" for flag in detail["review_summary"]["anomalies"])
+    api.post(f"/worklogs/{log['id']}/actions/submit", "hcp1", {"attest": True}, expect=422)
+
+
+def test_saturday_settings_cannot_have_inverted_limits(api):
+    for key, value in (("saturday_min_hours", 7.0), ("saturday_max_hours", 3.0)):
+        result = api.put(f"/admin/settings/{key}", "admin", {"value": value, "reason": "Test invalid weekend bounds"}, expect=422)
+        assert "Saturday minimum" in result["detail"]
