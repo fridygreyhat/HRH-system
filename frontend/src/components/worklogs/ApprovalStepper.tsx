@@ -77,17 +77,63 @@ export function ApprovalStepper({
   hoursInStatus,
   facilityEndorsed,
   technicalReviewer,
+  workflowVersion = 1,
+  workType = 'LEGACY',
 }: {
   status: string;
   audit: WorkLogAudit[];
   hoursInStatus?: number;
   facilityEndorsed?: string | null;
+  workflowVersion?: number;
+  workType?: 'LEGACY' | 'SERVICES' | 'PAYROLL';
   /** The cadre's technical reviewer position, shown in place of the generic "Technical Officer" */
   technicalReviewer?: string | null;
 }) {
   const { lang, me } = useAuth();
   const l = lang === 'sw' ? 'sw' : 'en';
   const otpSkipped = me?.client_settings.provider_otp_required === false;
+  if (workflowVersion === 2) {
+    const routeAction = status === 'ROUTED_CSO' ? 'route_cso' : 'route_fhi360';
+    const v2Steps = [
+      { action: 'submit', title: 'Submitted' },
+      { action: 'verify', title: 'CTC verification' },
+      { action: 'confirm_otp', title: 'Provider confirmation' },
+      { action: 'endorse', title: 'Technical review' },
+      { action: 'authorize', title: 'RPM authorization' },
+      { action: 'finance_review', title: 'Regional finance review' },
+      { action: routeAction, title: status === 'ROUTED_CSO' ? 'Routed to CSO' : 'Routed to FHI360' },
+      { action: 'paid', title: 'Paid' },
+    ];
+    const v2Position: Record<string, number> = {
+      DRAFT: 0, RETURNED_TO_PROVIDER: 0, PENDING_CTC_VERIFICATION: 1, PENDING_PROVIDER_OTP_CONFIRMATION: 2,
+      PENDING_TECHNICAL_REVIEW: 3, PENDING_RPM_AUTHORIZATION: 4, PENDING_FINANCE_REVIEW: 5,
+      FINANCE_REVIEWED: 6, ROUTED_FHI360: 7, ROUTED_CSO: 7, PAID: 8, APPROVED: 8,
+    };
+    const currentStep = v2Position[status] ?? 0;
+    const doneRows: Record<string, WorkLogAudit> = {};
+    audit.forEach((row) => { doneRows[row.action] = row; });
+    const rejected = status === 'REJECTED';
+    return (
+      <div className="stepper-wrap">
+        <p className="muted small">{workType} workflow · version 2</p>
+        <ol className="stepper" aria-label={l === 'sw' ? 'Hatua za idhini' : 'Approval steps'}>
+          {v2Steps.map((step, index) => {
+            const isPaid = step.action === 'paid';
+            const done = isPaid ? status === 'PAID' : index < currentStep || (index === 6 && (status === 'ROUTED_FHI360' || status === 'ROUTED_CSO' || status === 'PAID'));
+            const currentState = rejected && index === Math.min(currentStep, 5) ? 'danger' : done ? 'done' : index === currentStep && !isPaid ? 'current' : 'upcoming';
+            const auditRow = doneRows[step.action];
+            const title = step.action === 'endorse' && technicalReviewer ? technicalReviewer : step.title;
+            return <li key={`${step.action}-${index}`} className={`step step-${currentState}`} aria-current={currentState === 'current' ? 'step' : undefined}>
+              <span className="step-marker" aria-hidden="true">{currentState === 'done' ? <Icon name="check" size={15} /> : currentState === 'danger' ? <Icon name="close" size={14} /> : index + 1}</span>
+              <div className="step-text"><span className="step-title">{title}</span><span className="step-sub">
+                {auditRow ? `${auditRow.actor_name || 'Recorded'} · ${dateTime(auditRow.timestamp)}` : currentState === 'current' ? `Waiting${hoursInStatus !== undefined ? ` · ${hoursAge(hoursInStatus)}` : ''}` : isPaid ? 'Not yet paid' : 'Pending'}
+              </span></div>
+            </li>;
+          })}
+        </ol>
+      </div>
+    );
+  }
   const { current, state, note } = states(status, audit, otpSkipped);
   const by = completedBy(audit);
   const approved = status === 'APPROVED';

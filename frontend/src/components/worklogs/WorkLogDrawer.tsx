@@ -1,5 +1,5 @@
 import { ApprovalStepper } from './ApprovalStepper';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../api';
 import {
   dateOnly,
@@ -17,7 +17,7 @@ import {
 } from '../../format';
 import { useApi } from '../../hooks';
 import { navigate } from '../../nav';
-import { ReturnFlag, WorkLogDetail, WorkLogSnapshot } from '../../types';
+import { ClaimCategory, ReturnFlag, WorkLogDetail, WorkLogSnapshot } from '../../types';
 import { Alert, AuditTimeline, DevCodeNotice, Drawer, Facts, Field, Modal, ReasonDialog, Section, StatusBadge } from '../ui';
 import { EntriesView, FLAG_GENERAL_FIELDS, FlagsList, TotalsPanel } from './shared';
 
@@ -163,6 +163,11 @@ function VersionModal({ log, version, onClose }: { log: WorkLogDetail; version: 
   );
 }
 
+function snapshotCategoryId(log: WorkLogDetail): string {
+  const value = log.finance_snapshot?.category_id;
+  return value === null || value === undefined ? '' : String(value);
+}
+
 /** Reviewer detail drawer for one work log. Buttons come only from the server's `available_actions`. */
 export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; onClose: () => void; onChanged?: () => void }) {
   const { data: log, error, loading, setData, reload } = useApi<WorkLogDetail>(`/worklogs/${logId}`);
@@ -173,9 +178,25 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
   const [conflict, setConflict] = useState(false);
   const [version, setVersion] = useState<number | null>(null);
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
+  const [reviewReached, setReviewReached] = useState(false);
+  const [categoryId, setCategoryId] = useState('');
+  const reviewMarker = useRef<HTMLDivElement | null>(null);
+  const categories = useApi<ClaimCategory[]>(log?.workflow_version === 2 && (Boolean(log.finance_snapshot) || log.available_actions.includes('finance_review')) ? '/admin/claim-categories' : null);
 
   useEffect(() => {
     setReviewConfirmed(false);
+    setReviewReached(false);
+    setCategoryId(log ? snapshotCategoryId(log) : '');
+  }, [log]);
+
+  useEffect(() => {
+    const marker = reviewMarker.current;
+    if (!marker || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setReviewReached(true);
+    }, { threshold: 0.1 });
+    observer.observe(marker);
+    return () => observer.disconnect();
   }, [log?.id, log?.version, log?.status]);
 
   const perform = async (comment: string) => {
@@ -185,6 +206,11 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
         comment: comment || null,
         expected_version: log.version,
         flags: action === 'return' ? flags : [],
+        ...(log.workflow_version === 2 ? {
+          review_confirmed: true,
+          review_type: log.work_type,
+          ...(action === 'finance_review' ? { category_id: Number(categoryId) } : {}),
+        } : {}),
       });
       setData(result);
       setNotice(`${WORKLOG_ACTION_LABELS[action] || humanize(action)}: done.`);
@@ -223,7 +249,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
               Print view
             </button>
           </div>
-          <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} technicalReviewer={log.cadre?.technical_reviewer_title} />
+          <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} technicalReviewer={log.cadre?.technical_reviewer_title} workflowVersion={log.workflow_version} workType={log.work_type} />
           <Section title="Monthly provider summary">
             <div className="row">
               <span className="badge badge-neutral">Weekday daily limit: {log.review_summary?.limits.daily_hours} h</span>
@@ -345,6 +371,61 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
             </Section>
           )}
 
+          {log.workflow_version === 2 && log.financial_preview && (
+            <Section title="Financial preview">
+              <p className="muted small">Indicative only until finance review. Historical paid records retain their original snapshot.</p>
+              {log.financial_preview.exceptions.length > 0 && (
+                <div className="alert alert-warn"><strong>Exceptions</strong><ul>{log.financial_preview.exceptions.map((exception, i) => <li key={`${exception}-${i}`}>{exception}</li>)}</ul></div>
+              )}
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>Date</th><th>Activity</th><th className="num">Units</th><th className="num">Rate</th><th className="num">Amount</th></tr></thead>
+                  <tbody>{log.financial_preview.lines.map((line) => (
+                    <tr key={line.entry_id}><td>{dateOnly(line.date)}</td><td>{line.activity}</td><td className="num">{line.units}</td><td className="num">{line.rate == null ? <span className="badge badge-warn">Rate missing</span> : `${line.rate}${line.currency ? ` ${line.currency}` : ''}`}</td><td className="num">{line.amount == null ? '—' : `${line.amount}${line.currency ? ` ${line.currency}` : ''}`}</td></tr>
+                  ))}</tbody>
+                </table>
+              </div>
+              <p><strong>Total: {log.financial_preview.total} {log.financial_preview.currency || ''}</strong></p>
+            </Section>
+          )}
+          {log.workflow_version === 2 && log.finance_snapshot && (
+            <Section title="Finance snapshot · immutable">
+              <p className="muted small">This saved snapshot is retained with the work log. Later rate revisions do not rewrite it.</p>
+              {(() => {
+                const snapshot = log.finance_snapshot || {};
+                const rawLines = Array.isArray(snapshot.lines) ? snapshot.lines : Array.isArray(snapshot.components) ? snapshot.components : [];
+                const lines = rawLines.filter((line): line is Record<string, unknown> => Boolean(line) && typeof line === 'object');
+                const categoryLookup = categories.data?.find((item) => String(item.id) === String(snapshot.category_id));
+                const category = typeof snapshot.category_name === 'string'
+                  ? snapshot.category_name
+                  : typeof snapshot.category === 'string'
+                    ? snapshot.category
+                    : snapshot.category && typeof snapshot.category === 'object' && 'name' in snapshot.category
+                      ? String((snapshot.category as { name: unknown }).name)
+                      : categoryLookup
+                        ? categoryLookup.name
+                      : snapshot.category_id !== undefined
+                        ? `Category #${String(snapshot.category_id)}`
+                        : 'Not recorded';
+                return <>
+                  <p><strong>Finance category:</strong> {category}</p>
+                  {lines.length > 0 && <div className="table-wrap"><table>
+                    <thead><tr><th>Date</th><th>Activity / component</th><th className="num">Units</th><th className="num">Rate</th><th className="num">Amount</th></tr></thead>
+                    <tbody>{lines.map((line, index) => <tr key={String(line.entry_id ?? line.id ?? index)}>
+                      <td>{String(line.date ?? '—')}</td>
+                      <td>{String(line.activity ?? line.component_name ?? line.component ?? '—')}</td>
+                      <td className="num">{String(line.units ?? '—')}</td>
+                      <td className="num">{line.rate == null ? <span className="badge badge-warn">Rate missing</span> : String(line.rate)}</td>
+                      <td className="num">{line.amount == null ? '—' : `${String(line.amount)}${line.currency ? ` ${String(line.currency)}` : ''}`}</td>
+                    </tr>)}</tbody>
+                  </table></div>}
+                  {snapshot.total !== undefined && <p><strong>Saved total:</strong> {String(snapshot.total)} {String(snapshot.currency || '')}</p>}
+                </>;
+              })()}
+              <details><summary className="small">View full saved snapshot</summary><pre className="small" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: 0 }}>{JSON.stringify(log.finance_snapshot, null, 2)}</pre></details>
+            </Section>
+          )}
+
           <Section title="Audit trail">
             <AuditTimeline
               rows={log.audit.map((a) => ({
@@ -356,18 +437,28 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
             />
           </Section>
 
+          <div ref={reviewMarker} aria-hidden="true" style={{ height: 1 }} />
           {log.available_actions.length > 0 && (
             <Section title="Review and decide">
               <p className="muted small">
                 Review the monthly summary, flags, and all daily entries above before recording your decision.
               </p>
+              {!reviewReached && <p className="notice notice-info">Scroll through the full work-log detail before confirming your review.</p>}
+              {log.workflow_version === 2 && log.available_actions.includes('finance_review') && (
+                <Field label="Claim category">
+                  <select required value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+                    <option value="">Choose category…</option>
+                    {(categories.data || []).filter((category) => category.is_active).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                  </select>
+                </Field>
+              )}
               <label className="row">
-                <input type="checkbox" checked={reviewConfirmed} onChange={(e) => setReviewConfirmed(e.target.checked)} />
+                <input type="checkbox" checked={reviewConfirmed} disabled={!reviewReached} onChange={(e) => setReviewConfirmed(e.target.checked)} />
                 <span>I have cross-checked all entries and the monthly summary.</span>
               </label>
               <div className="row">
                 {log.available_actions.map((a) => (
-                  <button key={a} className={`btn ${DESTRUCTIVE_ACTIONS.has(a) ? 'btn-secondary' : 'btn-primary'}`} disabled={!reviewConfirmed} onClick={() => setAction(a)}>
+                  <button key={a} className={`btn ${DESTRUCTIVE_ACTIONS.has(a) ? 'btn-secondary' : 'btn-primary'}`} disabled={!reviewReached || !reviewConfirmed || (a === 'finance_review' && !categoryId)} onClick={() => setAction(a)}>
                     {WORKLOG_ACTION_LABELS[a] || humanize(a)}
                   </button>
                 ))}

@@ -55,19 +55,29 @@ interface Props {
 /** One day's entry: hours (or start/end), one input per cadre field, evidence and optional GPS. */
 export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved, onClose }: Props) {
   const { t, lang } = useAuth();
-  const direct = log.cadre.hours_mode === 'DIRECT';
   const dayOfWeek = new Date(`${date}T12:00:00Z`).getUTCDay();
   const isSaturday = dayOfWeek === 6;
   const isSunday = dayOfWeek === 0;
   const limits = log.review_summary.limits;
   const minimumHours = isSaturday ? Number(limits.saturday_min_hours) : 0.25;
   const maximumHours = Number(isSaturday ? limits.saturday_max_hours : limits.daily_hours);
-  const activities = log.cadre.activities || [];
-  const [activityKey, setActivityKey] = useState(entry?.activity_key || activities[0]?.key || '');
+  const allActivities = log.cadre.activities || [];
+  const applicableActivities = allActivities.filter((activity) =>
+    (!activity.effective_start_date || activity.effective_start_date <= date) &&
+    (!activity.effective_end_date || date < activity.effective_end_date),
+  );
+  const activities = entry?.activity_key && !applicableActivities.some((activity) => activity.key === entry.activity_key)
+    ? [...applicableActivities, ...allActivities.filter((activity) => activity.key === entry.activity_key)]
+    : applicableActivities;
+  const [activityKey, setActivityKey] = useState(entry?.activity_key || applicableActivities[0]?.key || allActivities[0]?.key || '');
   const selectedActivity = activities.find((activity) => activity.key === activityKey);
-  const visibleFields = selectedActivity
-    ? log.cadre.fields.filter((field) => selectedActivity.fields.includes(field.key))
-    : log.cadre.fields;
+  const requiresLocation = Boolean(selectedActivity?.requires_location || activityKey === 'secondary_facility');
+  const direct = log.cadre.hours_mode === 'DIRECT' || Boolean(selectedActivity?.hours_input);
+  const visibleFields = selectedActivity?.item_type === 'PAYROLL' || log.work_type === 'PAYROLL'
+    ? []
+    : selectedActivity
+      ? log.cadre.fields.filter((field) => selectedActivity.fields.includes(field.key))
+      : log.cadre.fields;
   const [hours, setHours] = useState(entry ? String(Number(entry.hours_worked)) : '');
   const [activityLocation, setActivityLocation] = useState(entry?.activity_location || '');
   const [start, setStart] = useState(entry?.start_time?.slice(0, 5) || '');
@@ -102,7 +112,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
     setValidationError(null);
     const payload: Record<string, unknown> = {
       activity_key: activityKey,
-      ...(activityKey === 'secondary_facility' ? { activity_location: activityLocation.trim() } : {}),
+      ...(requiresLocation ? { activity_location: activityLocation.trim() } : {}),
       evidence_text: evidence.trim(),
       comment: comment.trim() || null,
       measures: Object.fromEntries(
@@ -171,7 +181,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
           </select>
         </Field>
       )}
-      {activityKey === 'secondary_facility' && (
+      {requiresLocation && (
         <Field label={lang === 'sw' ? 'Jina la kituo kingine' : 'Secondary facility name'}>
           <input required maxLength={255} value={activityLocation} onChange={(e) => setActivityLocation(e.target.value)} />
         </Field>

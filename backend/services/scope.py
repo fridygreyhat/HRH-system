@@ -28,6 +28,7 @@ from ..core.roles import (
     SUPERVISOR,
     SYSTEM_ADMIN,
     TECHNICAL_OFFICER,
+    REGIONAL_FINANCE,
 )
 from ..core.security import CurrentUser
 from ..models import (
@@ -52,6 +53,7 @@ ROLE_SCOPE_DIMENSIONS: dict[str, tuple[str, ...]] = {
     COMMUNITY_VERIFIER: ("community_area_id",),
     CSO_FINANCE: ("organization_id",),
     REGIONAL_ADMIN: ("region_id",),
+    REGIONAL_FINANCE: ("region_id",),
 }
 
 
@@ -93,22 +95,34 @@ def assignment_in_role_scope(db: Session, current: CurrentUser, role: str, assig
 
 
 def worklog_visibility(current: CurrentUser):
+    from .v22_scope import record_condition
     if current.has_any(OVERSIGHT, FHI360_FINANCE):
-        return true()
+        if current.unrestricted or OVERSIGHT in current.roles:
+            return true()
+        # Legacy finance visibility is preserved, not extended to every new region/cadre.
+        return or_(WorkLog.workflow_version == 1, record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id))
     conditions = [WorkLog.staff_id == current.staff_id]
     for role in ROLE_SCOPE_DIMENSIONS:
         subquery = assignments_in_role_scope(current, role)
         if subquery is not None:
-            conditions.append(WorkLog.assignment_id.in_(subquery))
+            condition = WorkLog.assignment_id.in_(subquery)
+            if role == REGIONAL_FINANCE:
+                condition = and_(condition, record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id))
+            elif role in (TECHNICAL_OFFICER, RPM, CSO_FINANCE):
+                condition = and_(condition, or_(WorkLog.workflow_version == 1, record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id)))
+            conditions.append(condition)
     return or_(*conditions)
 
 
 def claim_visibility(current: CurrentUser):
+    from .v22_scope import record_condition
     if current.has_any(OVERSIGHT):
         return true()
     conditions = [PaymentClaim.staff_id == current.staff_id]
     if FHI360_FINANCE in current.roles:
-        conditions.append(PaymentClaim.route_code.in_(("A", "B")))
+        conditions.append(and_(PaymentClaim.workflow_version == 1, PaymentClaim.route_code.in_(("A", "B"))))
+        conditions.append(and_(PaymentClaim.workflow_version >= 2, PaymentClaim.work_type == "SERVICES",
+                               record_condition(current, PaymentClaim.assignment_id, select(WorkLog.cadre_id).where(WorkLog.id == PaymentClaim.work_log_id).scalar_subquery())))
         conditions.append(and_(PaymentClaim.route_code.is_(None), PaymentClaim.created_by == current.id))
     if CSO_FINANCE in current.roles:
         orgs = current.scope_values("organization_id")
@@ -116,16 +130,21 @@ def claim_visibility(current: CurrentUser):
             conditions.append(
                 and_(
                     PaymentClaim.executor_org_id.in_(orgs),
-                    or_(PaymentClaim.route_code == "C", PaymentClaim.status == "HANDED_OFF"),
+                    or_(and_(PaymentClaim.workflow_version == 1, or_(PaymentClaim.route_code == "C", PaymentClaim.status == "HANDED_OFF")),
+                        and_(PaymentClaim.workflow_version >= 2, PaymentClaim.work_type == "PAYROLL",
+                             record_condition(current, PaymentClaim.assignment_id, select(WorkLog.cadre_id).where(WorkLog.id == PaymentClaim.work_log_id).scalar_subquery()))),
                 )
             )
             conditions.append(and_(PaymentClaim.route_code.is_(None), PaymentClaim.created_by == current.id))
-    for role in (RPM, COMMUNITY_VERIFIER):
+    for role in (RPM, COMMUNITY_VERIFIER, REGIONAL_FINANCE):
         subquery = assignments_in_role_scope(current, role)
         if subquery is not None:
             condition = PaymentClaim.assignment_id.in_(subquery)
             if role == COMMUNITY_VERIFIER:
                 condition = and_(condition, PaymentClaim.route_code == "C")
+            if role in (RPM, REGIONAL_FINANCE):
+                scoped = record_condition(current, PaymentClaim.assignment_id, select(WorkLog.cadre_id).where(WorkLog.id == PaymentClaim.work_log_id).scalar_subquery())
+                condition = and_(condition, scoped if role == REGIONAL_FINANCE else or_(PaymentClaim.workflow_version == 1, scoped))
             conditions.append(condition)
     return or_(*conditions)
 
@@ -144,7 +163,10 @@ def staff_visibility(current: CurrentUser):
     for role in ROLE_SCOPE_DIMENSIONS:
         subquery = assignments_in_role_scope(current, role)
         if subquery is not None:
-            conditions.append(Staff.id.in_(select(StaffAssignment.staff_id).where(StaffAssignment.id.in_(subquery))))
+            condition = Staff.id.in_(select(StaffAssignment.staff_id).where(StaffAssignment.id.in_(subquery)))
+            if role == REGIONAL_FINANCE and not current.unrestricted:
+                condition = and_(condition, Staff.cadre_id.in_(current.review_cadres))
+            conditions.append(condition)
     return or_(*conditions) if conditions else false()
 
 
@@ -169,7 +191,7 @@ def _overlapping(db: Session, staff_id: int, start: date, end: date) -> Optional
     )
 
 
-def users_in_scope_for(db: Session, role: str, assignment: StaffAssignment) -> list[User]:
+def users_in_scope_for(db: Session, role: str, assignment: StaffAssignment, cadre_id=None, strict_cadre=False) -> list[User]:
     """Active users holding `role` whose scope covers `assignment` (used to address notifications)."""
     dims = ROLE_SCOPE_DIMENSIONS.get(role, ())
     matches = []
@@ -194,7 +216,7 @@ def users_in_scope_for(db: Session, role: str, assignment: StaffAssignment) -> l
         .join(UserScope, UserScope.user_id == User.id)
         .filter(Role.name == role, User.is_active.is_(True), or_(*matches))
     )
-    if role == TECHNICAL_OFFICER:
-        cadre_id = db.get(Staff, assignment.staff_id).cadre_id
+    if role == TECHNICAL_OFFICER or strict_cadre:
+        cadre_id = cadre_id or db.get(Staff, assignment.staff_id).cadre_id
         query = query.join(UserReviewCadre, UserReviewCadre.user_id == User.id).filter(UserReviewCadre.cadre_id == cadre_id)
     return query.distinct().all()

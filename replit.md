@@ -95,6 +95,31 @@ from the real bootstrap password.
   patient lists. CTC-2/CTC-3/LIS activities are tracked but no external clinical-system
   connection is configured.
 
+## New-record financial workflow (v2.2)
+
+- The user explicitly chose **new records only**. Existing work logs, their derived
+  financial record families, rates, approvals and payment history remain on the
+  legacy workflow. Do not migrate them into v2.2 or recalculate their amounts.
+  New work logs always use v2.2; clients cannot request the legacy pipeline.
+- New work logs have an immutable Services or Payroll type, with separate monthly
+  review queues. RPM authorization is followed by Regional Finance amount review,
+  then Services route to **FHI360** and Payroll route to the provider's **CSO**.
+  New payroll does not use the old FHI360-to-CSO handoff.
+- Technical Officers manage scoped activity definitions and immutable rate versions
+  at `/rates`. Entry snapshots retain the rate and indicator definitions used.
+  Per-unit cascade pricing requires an explicitly selected billable indicator;
+  never infer that positives, linkage, or the final cascade field is payable.
+  Unpriced work cannot pass final finance review.
+- Technical, RPM, Regional Finance and new channel-finance records enforce
+  **Region × Cadre** scopes. Configure reviewer cadres and region scopes for
+  these users; CSO Finance additionally requires the assigned CSO organization.
+- Routing creates a budget-committed READY claim; it is not a bank transfer.
+  Insufficient budget holds both the claim and log. Only a fully recorded actual
+  payment, with required evidence, marks the log PAID.
+- Reviewer controls remain below daily entries and monthly totals. The UI requires
+  reaching the end and confirming the correct work type; the API independently
+  requires that confirmation and enforces scope, stage and version checks.
+
 ## SMS and file storage
 
 - SMS remains in the repository's **mock** mode, with development OTP exposure

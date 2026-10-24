@@ -31,7 +31,7 @@ const PHONE_RE = /^\+?\d{9,15}$/;
 /** Granted automatically with a staff record; never ticked by hand. */
 const PROVIDER = 'PROVIDER';
 const SUPER_ADMIN = 'SUPER_ADMIN';
-const TECHNICAL_OFFICER = 'TECHNICAL_OFFICER';
+const REVIEW_CADRE_ROLES = ['TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE'];
 
 type Maps = Record<Dim, Map<string, string>>;
 
@@ -152,10 +152,9 @@ function TechnicalArea({ value, onChange, disabled }: { value: number[]; onChang
   const cadres = useApi<Cadre[]>('/admin/cadres');
   return (
     <fieldset className="stack">
-      <legend>Technical area</legend>
+      <legend>Review cadre scope</legend>
       <p className="muted small">
-        Technical review of a work log goes to the technical officer whose area includes the worker's cadre and whose scope covers their
-        facility or region. A technical officer with no area receives no logs.
+        Review access is limited to the selected cadres and the user's geographic or organization scopes.
       </p>
       <Alert>{cadres.error}</Alert>
       {(cadres.data || []).map((c) => (
@@ -254,8 +253,8 @@ function CreateUser({ roles, onDone, onCancel }: { roles: RoleInfo[] | null; onD
     if (!fullName) return setError('Enter the full name.');
     const cleaned = cleanScopes(scopes);
     if (cleaned.error) return setError(cleaned.error);
-    const isTechnical = otherRoles.includes(TECHNICAL_OFFICER);
-    if (isTechnical && !reviewCadres.length) return setError('Choose the technical area: which cadres this technical officer reviews.');
+    const hasReviewCadreRole = otherRoles.some((role) => REVIEW_CADRE_ROLES.includes(role));
+    if (hasReviewCadreRole && !reviewCadres.length) return setError('Choose the cadres this reviewer may review.');
     const created = await run(() =>
       api.post<AdminUser>('/admin/users', {
         username: form.username.trim(),
@@ -266,7 +265,7 @@ function CreateUser({ roles, onDone, onCancel }: { roles: RoleInfo[] | null; onD
         preferred_language: form.preferred_language,
         roles: isWorker ? [PROVIDER, ...otherRoles] : otherRoles,
         scopes: cleaned.scopes,
-        review_cadre_ids: isTechnical ? reviewCadres : [],
+        review_cadre_ids: hasReviewCadreRole ? reviewCadres : [],
         staff_id: link?.staff_id ?? null,
         staff: link?.staff ?? null,
       }),
@@ -337,7 +336,7 @@ function CreateUser({ roles, onDone, onCancel }: { roles: RoleInfo[] | null; onD
           <ScopeEditor scopes={scopes} onChange={setScopes} lists={lists} maps={maps} disabled={busy} />
         </>
       )}
-      {otherRoles.includes(TECHNICAL_OFFICER) && <TechnicalArea value={reviewCadres} onChange={setReviewCadres} disabled={busy} />}
+      {otherRoles.some((role) => REVIEW_CADRE_ROLES.includes(role)) && <TechnicalArea value={reviewCadres} onChange={setReviewCadres} disabled={busy} />}
       <Alert>{error}</Alert>
       <div className="row">
         <button className="btn btn-primary" disabled={busy}>
@@ -437,7 +436,7 @@ function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleIn
     if (u) {
       setAreaReason('');
       onChanged(u);
-      setDone({ part: 'area', msg: 'Technical area saved.' });
+      setDone({ part: 'area', msg: 'Review cadre assignment saved.' });
     }
     return undefined;
   };
@@ -538,7 +537,7 @@ function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleIn
         </div>
       </form>
 
-      {user.roles.includes(TECHNICAL_OFFICER) && (
+      {user.roles.some((role) => REVIEW_CADRE_ROLES.includes(role)) && (
         <form className="stack card" onSubmit={saveArea}>
           <TechnicalArea value={reviewCadres} onChange={setReviewCadres} disabled={areaAction.busy} />
           <Field label="Reason for the change (required)">
@@ -548,7 +547,7 @@ function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleIn
           <Alert kind="success">{doneMsg('area')}</Alert>
           <div>
             <button className="btn btn-primary" disabled={areaAction.busy || areaReason.trim().length < 3}>
-              {areaAction.busy ? 'Saving…' : 'Save technical area'}
+            {areaAction.busy ? 'Saving…' : 'Save review cadres'}
             </button>
           </div>
         </form>

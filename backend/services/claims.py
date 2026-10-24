@@ -292,7 +292,7 @@ def user_in_executor_org(current: CurrentUser, claim: PaymentClaim) -> bool:
 
 def finance_role_ok(current: CurrentUser, claim: PaymentClaim) -> Optional[str]:
     """The route's finance role; CSO users must belong to the claim's CSO."""
-    role = ROUTE_FINANCE_ROLE.get(claim.route_code or "")
+    role = finance_role(claim)
     if role is None:
         return None if claim.created_by == current.id and current.has_any(FHI360_FINANCE, CSO_FINANCE) else "Route not configured"
     if role not in current.roles:
@@ -302,10 +302,21 @@ def finance_role_ok(current: CurrentUser, claim: PaymentClaim) -> Optional[str]:
     return None
 
 
+def finance_role(claim):
+    if claim.workflow_version >= 2:
+        return FHI360_FINANCE if claim.work_type == "SERVICES" else CSO_FINANCE
+    return ROUTE_FINANCE_ROLE.get(claim.route_code or "")
+
+
 def check_action(db: Session, current: CurrentUser, claim: PaymentClaim, action: str) -> Optional[str]:
     if current.staff_id == claim.staff_id:
         return "You cannot act on your own claim"
     s = claim.status
+    if claim.workflow_version >= 2:
+        if action not in {"cancel"}:
+            return "New claims are validated and routed through the Regional Finance work-log gate"
+        if claim.payment_status not in {"NOT_STARTED", "FAILED"}:
+            return "A claim with recorded payments cannot be cancelled"
     if action == "verify_community":
         if s != PENDING_COMMUNITY:
             return f"Cannot verify a claim in status {s}"
@@ -348,7 +359,7 @@ def perform(db: Session, current: CurrentUser, claim: PaymentClaim, action: str,
     if action in COMMENT_REQUIRED and not (comment and comment.strip()):
         raise HTTPException(status_code=422, detail=f"A reason is required to '{action}'")
     old, old_pay = claim.status, claim.payment_status
-    role = ROUTE_FINANCE_ROLE.get(claim.route_code or "")
+    role = finance_role(claim)
     details = None
 
     if action == "verify_community":
@@ -398,7 +409,7 @@ def _commit_budget(db: Session, current: CurrentUser, claim: PaymentClaim) -> di
         if not already_held and assignment:
             period = db.get(PayPeriod, claim.period_id)
             staff = db.get(Staff, claim.staff_id)
-            for reviewer in users_in_scope_for(db, RPM, assignment):
+            for reviewer in users_in_scope_for(db, RPM, assignment, strict_cadre=claim.workflow_version >= 2):
                 notifications.enqueue(
                     db, "CLAIM_BUDGET_HOLD", reviewer, None,
                     related=("claim", claim.id, BUDGET_HOLD),

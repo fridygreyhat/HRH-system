@@ -14,6 +14,7 @@ export function MyWorkLogs() {
   const periods = useApi<PayPeriod[]>('/admin/pay-periods');
   const [openId, setOpenId] = useState<number | null>(null);
   const [periodId, setPeriodId] = useState('');
+  const [workType, setWorkType] = useState<'SERVICES' | 'PAYROLL'>('SERVICES');
   const { busy, error, run } = useAction();
 
   if (openId !== null) {
@@ -28,13 +29,13 @@ export function MyWorkLogs() {
     );
   }
 
-  const used = new Set((logs.data || []).map((l) => l.period_id));
+  const used = new Set((logs.data || []).filter((l) => l.work_type === workType).map((l) => l.period_id));
   const today = todayLocal();
   const startable = (periods.data || []).filter((p) => p.status === 'OPEN' && p.start_date <= today && !used.has(p.id));
 
   const start = async (e: React.FormEvent) => {
     e.preventDefault();
-    const created = await run(() => api.post<WorkLogDetail>('/worklogs', { period_id: Number(periodId) }));
+    const created = await run(() => api.post<WorkLogDetail>('/worklogs', { period_id: Number(periodId), work_type: workType }));
     if (created) {
       setPeriodId('');
       setOpenId(created.id);
@@ -64,6 +65,12 @@ export function MyWorkLogs() {
           <p className="muted">{t('noOpenPeriods')}</p>
         ) : (
           <div className="row" style={{ alignItems: 'flex-end' }}>
+            <Field label="Work type">
+              <select value={workType} onChange={(e) => { setWorkType(e.target.value as 'SERVICES' | 'PAYROLL'); setPeriodId(''); }}>
+                <option value="SERVICES">Services</option>
+                <option value="PAYROLL">Payroll</option>
+              </select>
+            </Field>
             <Field label={t('payPeriod')}>
               <select required value={periodId} onChange={(e) => setPeriodId(e.target.value)}>
                 <option value="">—</option>
@@ -89,7 +96,7 @@ export function MyWorkLogs() {
               <button key={l.id} type="button" className="card log-card" onClick={() => setOpenId(l.id)} aria-label={`${t('open')} ${l.period_label}`}>
                 <div className="row-between">
                   <strong>{l.period_label}</strong>
-                  <StatusBadge kind="log" status={l.status} />
+                  <span className="row"><span className="badge badge-neutral">{l.work_type === 'LEGACY' ? 'Legacy' : l.work_type}</span><StatusBadge kind="log" status={l.status} /></span>
                 </div>
                 <MiniStepper status={l.status} />
                 <div className="muted small">

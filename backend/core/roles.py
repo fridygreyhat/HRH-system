@@ -3,6 +3,7 @@ SUPERVISOR = "SUPERVISOR"  # CTC In-Charge / Supervisor
 FACILITY_IN_CHARGE = "FACILITY_IN_CHARGE"
 TECHNICAL_OFFICER = "TECHNICAL_OFFICER"  # Cluster / Regional Technical Officer
 RPM = "RPM"  # Regional Program Manager
+REGIONAL_FINANCE = "REGIONAL_FINANCE"
 COMMUNITY_VERIFIER = "COMMUNITY_VERIFIER"
 FHI360_FINANCE = "FHI360_FINANCE"
 CSO_FINANCE = "CSO_FINANCE"
@@ -18,6 +19,7 @@ ROLE_DESCRIPTIONS = {
     FACILITY_IN_CHARGE: "Supplemental facility endorsement where the cadre form requires it",
     TECHNICAL_OFFICER: "FHI360 technical officer: technical endorsement of the cadres in their technical area",
     RPM: "Regional Program Manager: final program and budget authorization",
+    REGIONAL_FINANCE: "Regional Finance: validates RPM-authorized amounts and routes services to FHI360 and payroll to CSO",
     COMMUNITY_VERIFIER: "Verifies community-originated (Route C) claims not based on an HRH work log",
     FHI360_FINANCE: "FHI360 Finance: Route A claims and Route B processing/handoff",
     CSO_FINANCE: "CSO Finance: own organization's Route B payrolls and Route C claims, payments and proof",
@@ -29,6 +31,6 @@ ROLE_DESCRIPTIONS = {
 }
 ALL_ROLES = list(ROLE_DESCRIPTIONS)
 
-REVIEWER_ROLES = (SUPERVISOR, FACILITY_IN_CHARGE, TECHNICAL_OFFICER, RPM)
+REVIEWER_ROLES = (SUPERVISOR, FACILITY_IN_CHARGE, TECHNICAL_OFFICER, RPM, REGIONAL_FINANCE)
 FINANCE_ROLES = (FHI360_FINANCE, CSO_FINANCE)
 ADMIN_ROLES = (CENTRAL_ADMIN, REGIONAL_ADMIN, SYSTEM_ADMIN, SUPER_ADMIN)

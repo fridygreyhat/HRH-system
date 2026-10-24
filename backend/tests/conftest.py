@@ -122,9 +122,22 @@ def period(api, db):
     return make_period(api, db)
 
 
+@pytest.fixture(autouse=True)
+def legacy_workflow_default(monkeypatch):
+    """The imported acceptance suite covers legacy records. v2 tests opt in explicitly.
+
+    This changes a Python constant only in the isolated test process; no API or
+    runtime environment flag lets clients select the legacy financial pipeline.
+    """
+    from backend.core import workflow_policy
+    monkeypatch.setattr(workflow_policy, "NEW_RECORD_WORKFLOW_VERSION", 1)
+
+
 def make_period(api: Api, db, amounts: dict | None = None) -> dict:
     n = next(_months)
-    year, month = 2023 - n // 12, 12 - n % 12
+    # Always use past periods, without letting suite growth push ordinary fixtures
+    # before the seed staff's 2020 assignment start.
+    year, month = date.today().year - 1 - n // 12, 12 - n % 12
     start = date(year, month, 1)
     # Ordinary test entries start on a Monday; weekend rules are tested explicitly.
     start += timedelta(days=(7 - start.weekday()) % 7)

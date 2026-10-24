@@ -20,7 +20,7 @@ from ..core import config
 from ..core.roles import CSO_FINANCE, FHI360_FINANCE
 from ..core.security import CurrentUser
 from ..core.settings import get_setting
-from ..models import PaymentClaim, PaymentProof, PaymentRecord, PayPeriod, PayrollBatch, Staff, User
+from ..models import PaymentClaim, PaymentProof, PaymentRecord, PayPeriod, PayrollBatch, Staff, User, WorkLog, utcnow
 from .staff_registry import check_payment_method
 from . import budgets, notifications
 from . import claims as cl
@@ -42,6 +42,10 @@ def executor_check(current: CurrentUser, claim: PaymentClaim) -> Optional[str]:
 def payable_check(db: Session, claim: PaymentClaim) -> Optional[str]:
     if claim.payment_status in ("PAID", "RECONCILED"):
         return "This claim is already paid"
+    if claim.workflow_version >= 2:
+        if claim.status not in {cl.READY, cl.EXPORTED}:
+            return "Regional Finance must validate and route the claim before a payment can be recorded"
+        return None
     if claim.route_code == "B":
         batch = db.get(PayrollBatch, claim.batch_id) if claim.batch_id else None
         if claim.status != cl.HANDED_OFF or not batch or batch.status != "RECEIVED":
@@ -119,6 +123,7 @@ def record_payment(db: Session, current: CurrentUser, claim: PaymentClaim, amoun
     cl.audit(db, current, claim, "record_payment", cl.ROUTE_EXECUTOR_ROLE[claim.route_code], claim.status, old_pay,
              details={"reference": reference, "amount": str(amount), "status": status})
     if claim.payment_status == "PAID":
+        _mark_worklog_paid(db, current, claim)
         _notify_paid(db, claim, reference)
     return record
 
@@ -132,13 +137,14 @@ def confirm_paid(db: Session, current: CurrentUser, claim: PaymentClaim) -> None
     if not has_proof(db, claim.id):
         raise HTTPException(status_code=422, detail="Upload proof of payment first")
     claim.payment_status = "PAID"
+    _mark_worklog_paid(db, current, claim)
     cl.audit(db, current, claim, "confirm_paid", cl.ROUTE_EXECUTOR_ROLE[claim.route_code], claim.status, "PROOF_REQUIRED")
     last = db.query(PaymentRecord).filter(PaymentRecord.claim_id == claim.id).order_by(PaymentRecord.id.desc()).first()
     _notify_paid(db, claim, last.payment_reference if last else "")
 
 
 def reconcile_check(db: Session, current: CurrentUser, claim: PaymentClaim) -> Optional[str]:
-    role = RECONCILER_ROLE.get(claim.route_code or "")
+    role = cl.finance_role(claim) if claim.workflow_version >= 2 else RECONCILER_ROLE.get(claim.route_code or "")
     if not role or role not in current.roles:
         return f"Reconciliation on Route {claim.route_code} is done by {role}"
     if role == CSO_FINANCE and not cl.user_in_executor_org(current, claim):
@@ -156,7 +162,19 @@ def reconcile(db: Session, current: CurrentUser, claim: PaymentClaim, comment: O
     if reason:
         raise HTTPException(status_code=403, detail=reason)
     claim.payment_status = "RECONCILED"
-    cl.audit(db, current, claim, "reconcile", RECONCILER_ROLE[claim.route_code], claim.status, "PAID", comment)
+    cl.audit(db, current, claim, "reconcile", cl.finance_role(claim) if claim.workflow_version >= 2 else RECONCILER_ROLE[claim.route_code], claim.status, "PAID", comment)
+
+
+def _mark_worklog_paid(db, current, claim):
+    if claim.workflow_version < 2 or not claim.work_log_id:
+        return
+    from . import worklog_workflow
+    log = db.query(WorkLog).filter(WorkLog.id == claim.work_log_id).with_for_update().one()
+    old = log.status
+    log.status = worklog_workflow.PAID
+    log.status_changed_at = utcnow()
+    worklog_workflow.audit(db, current, log, "payment_recorded", cl.ROUTE_EXECUTOR_ROLE[claim.route_code], old,
+                          details={"claim_id": claim.id, "payment_status": claim.payment_status})
 
 
 async def store_proof(db: Session, current: CurrentUser, claim: PaymentClaim, upload: UploadFile, payment_record_id: Optional[int]) -> PaymentProof:

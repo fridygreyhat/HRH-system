@@ -15,6 +15,13 @@ export interface CadreActivity {
   label_sw: string;
   fields: string[];
   required_fields: string[];
+  form_mode?: 'CASCADE' | 'SINGLE';
+  hours_input?: boolean;
+  item_type?: 'SERVICES' | 'PAYROLL';
+  requires_location?: boolean;
+  effective_start_date?: string | null;
+  /** Exclusive upper bound: this activity is not available on the end date. */
+  effective_end_date?: string | null;
 }
 
 export interface Cadre {
@@ -86,6 +93,10 @@ export interface WorkLogSummary {
   occupation_other: string | null;
   section: string | null;
   status: string;
+  workflow_version: number;
+  work_type: 'LEGACY' | 'SERVICES' | 'PAYROLL';
+  finance_snapshot: Record<string, unknown> | null;
+  routed_channel: 'FHI360' | 'CSO' | null;
   version: number;
   confirmed_version: number | null;
   period_comment: string | null;
@@ -176,6 +187,12 @@ export interface WorkLogDetail extends WorkLogSummary {
     anomalies: { date: string | null; code: string; message: string }[];
     limits: { daily_hours: string; weekly_hours: string; saturday_min_hours: string; saturday_max_hours: string; sunday_allowed: boolean; backdate_grace_hours: number };
   };
+  financial_preview?: {
+    lines: { entry_id: number; date: string; activity: string; units: string; rate: string | null; amount: string | null; currency: string | null }[];
+    total: string;
+    currency: string | null;
+    exceptions: string[];
+  } | null;
   location_exception_count: number;
   gps_visible: boolean;
   audit: WorkLogAudit[];
@@ -250,6 +267,9 @@ export interface ClaimSummary {
   executor_name: string | null;
   batch_reference: string | null;
   amount_paid: number;
+  /** Present for claims generated from the versioned work-log workflow. */
+  workflow_version?: number | null;
+  work_type?: 'LEGACY' | 'SERVICES' | 'PAYROLL' | null;
 }
 
 export interface ClaimComponent {
@@ -367,6 +387,33 @@ export interface RateRule {
   approved_by: number | null;
   approved_at: string | null;
   created_at: string;
+}
+
+export interface RateActivity {
+  id: number;
+  key: string;
+  label_en: string;
+  label_sw: string;
+  cadre_id: number;
+  region_id: number | null;
+  item_type: 'SERVICES' | 'PAYROLL';
+  form_mode: 'CASCADE' | 'SINGLE';
+  fields: string[];
+  required_fields: string[];
+  field_definitions: CadreField[];
+  hours_input: boolean;
+  rate_value: number;
+  currency: string;
+  unit_type: 'PER_UNIT' | 'PER_HOUR' | 'PER_DAY';
+  billable_field: string | null;
+  is_active: boolean;
+  effective_start_date: string;
+}
+
+export interface RateTemplates {
+  cadres: { id: number; code: string; name: string }[];
+  regions: Named[];
+  templates: { key: string; label_en: string; label_sw: string; cadre_id: number; form_mode: 'CASCADE' | 'SINGLE'; item_type: 'SERVICES' | 'PAYROLL'; field_definitions?: CadreField[] }[];
 }
 
 // ---- Batches ---------------------------------------------------------------------------

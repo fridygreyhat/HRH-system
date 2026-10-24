@@ -12,12 +12,14 @@ type SectionKey = 'all' | 'pending' | 'receipt' | 'routec' | 'recon' | 'budget';
 
 const PENDING_STATUSES = ['PENDING', 'PARTIALLY_RECORDED', 'PROOF_REQUIRED', 'FAILED'];
 const NEXT_ACTION: Record<string, string> = {
+  NOT_STARTED: 'Record payment',
   PENDING: 'Record payment',
   PARTIALLY_RECORDED: 'Record remaining payment',
   PROOF_REQUIRED: 'Upload proof, then confirm paid',
   FAILED: 'Record a new payment attempt',
 };
 const RECON_GROUPS: { status: string; title: string }[] = [
+  { status: 'NOT_STARTED', title: 'Ready for payment' },
   { status: 'PENDING', title: 'Unpaid' },
   { status: 'PARTIALLY_RECORDED', title: 'Partially recorded' },
   { status: 'PROOF_REQUIRED', title: 'Proof missing' },
@@ -91,6 +93,7 @@ function PendingTable({ rows, onOpen }: { rows: ClaimSummary[]; onOpen: (id: num
                 <td>
                   {c.category_name}
                   <div className="muted small">{c.period_label}</div>
+                  {c.workflow_version === 2 && c.work_type && <span className="badge badge-neutral">{c.work_type}</span>}
                 </td>
                 <td>
                   <RouteBadge route={c.route_code} />
@@ -157,6 +160,7 @@ function ClaimList({ rows, onOpen, meId }: { rows: ClaimSummary[]; onOpen: (id: 
               <td>
                 {c.category_name}
                 <div className="muted small">{c.period_label}</div>
+                {c.workflow_version === 2 && c.work_type && <span className="badge badge-neutral">{c.work_type}</span>}
               </td>
               <td>
                 <div className="badges">
@@ -204,12 +208,14 @@ export function CsoPortal() {
   };
 
   const all = claims.data || [];
+  const isDirectV2Ready = (claim: ClaimSummary) => claim.workflow_version === 2 && claim.status === 'READY';
   const pending = all
-    .filter((c) => PENDING_STATUSES.includes(c.payment_status))
+    .filter((c) => PENDING_STATUSES.includes(c.payment_status) || (isDirectV2Ready(c) && c.payment_status !== 'PAID' && c.payment_status !== 'RECONCILED'))
     .sort((a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime());
   const awaitingReceipt = (batches.data || []).filter((b) => b.route_code === 'B' && b.status === 'HANDED_OFF');
   const routeC = all.filter((c) => c.route_code === 'C' || c.route_code === null);
-  const inPayment = all.filter((c) => c.payment_status !== 'NOT_STARTED');
+  const inPayment = all.filter((c) => c.payment_status !== 'NOT_STARTED' || isDirectV2Ready(c));
+  const directReady = pending.filter((c) => isDirectV2Ready(c) && c.payment_status === 'NOT_STARTED');
   const routeCCount = ROUTE_C_GROUPS.reduce((s, g) => s + routeC.filter((c) => c.status === g.status).length, 0);
 
   const acknowledge = async (b: Batch) => {
@@ -259,6 +265,7 @@ export function CsoPortal() {
       {show('pending') && (
         <Section title="Pending payments">
           <p className="muted small">Oldest first. Open a claim to record a payment, upload proof or confirm it as paid.</p>
+          <p className="notice notice-info small">Version 2 payroll claims are available as soon as they are routed to your CSO; they do not require the legacy FHI360 batch handoff.</p>
           <AsyncState data={claims.data} error={claims.error} loading={claims.loading}>
             {() => (
               <>
@@ -275,6 +282,7 @@ export function CsoPortal() {
                       />
                     );
                   })}
+                  {directReady.length > 0 && <StatTile label="Ready · v2 direct" value={num(directReady.length)} hint={`Outstanding ${money(sum(directReady, outstanding))}`} tone="warn" />}
                 </div>
                 {pending.length ? <PendingTable rows={pending} onOpen={setClaimId} /> : <Empty>No payments are waiting on your CSO.</Empty>}
               </>

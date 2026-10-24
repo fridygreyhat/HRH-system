@@ -15,12 +15,14 @@ import { Login } from './pages/Login';
 import { MyWorkLogs } from './pages/MyWorkLogs';
 import { PrintWorkLog } from './pages/PrintWorkLog';
 import { ReviewWorkLogs } from './pages/ReviewWorkLogs';
+import { Rates } from './pages/Rates';
+import { ReviewCadres } from './pages/ReviewCadres';
 import { Staff } from './pages/Staff';
 import { Modal } from './components/ui';
 import { useTheme } from './theme';
 import { WorkLogSummary } from './types';
 
-const REVIEWERS = ['SUPERVISOR', 'FACILITY_IN_CHARGE', 'TECHNICAL_OFFICER', 'RPM'];
+const REVIEWERS = ['SUPERVISOR', 'FACILITY_IN_CHARGE', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE'];
 
 interface Page {
   key: string;
@@ -39,10 +41,12 @@ const PAGES: Page[] = [
     description: 'Pipeline, queues, claims and budgets at a glance',
     icon: 'dashboard',
     group: 'Overview',
-    roles: ['OVERSIGHT', 'RPM', 'TECHNICAL_OFFICER', 'SUPERVISOR', 'FHI360_FINANCE', 'CSO_FINANCE', 'CENTRAL_ADMIN', 'REGIONAL_ADMIN'],
+    roles: ['OVERSIGHT', 'RPM', 'REGIONAL_FINANCE', 'TECHNICAL_OFFICER', 'SUPERVISOR', 'FHI360_FINANCE', 'CSO_FINANCE', 'CENTRAL_ADMIN', 'REGIONAL_ADMIN'],
     render: () => <Dashboard />,
   },
   { key: 'my-logs', label: 'My work logs', description: 'Record your daily work and confirm verified logs', icon: 'calendar', group: 'Work', roles: ['PROVIDER'], render: () => <MyWorkLogs /> },
+  { key: 'rates', label: 'Rates', description: 'Scoped activity rates and immutable revisions', icon: 'receipt', group: 'Finance', roles: ['TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'OVERSIGHT', 'SUPER_ADMIN'], render: () => <Rates /> },
+  { key: 'review-cadres', label: 'Review assignments', description: 'Manage reviewer cadre and geographic scope', icon: 'users', group: 'System', roles: ['TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'SUPER_ADMIN'], render: () => <ReviewCadres /> },
   {
     key: 'worklogs',
     label: 'Work log reviews',

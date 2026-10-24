@@ -15,7 +15,7 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from ..core.roles import FACILITY_IN_CHARGE, PROVIDER, RPM, SUPERVISOR, TECHNICAL_OFFICER
+from ..core.roles import FACILITY_IN_CHARGE, PROVIDER, RPM, SUPERVISOR, TECHNICAL_OFFICER, REGIONAL_FINANCE
 from ..core.security import CurrentUser
 from ..core.settings import get_setting
 from ..models import (
@@ -44,15 +44,20 @@ PENDING_OTP = "PENDING_PROVIDER_OTP_CONFIRMATION"
 PENDING_TECH = "PENDING_TECHNICAL_REVIEW"
 PENDING_RPM = "PENDING_RPM_AUTHORIZATION"
 APPROVED = "APPROVED"
+PENDING_FINANCE = "PENDING_FINANCE_REVIEW"
+FINANCE_REVIEWED = "FINANCE_REVIEWED"
+ROUTED_FHI360 = "ROUTED_FHI360"
+ROUTED_CSO = "ROUTED_CSO"
+PAID = "PAID"
 RETURNED = "RETURNED_TO_PROVIDER"
 REJECTED = "REJECTED"
 BUDGET_HOLD = "BUDGET_HOLD"
 CANCELLED = "CANCELLED"
 
-ALL_STATUSES = [DRAFT, PENDING_CTC, PENDING_OTP, PENDING_TECH, PENDING_RPM, APPROVED, RETURNED, REJECTED, BUDGET_HOLD, CANCELLED]
+ALL_STATUSES = [DRAFT, PENDING_CTC, PENDING_OTP, PENDING_TECH, PENDING_RPM, PENDING_FINANCE, FINANCE_REVIEWED, ROUTED_FHI360, ROUTED_CSO, PAID, APPROVED, RETURNED, REJECTED, BUDGET_HOLD, CANCELLED]
 EDITABLE_STATUSES = {DRAFT, RETURNED}
 # Stage owner for reminders and queue age reporting
-STAGE_OWNER = {PENDING_CTC: SUPERVISOR, PENDING_TECH: TECHNICAL_OFFICER, PENDING_RPM: RPM}
+STAGE_OWNER = {PENDING_CTC: SUPERVISOR, PENDING_TECH: TECHNICAL_OFFICER, PENDING_RPM: RPM, PENDING_FINANCE: REGIONAL_FINANCE}
 
 # (current status, action) -> (next status, role that performs it)
 TRANSITIONS: dict[tuple[str, str], tuple[str, str]] = {
@@ -82,6 +87,24 @@ FACILITY_ENDORSEMENT = "FACILITY_IN_CHARGE"
 FACILITY_ENDORSE_STATUSES = {PENDING_OTP, PENDING_TECH}
 
 
+def transitions_for(log):
+    if log.workflow_version < 2:
+        return TRANSITIONS
+    return {
+        **TRANSITIONS,
+        (PENDING_RPM, "authorize"): (PENDING_FINANCE, RPM),
+        (PENDING_FINANCE, "finance_review"): (FINANCE_REVIEWED, REGIONAL_FINANCE),
+        (PENDING_FINANCE, "return"): (RETURNED, REGIONAL_FINANCE),
+        (PENDING_FINANCE, "reject"): (REJECTED, REGIONAL_FINANCE),
+        (FINANCE_REVIEWED, "return"): (RETURNED, REGIONAL_FINANCE),
+        (FINANCE_REVIEWED, "route_fhi360"): (ROUTED_FHI360, REGIONAL_FINANCE),
+        (FINANCE_REVIEWED, "route_cso"): (ROUTED_CSO, REGIONAL_FINANCE),
+        (BUDGET_HOLD, "release"): (FINANCE_REVIEWED, REGIONAL_FINANCE),
+        (ROUTED_FHI360, "reopen"): (RETURNED, RPM),
+        (ROUTED_CSO, "reopen"): (RETURNED, RPM),
+    }
+
+
 def _owns(current: CurrentUser, log: WorkLog) -> bool:
     return current.staff_id == log.staff_id
 
@@ -90,7 +113,7 @@ def check_action(db: Session, current: CurrentUser, log: WorkLog, action: str) -
     """None when allowed, otherwise the reason it is not."""
     if action == "facility_endorse":
         return _check_facility_endorse(db, current, log)
-    transition = TRANSITIONS.get((log.status, action))
+    transition = transitions_for(log).get((log.status, action))
     if not transition:
         return f"Cannot '{action}' a work log in status {log.status}"
     role = transition[1]
@@ -102,6 +125,15 @@ def check_action(db: Session, current: CurrentUser, log: WorkLog, action: str) -
         return "You cannot review your own work log"
     if not assignment_in_role_scope(db, current, role, log.assignment_id):
         return "This work log is outside your assigned scope"
+    if log.workflow_version >= 2 and role in {TECHNICAL_OFFICER, RPM, REGIONAL_FINANCE}:
+        from .v22_scope import may_manage
+        assignment = db.get(StaffAssignment, log.assignment_id)
+        if not may_manage(current, assignment.region_id, log.cadre_id):
+            return "This work log is outside your assigned Region × Cadre"
+    if action.startswith("route_"):
+        expected = "route_fhi360" if log.work_type == "SERVICES" else "route_cso"
+        if action != expected:
+            return f"{log.work_type} requires {expected}"
     if action == "endorse" and db.get(Cadre, log.cadre_id).requires_facility_endorsement and not _has_facility_endorsement(db, log):
         return "The Facility In-Charge endorsement required by this cadre's form has not been recorded"
     if action == "reopen" and db.query(PaymentClaim).filter(PaymentClaim.work_log_id == log.id, PaymentClaim.status != "CANCELLED").count():
@@ -133,7 +165,7 @@ def _check_facility_endorse(db: Session, current: CurrentUser, log: WorkLog) -> 
 
 
 def available_actions(db: Session, current: CurrentUser, log: WorkLog) -> list[str]:
-    actions = [a for (s, a) in TRANSITIONS if s == log.status and a not in INTERNAL_ACTIONS and check_action(db, current, log, a) is None]
+    actions = [a for (s, a) in transitions_for(log) if s == log.status and a not in INTERNAL_ACTIONS and check_action(db, current, log, a) is None]
     if check_action(db, current, log, "facility_endorse") is None:
         actions.append("facility_endorse")
     return actions
@@ -142,12 +174,18 @@ def available_actions(db: Session, current: CurrentUser, log: WorkLog) -> list[s
 def queue_condition(current: CurrentUser):
     """SQL condition for logs waiting on one of the user's reviewer roles, within that role's scope."""
     conditions = []
-    for (status, action), (_, role) in TRANSITIONS.items():
-        if role == PROVIDER or role not in current.roles or action in ("reopen",):
-            continue
-        scope = assignments_in_role_scope(current, role)
-        if scope is not None:
-            conditions.append((WorkLog.status == status) & WorkLog.assignment_id.in_(scope))
+    from types import SimpleNamespace
+    from .v22_scope import record_condition
+    for version in (1, 2):
+        for (status, action), (_, role) in transitions_for(SimpleNamespace(workflow_version=version)).items():
+            if role == PROVIDER or role not in current.roles or action in ("reopen",):
+                continue
+            scope = assignments_in_role_scope(current, role)
+            if scope is not None:
+                condition = (WorkLog.workflow_version == version) & (WorkLog.status == status) & WorkLog.assignment_id.in_(scope)
+                if version >= 2 and role in {TECHNICAL_OFFICER, RPM, REGIONAL_FINANCE}:
+                    condition &= record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id)
+                conditions.append(condition)
     if FACILITY_IN_CHARGE in current.roles:
         scope = assignments_in_role_scope(current, FACILITY_IN_CHARGE)
         if scope is not None:
@@ -194,7 +232,7 @@ def transition(
         _validate_submission(db, log)
 
     old = log.status
-    next_status, role = TRANSITIONS[(old, action)]
+    next_status, role = transitions_for(log)[(old, action)]
     now = utcnow()
     if action == "verify":
         log.version += 1
@@ -210,8 +248,21 @@ def transition(
     if action == "submit":
         log.submitted_at = now
     log.status = next_status
+    if log.workflow_version >= 2:
+        from . import finance_gate
+        if action == "finance_review":
+            finance_gate.review(db, current, log, (details or {}).get("category_id"))
+        elif action.startswith("route_"):
+            details = {**(details or {}), **finance_gate.route(db, current, log, "FHI360" if action == "route_fhi360" else "CSO")}
+        elif action == "release" and log.finance_snapshot:
+            details = {**(details or {}), **finance_gate.route(db, current, log, log.finance_snapshot["channel"])}
+        elif action == "release":
+            log.status = PENDING_FINANCE
+        elif next_status == RETURNED:
+            log.finance_snapshot = None
+            log.routed_channel = None
     log.status_changed_at = now
-    log.approved_at = now if next_status == APPROVED else (None if next_status == RETURNED else log.approved_at)
+    log.approved_at = now if log.status in {APPROVED, ROUTED_FHI360, ROUTED_CSO} else (None if next_status == RETURNED else log.approved_at)
     audit(db, current, log, action, role, old, comment, details)
     db.flush()
     _notify(db, log, action, comment)
@@ -233,7 +284,7 @@ def _validate_submission(db: Session, log: WorkLog) -> None:
         raise HTTPException(status_code=422, detail="Confirm the attestation before submitting")
     cadre = db.get(Cadre, log.cadre_id)
     for entry, measures in entries_with_measures(db, log.id):
-        activity = activity_for(cadre.code, entry.activity_key)
+        activity = entry.activity_snapshot if log.workflow_version >= 2 else activity_for(cadre.code, entry.activity_key)
         if not activity:
             raise HTTPException(status_code=422, detail=f"Select an activity for {entry.entry_date} before submitting.")
         missing = set(activity["required_fields"]) - set(measures)
@@ -259,7 +310,8 @@ def _notify(db: Session, log: WorkLog, action: str, comment: Optional[str]) -> N
     ctx = {"provider": staff.legal_name, "period": period, "comment": comment or ""}
 
     def to_role(role: str, event: str) -> None:
-        for user in users_in_scope_for(db, role, assignment):
+        for user in users_in_scope_for(db, role, assignment, cadre_id=log.cadre_id,
+                                       strict_cadre=log.workflow_version >= 2 and role in {TECHNICAL_OFFICER, RPM, REGIONAL_FINANCE}):
             notifications.enqueue(db, event, user, None, related=related, **ctx)
 
     def to_provider(event: str) -> None:
@@ -271,6 +323,10 @@ def _notify(db: Session, log: WorkLog, action: str, comment: Optional[str]) -> N
         to_role(TECHNICAL_OFFICER, "WORKLOG_RETURNED_TO_REVIEWER" if action == "return_to_reviewer" else "WORKLOG_CONFIRMED")
     elif log.status == PENDING_RPM and action == "endorse":
         to_role(RPM, "WORKLOG_ENDORSED")
+    elif log.status == PENDING_FINANCE:
+        to_role(REGIONAL_FINANCE, "WORKLOG_FINANCE_REVIEW")
+    elif log.status == BUDGET_HOLD and log.workflow_version >= 2:
+        to_role(RPM, "WORKLOG_FINANCE_HOLD")
     elif log.status == APPROVED:
         to_provider("WORKLOG_APPROVED")
     elif log.status == RETURNED and action != "decline":

@@ -98,6 +98,7 @@ export function Claims() {
                   <th>#</th>
                   <th>Staff</th>
                   <th>Category</th>
+                  <th>Type</th>
                   <th>Period</th>
                   <th>Payment</th>
                   <th>Claim status</th>
@@ -126,6 +127,7 @@ export function Claims() {
                         </div>
                       )}
                     </td>
+                    <td>{c.work_type && c.work_type !== 'LEGACY' ? <span className="badge badge-neutral">{c.work_type}</span> : '—'}</td>
                     <td>{c.period_label}</td>
                     <td>
                       <RouteBadge route={c.route_code} />

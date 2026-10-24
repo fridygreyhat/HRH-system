@@ -24,6 +24,7 @@ from ..models import (
 )
 from .activities import ACTIVITIES, CASCADES
 from .work_hours import day_hours_violation, hour_limits
+from .activity_catalog import catalog_for_log, log_fields
 from ..core.settings import get_setting
 
 
@@ -55,6 +56,14 @@ def cadre_out(db: Session, cadre: Cadre, include_inactive: bool = False) -> dict
         "fields": [field_out(f) for f in cadre_fields(db, cadre.id, include_inactive)],
         "activities": ACTIVITIES.get(cadre.code, []),
     }
+
+
+def log_cadre_out(db: Session, log: WorkLog) -> dict:
+    result = cadre_out(db, db.get(Cadre, log.cadre_id))
+    if log.workflow_version >= 2:
+        result["activities"] = catalog_for_log(db, log)
+        result["fields"] = [field_out(field) for field in log_fields(db, log)]
+    return result
 
 
 def _name(db: Session, model, id_):
@@ -127,6 +136,7 @@ def build_snapshot(db: Session, log: WorkLog) -> dict:
             {
                 "date": str(e.entry_date),
                 "activity_key": e.activity_key,
+                "activity_snapshot": e.activity_snapshot,
                 "activity_location": e.activity_location,
                 "start_time": e.start_time.isoformat() if e.start_time else None,
                 "end_time": e.end_time.isoformat() if e.end_time else None,
@@ -166,7 +176,7 @@ def review_summary(db: Session, log: WorkLog, current=None) -> dict:
             week_hours[monday] += Decimal(hours)
 
     anomalies = []
-    fields = {f.key: f.label_en for f in cadre_fields(db, log.cadre_id)}
+    fields = {f.key: f.label_en for f in log_fields(db, log)}
     for entry, measures in rows:
         violation = day_hours_violation(entry.entry_date, day_hours[entry.entry_date], limits)
         if violation:
@@ -174,7 +184,8 @@ def review_summary(db: Session, log: WorkLog, current=None) -> dict:
         monday = entry.entry_date - timedelta(days=entry.entry_date.weekday())
         if entry.entry_date.weekday() < 5 and week_hours[monday] > weekly_max:
             anomalies.append({"date": str(entry.entry_date), "code": "WEEKLY_HOURS", "message": f"{week_hours[monday]} Monday–Friday hours exceeds the {weekly_max}-hour weekday-week limit; Saturday clinics are separate."})
-        for lower, upper, description in CASCADES.get(entry.activity_key, []):
+        cascade = (entry.activity_snapshot or {}).get("cascade_pairs", CASCADES.get(entry.activity_key, []))
+        for lower, upper, description in cascade:
             if lower in measures and upper in measures and measures[lower] > measures[upper]:
                 anomalies.append({
                     "date": str(entry.entry_date), "code": "CASCADE",
@@ -206,6 +217,7 @@ def monthly_provider_totals(db: Session, log: WorkLog, current=None) -> list[dic
         query = query.filter(worklog_visibility(current))
     entries = query.all()
     by_id = {entry.id: entry for entry in entries}
+    activity_rules = {entry.activity_key: (entry.activity_snapshot or {}).get("cascade_pairs", CASCADES.get(entry.activity_key, [])) for entry in entries}
     measures = db.query(WorkLogMeasure).filter(WorkLogMeasure.entry_id.in_(by_id)).all() if by_id else []
     months = {}
     cursor = start
@@ -225,7 +237,7 @@ def monthly_provider_totals(db: Session, log: WorkLog, current=None) -> list[dic
     for month_key, month in months.items():
         anomalies = []
         for activity_key, values in month["activities"].items():
-            for lower, upper, description in CASCADES.get(activity_key, []):
+            for lower, upper, description in activity_rules.get(activity_key, []):
                 if lower in values and upper in values and values[lower] > values[upper]:
                     anomalies.append({"date": None, "code": "MONTHLY_CASCADE", "message": f"{month_key}: {description}."})
         result.append({

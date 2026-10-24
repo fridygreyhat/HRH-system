@@ -7,7 +7,7 @@ import { dateTime, hoursAge, num, WORKLOG_STATUS_LABELS, WORKLOG_STATUSES } from
 import { useApi } from '../hooks';
 import { Cadre, PayPeriod, WorkLogSummary } from '../types';
 
-const REVIEWER_ROLES = ['SUPERVISOR', 'FACILITY_IN_CHARGE', 'TECHNICAL_OFFICER', 'RPM'];
+const REVIEWER_ROLES = ['SUPERVISOR', 'FACILITY_IN_CHARGE', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE'];
 
 function LogTable({ rows, queue, onOpen }: { rows: WorkLogSummary[]; queue: boolean; onOpen: (id: number) => void }) {
   return (
@@ -20,6 +20,7 @@ function LogTable({ rows, queue, onOpen }: { rows: WorkLogSummary[]; queue: bool
             <th>Cadre</th>
             <th>Facility</th>
             <th>Period</th>
+            <th>Type</th>
             <th>Status</th>
             <th className="num">Days</th>
             <th className="num">Hours</th>
@@ -43,6 +44,7 @@ function LogTable({ rows, queue, onOpen }: { rows: WorkLogSummary[]; queue: bool
                 <td>{l.cadre_code}</td>
                 <td>{l.facility_name || '—'}</td>
                 <td>{l.period_label}</td>
+                <td><span className="badge badge-neutral">{l.work_type === 'LEGACY' ? 'Legacy' : l.work_type}</span></td>
                 <td>
                   <StatusBadge kind="log" status={l.status} bare />
                 </td>
@@ -74,9 +76,10 @@ export function ReviewWorkLogs() {
   const [status, setStatus] = useState('');
   const [periodId, setPeriodId] = useState('');
   const [cadre, setCadre] = useState('');
+  const [workType, setWorkType] = useState<'SERVICES' | 'PAYROLL' | 'LEGACY'>('SERVICES');
   const periods = useApi<PayPeriod[]>(tab === 'all' ? '/admin/pay-periods' : null);
   const cadres = useApi<Cadre[]>(tab === 'all' ? '/admin/cadres' : null);
-  const path = tab === 'queue' ? '/worklogs?queue=true' : `/worklogs${qs({ status, period_id: periodId, cadre })}`;
+  const path = tab === 'queue' ? `/worklogs${qs({ queue: true, work_type: workType })}` : `/worklogs${qs({ status, period_id: periodId, cadre, work_type: workType })}`;
   const logs = useApi<WorkLogSummary[]>(path);
   const [openId, setOpenId] = useState<number | null>(null);
 
@@ -89,15 +92,22 @@ export function ReviewWorkLogs() {
         </div>
         <div className="row">
           {isReviewer && (
-            <Tabs
-              label="Work log lists"
-              value={tab}
-              onChange={setTab}
-              tabs={[
-                { key: 'queue', label: `Waiting on me${tab === 'queue' && logs.data ? ` (${logs.data.length})` : ''}` },
-                { key: 'all', label: 'All visible logs' },
-              ]}
-            />
+            <>
+              <Tabs
+                label="Work log lists"
+                value={tab}
+                onChange={setTab}
+                tabs={[
+                  { key: 'queue', label: `Waiting on me${tab === 'queue' && logs.data ? ` (${logs.data.length})` : ''}` },
+                  { key: 'all', label: 'All visible logs' },
+                ]}
+              />
+              <Tabs label="Work type queue" value={workType} onChange={setWorkType} tabs={[
+                { key: 'SERVICES', label: 'Services' },
+                { key: 'PAYROLL', label: 'Payroll' },
+                { key: 'LEGACY', label: 'Legacy' },
+              ]} />
+            </>
           )}
           <button className="btn btn-secondary" onClick={logs.reload} disabled={logs.loading}>
             Refresh
@@ -107,6 +117,11 @@ export function ReviewWorkLogs() {
 
       {tab === 'all' && (
         <div className="filters" role="search">
+          <Field label="Work type">
+            <select value={workType} onChange={(e) => setWorkType(e.target.value as typeof workType)}>
+              <option value="SERVICES">Services</option><option value="PAYROLL">Payroll</option><option value="LEGACY">Legacy</option>
+            </select>
+          </Field>
           <Field label="Status">
             <select value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="">All</option>

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from ...core.roles import CSO_FINANCE, FHI360_FINANCE, OVERSIGHT, RPM, TECHNICAL_OFFICER, SUPERVISOR, CENTRAL_ADMIN, REGIONAL_ADMIN
+from ...core.roles import CSO_FINANCE, FHI360_FINANCE, OVERSIGHT, RPM, TECHNICAL_OFFICER, SUPERVISOR, CENTRAL_ADMIN, REGIONAL_ADMIN, REGIONAL_FINANCE
 from ...core.security import CurrentUser, require_roles
 from ...db.session import get_db
 from ...models import BudgetLine, Cadre, PaymentClaim, PayPeriod, Staff, StaffAssignment, WorkLog, WorkLogAudit, utcnow
@@ -14,7 +14,7 @@ from ...services.scope import claim_visibility, staff_visibility, worklog_visibi
 from .budgets import _visibility as budget_visibility
 
 router = APIRouter()
-DASHBOARD_ROLES = (OVERSIGHT, RPM, TECHNICAL_OFFICER, SUPERVISOR, FHI360_FINANCE, CSO_FINANCE, CENTRAL_ADMIN, REGIONAL_ADMIN)
+DASHBOARD_ROLES = (OVERSIGHT, RPM, TECHNICAL_OFFICER, SUPERVISOR, FHI360_FINANCE, CSO_FINANCE, CENTRAL_ADMIN, REGIONAL_ADMIN, REGIONAL_FINANCE)
 
 
 @router.get("")

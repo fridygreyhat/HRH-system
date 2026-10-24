@@ -36,13 +36,17 @@ class PayPeriod(Base):
 
 class WorkLog(Base):
     __tablename__ = "work_logs"
-    __table_args__ = (UniqueConstraint("staff_id", "period_id"),)
+    __table_args__ = (UniqueConstraint("staff_id", "period_id", "work_type"),)
     id = Column(Integer, primary_key=True)
     staff_id = Column(Integer, ForeignKey("staff.id"), nullable=False, index=True)
     period_id = Column(Integer, ForeignKey("pay_periods.id"), nullable=False, index=True)
     # The assignment in force for this period, captured at creation so rotations don't rewrite history.
     assignment_id = Column(Integer, ForeignKey("staff_assignments.id"), nullable=False)
     cadre_id = Column(Integer, ForeignKey("cadres.id"), nullable=False)
+    workflow_version = Column(Integer, nullable=False, default=1, server_default="1")
+    work_type = Column(String(20), nullable=False, default="LEGACY", server_default="LEGACY")
+    finance_snapshot = Column(JSONB)
+    routed_channel = Column(String(20))
     occupation = Column(String(100))
     occupation_other = Column(String(100))
     section = Column(String(20), ForeignKey("sections.code"))
@@ -72,6 +76,7 @@ class WorkLogEntry(Base):
     entry_date = Column(Date, nullable=False)
     activity_key = Column(String(80))
     activity_location = Column(String(255))
+    activity_snapshot = Column(JSONB)
     start_time = Column(Time)
     end_time = Column(Time)
     hours_worked = Column(Numeric(5, 2), nullable=False)

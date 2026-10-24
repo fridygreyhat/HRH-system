@@ -1,0 +1,111 @@
+"""Scoped catalog and immutable entry definitions for v2 work logs."""
+from copy import deepcopy
+from types import SimpleNamespace
+
+from fastapi import HTTPException
+from fastapi.encoders import jsonable_encoder
+
+from ..models import ActivityRate, Cadre, CadreFormField, StaffAssignment, WorkLogEntry, PayPeriod
+from .activities import ACTIVITIES, CASCADES, activity_for
+
+
+def definition_out(row: ActivityRate) -> dict:
+    fields = row.field_definitions
+    result = {
+        "id": row.id, "key": row.key, "label_en": row.label_en, "label_sw": row.label_sw,
+        "cadre_id": row.cadre_id, "region_id": row.region_id, "item_type": row.item_type,
+        "form_mode": row.form_mode, "field_definitions": fields,
+        "fields": [f["key"] for f in fields], "required_fields": [f["key"] for f in fields],
+        "hours_input": row.hours_input, "rate_value": str(row.rate_value), "currency": row.currency,
+        "unit_type": row.unit_type, "billable_field": row.billable_field,
+        "is_active": row.is_active, "effective_start_date": str(row.effective_start_date),
+        "supersedes_id": row.supersedes_id,
+        "source_key": row.source_key, "requires_location": row.source_key == "secondary_facility",
+    }
+    if row.source_key:
+        result["cascade_pairs"] = CASCADES.get(row.source_key, [])
+    elif row.form_mode == "CASCADE" and len(fields) == 4:
+        result["cascade_pairs"] = [(fields[index]["key"], fields[index - 1]["key"], "A downstream cascade total exceeds its upstream total") for index in range(1, 4)]
+    return result
+
+
+def builtins(db, cadre_id: int) -> list[dict]:
+    cadre = db.get(Cadre, cadre_id)
+    fields = {f.key: {"key": f.key, "label_en": f.label_en, "label_sw": f.label_sw, "field_type": f.field_type, "sort_order": f.sort_order, "is_active": True}
+              for f in db.query(CadreFormField).filter(CadreFormField.cadre_id == cadre_id)}
+    result = []
+    for original in ACTIVITIES.get(cadre.code, []):
+        item = deepcopy(original)
+        item.update(item_type="SERVICES", form_mode="CASCADE" if len(item["fields"]) > 1 else "SINGLE",
+                    field_definitions=[fields[key] for key in item["fields"]], hours_input=False,
+                    rate_value=None, currency="TZS", unit_type="PER_UNIT", billable_field=item["fields"][-1], cadre_id=cadre_id)
+        item["cascade_pairs"] = CASCADES.get(item["key"], [])
+        item["requires_location"] = item["key"] == "secondary_facility"
+        result.append(item)
+    result.append({
+        "key": "daily_attendance", "label_en": "Daily attendance", "label_sw": "Mahudhurio ya kila siku",
+        "item_type": "PAYROLL", "form_mode": "SINGLE", "hours_input": True,
+        "fields": [], "required_fields": [], "field_definitions": [], "rate_value": None,
+        "currency": "TZS", "unit_type": "PER_HOUR", "billable_field": None, "cadre_id": cadre_id,
+    })
+    return result
+
+
+def catalog_for_log(db, log) -> list[dict]:
+    if log.workflow_version < 2:
+        return deepcopy(ACTIVITIES.get(db.get(Cadre, log.cadre_id).code, []))
+    assignment = db.get(StaffAssignment, log.assignment_id)
+    result = [item for item in builtins(db, log.cadre_id) if item["item_type"] == log.work_type]
+    rows = db.query(ActivityRate).filter(
+        ActivityRate.cadre_id == log.cadre_id, ActivityRate.region_id == assignment.region_id,
+        ActivityRate.item_type == log.work_type,
+    ).order_by(ActivityRate.label_en).all()
+    period = db.get(PayPeriod, log.period_id)
+    for row in rows:
+        successor = db.query(ActivityRate).filter(ActivityRate.supersedes_id == row.id).first()
+        if row.effective_start_date <= period.end_date and (not successor or successor.effective_start_date > period.start_date):
+            item = definition_out(row)
+            item["effective_end_date"] = str(successor.effective_start_date) if successor else None
+            result.append(item)
+    keys = {item["key"] for item in result}
+    for entry in db.query(WorkLogEntry).filter(WorkLogEntry.work_log_id == log.id):
+        if entry.activity_snapshot and entry.activity_key not in keys:
+            result.append(deepcopy(entry.activity_snapshot))
+            keys.add(entry.activity_key)
+    return result
+
+
+def resolve_activity(db, log, key: str, day, existing=None) -> dict:
+    if log.workflow_version < 2:
+        item = activity_for(db.get(Cadre, log.cadre_id).code, key)
+        if not item:
+            raise HTTPException(422, "Choose an activity available for your cadre")
+        return deepcopy(item)
+    if existing and existing.activity_key == key and existing.activity_snapshot:
+        return deepcopy(existing.activity_snapshot)
+    assignment = db.get(StaffAssignment, log.assignment_id)
+    custom = db.query(ActivityRate).filter(ActivityRate.key == key).first()
+    if custom:
+        successor = db.query(ActivityRate).filter(ActivityRate.supersedes_id == custom.id).first()
+        expired = successor and day >= successor.effective_start_date
+        if expired or (not custom.is_active and not successor) or custom.cadre_id != log.cadre_id or custom.region_id != assignment.region_id or custom.item_type != log.work_type:
+            raise HTTPException(422, "This activity is not eligible for this log's Region × Cadre and work type")
+        if custom.effective_start_date > day:
+            raise HTTPException(422, "This activity rate is not yet effective on the selected date")
+        return jsonable_encoder(definition_out(custom))
+    item = next((item for item in builtins(db, log.cadre_id) if item["key"] == key and item["item_type"] == log.work_type), None)
+    if not item:
+        raise HTTPException(422, "Choose an eligible activity for this log's work type")
+    return item
+
+
+def log_fields(db, log):
+    if log.workflow_version < 2:
+        return db.query(CadreFormField).filter(CadreFormField.cadre_id == log.cadre_id, CadreFormField.is_active.is_(True)).all()
+    fields = {}
+    for activity in catalog_for_log(db, log):
+        for index, field in enumerate(activity.get("field_definitions", [])):
+            fields[field["key"]] = SimpleNamespace(**{
+                **field, "sort_order": field.get("sort_order", index), "is_active": True,
+            })
+    return list(fields.values())

@@ -27,3 +27,4 @@ from .claims import (
 from .budgets import BudgetLine, BudgetTransaction, BudgetSyncLog
 from .notifications import SMSTemplate, SMSOutbox
 from .audit import AuditEvent, SystemSetting
+from .activities import ActivityRate

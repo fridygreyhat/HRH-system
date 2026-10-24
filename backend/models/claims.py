@@ -102,6 +102,8 @@ class PaymentClaim(Base):
     )
     id = Column(Integer, primary_key=True)
     work_log_id = Column(Integer, ForeignKey("work_logs.id"), index=True)
+    workflow_version = Column(Integer, nullable=False, default=1, server_default="1")
+    work_type = Column(String(20), nullable=False, default="LEGACY", server_default="LEGACY")
     staff_id = Column(Integer, ForeignKey("staff.id"), nullable=False, index=True)
     category_id = Column(Integer, ForeignKey("claim_categories.id"), nullable=False)
     period_id = Column(Integer, ForeignKey("pay_periods.id"), nullable=False)

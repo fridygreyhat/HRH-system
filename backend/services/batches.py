@@ -11,7 +11,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import and_, or_, true
+from sqlalchemy import and_, or_, true, exists
 from sqlalchemy.orm import Session
 
 from ..core import audit as system_audit
@@ -55,18 +55,35 @@ def batch_visibility(current: CurrentUser):
     orgs = current.scope_values("organization_id")
     if CSO_FINANCE in current.roles and orgs:
         conditions.append(
-            and_(PayrollBatch.executor_org_id.in_(orgs), or_(PayrollBatch.route_code == "C", PayrollBatch.status.in_((HANDED_OFF, RECEIVED))))
+            and_(PayrollBatch.executor_org_id.in_(orgs), or_(
+                PayrollBatch.route_code == "C", PayrollBatch.status.in_((HANDED_OFF, RECEIVED)),
+                exists().where(PaymentClaim.batch_id == PayrollBatch.id, PaymentClaim.workflow_version >= 2, PaymentClaim.work_type == "PAYROLL"),
+            ))
         )
-    return or_(*conditions) if conditions else PayrollBatch.id == -1
+    visible = or_(*conditions) if conditions else PayrollBatch.id == -1
+    # Do not expose a mixed-region export because just one of its claims is visible.
+    return and_(visible, ~exists().where(
+        PaymentClaim.batch_id == PayrollBatch.id, PaymentClaim.workflow_version >= 2, ~claim_visibility(current),
+    ))
 
 
 def create_batches(db: Session, current: CurrentUser, route_code: str) -> list[PayrollBatch]:
     role = cl.ROUTE_FINANCE_ROLE.get(route_code)
+    if route_code == "B" and CSO_FINANCE in current.roles and FHI360_FINANCE not in current.roles:
+        role = CSO_FINANCE
+        if not db.query(PaymentClaim).filter(
+            PaymentClaim.status == cl.READY, PaymentClaim.route_code == "B",
+            PaymentClaim.workflow_version >= 2, PaymentClaim.payment_status == "NOT_STARTED", claim_visibility(current),
+        ).first():
+            raise HTTPException(403, "Legacy Route B batches belong to FHI360; no new CSO-owned payroll is ready")
     if role is None:
         raise HTTPException(status_code=422, detail="Route must be A, B or C")
     if role not in current.roles:
         raise HTTPException(status_code=403, detail=f"Route {route_code} batches are prepared by {role}")
     query = db.query(PaymentClaim).filter(PaymentClaim.status == cl.READY, PaymentClaim.route_code == route_code, claim_visibility(current))
+    query = query.filter(or_(PaymentClaim.workflow_version == 1, PaymentClaim.payment_status == "NOT_STARTED"))
+    if route_code == "B" and not current.unrestricted and ((FHI360_FINANCE in current.roles) != (CSO_FINANCE in current.roles)):
+        query = query.filter(PaymentClaim.workflow_version >= 2 if role == CSO_FINANCE else PaymentClaim.workflow_version == 1)
     if role == CSO_FINANCE:
         query = query.filter(PaymentClaim.executor_org_id.in_(current.scope_values("organization_id")))
     claims = query.order_by(PaymentClaim.id).with_for_update().all()
@@ -172,6 +189,8 @@ def to_xlsx(batch: PayrollBatch) -> bytes:
 
 
 def hand_off(db: Session, current: CurrentUser, batch: PayrollBatch) -> PayrollBatch:
+    if db.query(PaymentClaim).filter(PaymentClaim.batch_id == batch.id, PaymentClaim.workflow_version >= 2).first():
+        raise HTTPException(409, "New payroll is already CSO-owned; the legacy FHI360 handoff does not apply")
     if batch.route_code != "B" or batch.status != EXPORTED:
         raise HTTPException(status_code=409, detail="Only exported Route B batches can be handed off to the CSO")
     if FHI360_FINANCE not in current.roles:

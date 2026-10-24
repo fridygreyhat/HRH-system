@@ -20,6 +20,10 @@ const LOG_TONE: Record<string, Tone> = {
   REJECTED: 'danger',
   CANCELLED: 'neutral',
   APPROVED: 'success',
+  FINANCE_REVIEWED: 'info',
+  ROUTED_FHI360: 'info',
+  ROUTED_CSO: 'info',
+  PAID: 'success',
 };
 const CLAIM_TONE: Record<string, Tone> = {
   DRAFT: 'neutral',

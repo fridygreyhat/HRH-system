@@ -4,6 +4,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -37,6 +38,10 @@ from ...services import worklog_workflow as wf
 from ...services.forms import assignment_out, cadre_fields, cadre_out, entries_with_measures, review_summary, totals
 from ...services.activities import activity_fields, activity_for
 from ...services.work_hours import day_hours_violation, hour_limits
+from ...services.activity_catalog import resolve_activity, log_fields
+from ...services.forms import log_cadre_out
+from ...core import workflow_policy
+from ...services import finance_gate
 from ...services.geo import LOCATION_EXCEPTIONS, location_status
 from ...services.otp import dev_code, issue_otp, verify_otp
 from ...services.scope import assignment_for_period, can_see_gps, worklog_visibility
@@ -49,6 +54,7 @@ ID_PATTERN = re.compile(r"\d{8,}")
 
 class WorkLogCreate(BaseModel):
     period_id: int
+    work_type: str = Field(default="SERVICES", pattern="^(SERVICES|PAYROLL)$")
 
 
 class HeaderIn(BaseModel):
@@ -75,6 +81,9 @@ class EntryIn(BaseModel):
 class ActionIn(BaseModel):
     comment: Optional[str] = Field(default=None, max_length=2000)
     expected_version: Optional[int] = None
+    review_confirmed: bool = False
+    review_type: Optional[str] = None
+    category_id: Optional[int] = None
     # Field-level correction flags for returns: [{"entry_date": "2026-08-03", "field": "clients_screened", "note": "..."}]
     flags: list[dict] = []
     # Submission only
@@ -151,7 +160,8 @@ def _detail(db: Session, current: CurrentUser, log: WorkLog) -> dict:
         **_summary(db, log),
         "staff": {"id": staff.id, "name": staff.legal_name, "first_name": staff.first_name, "middle_name": staff.middle_name,
                   "last_name": staff.last_name, "salary_scale": staff.salary_scale},
-        "cadre": cadre_out(db, db.get(Cadre, log.cadre_id)),
+        "cadre": log_cadre_out(db, log),
+        "financial_preview": finance_gate.preview(db, log) if log.workflow_version >= 2 else None,
         "assignment": assignment_out(db, db.get(StaffAssignment, log.assignment_id)),
         "period": to_dict(period),
         "entries": entries,
@@ -197,6 +207,7 @@ def list_worklogs(
     status: Optional[str] = None,
     period_id: Optional[int] = None,
     cadre: Optional[str] = None,
+    work_type: Optional[str] = None,
     db: Session = Depends(get_db),
     current: CurrentUser = Depends(get_current_user),
 ):
@@ -213,6 +224,8 @@ def list_worklogs(
         query = query.filter(WorkLog.status == status)
     if period_id:
         query = query.filter(WorkLog.period_id == period_id)
+    if work_type:
+        query = query.filter(WorkLog.work_type == work_type)
     if cadre:
         query = query.join(Cadre, Cadre.id == WorkLog.cadre_id).filter(Cadre.code == cadre)
     order = WorkLog.status_changed_at.asc() if queue else WorkLog.updated_at.desc()
@@ -231,7 +244,10 @@ def create_worklog(body: WorkLogCreate, db: Session = Depends(get_db), current: 
         raise HTTPException(status_code=409, detail="This pay period is closed")
     if period.start_date > local_today():
         raise HTTPException(status_code=422, detail="This pay period has not started yet")
-    existing = db.query(WorkLog).filter(WorkLog.staff_id == staff.id, WorkLog.period_id == period.id).first()
+    version = workflow_policy.NEW_RECORD_WORKFLOW_VERSION
+    kind = body.work_type if version >= 2 else "LEGACY"
+    existing = db.query(WorkLog).filter(WorkLog.staff_id == staff.id, WorkLog.period_id == period.id,
+                                      WorkLog.work_type.in_([kind, "LEGACY"])).first()
     if existing:
         raise HTTPException(status_code=409, detail=f"You already have work log #{existing.id} for this period")
     assignment = assignment_for_period(db, staff.id, period)
@@ -243,6 +259,8 @@ def create_worklog(body: WorkLogCreate, db: Session = Depends(get_db), current: 
         period_id=period.id,
         assignment_id=assignment.id,
         cadre_id=staff.cadre_id,
+        workflow_version=version,
+        work_type=kind,
         occupation=staff.occupation,
         occupation_other=staff.occupation_other,
         section=assignment.section,
@@ -303,12 +321,14 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
     if entry_date > local_today():
         raise HTTPException(status_code=422, detail=f"{entry_date} is in the future")
     entry = db.query(WorkLogEntry).filter(WorkLogEntry.work_log_id == log.id, WorkLogEntry.entry_date == entry_date).first()
+    activity = resolve_activity(db, log, body.activity_key, entry_date, entry)
+    direct_hours = cadre.hours_mode == "DIRECT" or activity.get("hours_input", False)
     backdate_hours = int(get_setting(db, "backdate_grace_hours"))
     earliest_allowed = datetime.now(TZ) - timedelta(hours=backdate_hours)
     # Timed activities use their completion time. Date-only CHW entries use
     # local end-of-day. Corrections to a previously recorded day are not a new
     # backdated entry and remain possible after a review return.
-    completion_time = body.end_time if cadre.hours_mode != "DIRECT" and body.end_time else time.max
+    completion_time = body.end_time if not direct_hours and body.end_time else time.max
     completed_at = datetime.combine(entry_date, completion_time, tzinfo=TZ)
     if not entry and completed_at < earliest_allowed:
         raise HTTPException(status_code=422, detail=f"Work-log entries may only be backdated {backdate_hours} hours.")
@@ -318,7 +338,7 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
     if ID_PATTERN.search(body.evidence_text) or (body.comment and ID_PATTERN.search(body.comment)):
         raise HTTPException(status_code=422, detail="Evidence looks like it contains an ID or phone number. Do not record patient or client identifiers.")
 
-    if cadre.hours_mode == "DIRECT":
+    if direct_hours:
         if body.hours_worked is None:
             raise HTTPException(status_code=422, detail="Hours worked is required")
         hours, start, end = body.hours_worked, None, None
@@ -331,15 +351,15 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
         hours = Decimal((end_dt - start_dt).total_seconds() / 3600).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         start, end = body.start_time, body.end_time
 
-    fields = {f.key: f for f in cadre_fields(db, cadre.id)}
-    activity = activity_for(cadre.code, body.activity_key)
+    fields = {f.key: f for f in log_fields(db, log)}
     if not activity:
         raise HTTPException(status_code=422, detail=f"Select a valid activity for the {cadre.code} form.")
-    if body.activity_key == "secondary_facility" and not (body.activity_location or "").strip():
+    requires_location = activity.get("requires_location", body.activity_key == "secondary_facility")
+    if requires_location and not (body.activity_location or "").strip():
         raise HTTPException(status_code=422, detail="Enter the name of the secondary facility.")
-    if body.activity_key != "secondary_facility" and body.activity_location:
+    if not requires_location and body.activity_location:
         raise HTTPException(status_code=422, detail="A secondary-facility name is only valid for that activity.")
-    allowed_fields = activity_fields(cadre.code, body.activity_key, set(fields))
+    allowed_fields = set(activity["fields"])
     unknown = set(body.measures) - set(fields)
     if unknown:
         raise HTTPException(status_code=422, detail=f"Not on the {cadre.code} form: {sorted(unknown)}")
@@ -394,6 +414,8 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
         db.add(entry)
     entry.activity_key = body.activity_key
     entry.activity_location = (body.activity_location or "").strip() or None
+    if log.workflow_version >= 2:
+        entry.activity_snapshot = jsonable_encoder(activity)
     entry.start_time, entry.end_time, entry.hours_worked = start, end, hours
     entry.evidence_text, entry.comment = body.evidence_text.strip(), (body.comment or "").strip() or None
     if capture:
@@ -449,6 +471,14 @@ def perform_action(log_id: int, action: str, body: ActionIn = ActionIn(), db: Se
     if action in wf.INTERNAL_ACTIONS:
         raise HTTPException(status_code=400, detail="Use the OTP confirmation endpoint")
     log = _get_log(db, current, log_id, lock=True)
+    if log.workflow_version >= 2 and action not in {"submit", "cancel", "decline"}:
+        # Authorization is checked first, so an unauthorized caller cannot probe
+        # validation details or bypass queue-specific confirmation.
+        reason = wf.check_action(db, current, log, action)
+        if reason:
+            raise HTTPException(403, reason)
+        if not body.review_confirmed or body.review_type != log.work_type:
+            raise HTTPException(422, "Confirm review of this log's Services or Payroll queue before acting")
     if action == "facility_endorse":
         if body.expected_version is not None and body.expected_version != log.version:
             raise HTTPException(status_code=409, detail="This work log changed since you opened it")
@@ -456,7 +486,9 @@ def perform_action(log_id: int, action: str, body: ActionIn = ActionIn(), db: Se
         db.commit()
         return _detail(db, current, log)
 
-    details = {"flags": body.flags} if body.flags else None
+    details = {"flags": body.flags} if body.flags else {}
+    if log.workflow_version >= 2:
+        details.update(review_confirmed=body.review_confirmed, review_type=body.review_type, category_id=body.category_id)
     if action == "submit":
         if not body.attest:
             raise HTTPException(status_code=422, detail="Confirm that the entries are true and complete before submitting")
@@ -475,7 +507,12 @@ def perform_action(log_id: int, action: str, body: ActionIn = ActionIn(), db: Se
 @router.get("/{log_id}/estimate")
 def estimate(log_id: int, db: Session = Depends(get_db), current: CurrentUser = Depends(get_current_user)):
     """Estimated payout from active approved rates. Not an approved amount: the claim decides what is paid."""
-    return claims_service.estimate_for_work_log(db, _get_log(db, current, log_id))
+    log = _get_log(db, current, log_id)
+    if log.workflow_version >= 2:
+        amount = finance_gate.preview(db, log)
+        return {"lines": [{"category": log.work_type, "component": line["activity"], **line} for line in amount["lines"]],
+                "totals": [{"currency": amount["currency"], "amount": amount["total"]}] if amount["currency"] else [], "exceptions": amount["exceptions"]}
+    return claims_service.estimate_for_work_log(db, log)
 
 
 @router.post("/{log_id}/otp/resend")

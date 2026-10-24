@@ -66,6 +66,18 @@ EVENTS: dict[str, dict] = {
         "en": "HRH: The {period} work log for {provider} has waited for your action for more than {hours} hours.",
         "sw": "HRH: Kumbukumbu ya kazi ya {provider} ya {period} imesubiri hatua yako kwa zaidi ya saa {hours}.",
     },
+    "WORKLOG_FINANCE_REVIEW": {
+        "recipient": "Regional Finance",
+        "variables": ["provider", "period"],
+        "en": "HRH: RPM authorized {provider}'s {period} log. Review the validated amount and route it to the correct payment channel.",
+        "sw": "HRH: RPM ameidhinisha kumbukumbu ya {provider} ya {period}. Kagua kiasi na elekeza kwenye njia sahihi ya malipo.",
+    },
+    "WORKLOG_FINANCE_HOLD": {
+        "recipient": "Regional Program Manager",
+        "variables": ["provider", "period"],
+        "en": "HRH: Finance routing for {provider}, {period}, is on budget hold. Review the budget before payment.",
+        "sw": "HRH: Malipo ya {provider}, {period}, yamesimamishwa kwa sababu ya bajeti. Kagua bajeti kabla ya malipo.",
+    },
     "CLAIM_BUDGET_HOLD": {
         "recipient": "Regional Program Manager",
         "variables": ["provider", "period", "claim_id"],
