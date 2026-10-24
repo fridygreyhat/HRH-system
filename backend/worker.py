@@ -31,6 +31,9 @@ def _is_stale(db: Session, row: SMSOutbox) -> bool:
     if row.related_type == "claim_payment":
         claim = db.get(PaymentClaim, row.related_id)
         return claim is None or claim.payment_status not in ("PAID", "RECONCILED")
+    if row.related_type == "claim":
+        claim = db.get(PaymentClaim, row.related_id)
+        return claim is None or claim.status != row.related_status
     return False
 
 

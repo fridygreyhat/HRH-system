@@ -14,6 +14,7 @@ export interface CadreActivity {
   label_en: string;
   label_sw: string;
   fields: string[];
+  required_fields: string[];
 }
 
 export interface Cadre {
@@ -171,6 +172,7 @@ export interface WorkLogDetail extends WorkLogSummary {
   totals: { days: number; hours: number; measures: Record<string, number> };
   review_summary: {
     metrics: Record<string, string>;
+    months: { month: string; days: number; hours: string; metrics: Record<string, string> }[];
     anomalies: { date: string | null; code: string; message: string }[];
     limits: { daily_hours: string; weekly_hours: string; backdate_grace_hours: number };
   };

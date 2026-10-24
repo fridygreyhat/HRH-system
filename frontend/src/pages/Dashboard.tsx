@@ -40,7 +40,7 @@ const CLAIM_GROUPS = [
   { key: 'preparing', label: 'Preparing', statuses: ['DRAFT', 'VALIDATION_NEEDED', 'PENDING_COMMUNITY_VERIFICATION'] },
   { key: 'awaiting', label: 'Awaiting approval', statuses: ['AWAITING_APPROVAL'] },
   { key: 'approved', label: 'Approved / ready', statuses: ['APPROVED', 'READY'] },
-  { key: 'held', label: 'Budget hold', statuses: ['HELD'] },
+  { key: 'held', label: 'Budget hold', statuses: ['BUDGET_HOLD', 'HELD'] },
   { key: 'exported', label: 'Exported / handed off', statuses: ['EXPORTED', 'HANDED_OFF'] },
 ];
 const PAYMENT_GROUPS = [

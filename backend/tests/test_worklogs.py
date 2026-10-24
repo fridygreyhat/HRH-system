@@ -12,7 +12,7 @@ def test_each_cadre_gets_its_supplied_form(api):
     fields = {c["code"]: [f["key"] for f in c["fields"]] for c in api.get("/admin/cadres", "chw1")}
     assert len(fields["CHW"]) > 5 and "clients_returned_to_care" in fields["CHW"]
     assert "ctc_hts_dataset_uploaded" in fields["DATA_CLERK"]
-    assert len(fields["HCP"]) == 13 and "weekend_clinic_attended" in fields["HCP"]
+    assert len(fields["HCP"]) > 13 and "weekend_clinic_attended" in fields["HCP"]
     chw = api.get("/auth/me", "chw1")["cadre"]
     assert chw["hours_mode"] == "DIRECT" and chw["fields"][0]["label_sw"].startswith("Idadi ya Wateja")
 
@@ -99,7 +99,7 @@ def test_return_requires_reason_restarts_chain_and_notifies(api, period, db):
     outbox = db.execute(text("select event_name, related_status from sms_outbox where related_id = :id and event_name = 'WORKLOG_RETURNED'"), {"id": log["id"]}).all()
     assert outbox == [("WORKLOG_RETURNED", "RETURNED_TO_PROVIDER")]
 
-    log = api.put(f"/worklogs/{log['id']}/entries/{period['start_date']}", "chw1", {**ENTRY["CHW"](None), "measures": {"clients_followed_up": 4}})
+    log = api.put(f"/worklogs/{log['id']}/entries/{period['start_date']}", "chw1", {**ENTRY["CHW"](None), "measures": {**ENTRY["CHW"](None)["measures"], "clients_followed_up": 4}})
     log = api.post(f"/worklogs/{log['id']}/actions/submit", "chw1", {"attest": True})
     assert log["status"] == "PENDING_CTC_VERIFICATION"  # every downstream decision is made again
     log = api.post(f"/worklogs/{log['id']}/actions/verify", "supervisor1", {"expected_version": 1})

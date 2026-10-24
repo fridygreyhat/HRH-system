@@ -1,11 +1,14 @@
-"""Acceptance-test harness. Runs against a throwaway `hrh_test` database on the compose Postgres.
+"""Acceptance harness using a throwaway PostgreSQL database.
 
-Run: docker compose run --rm --no-deps backend pytest -q backend/tests
+Set HRH_TEST_DATABASE to an unused test-only name before running. Never target
+production: the selected test database is dropped and recreated.
 """
 import calendar
 import itertools
 import os
 from datetime import date
+from functools import partial
+from unittest.mock import patch
 
 import psycopg2
 import pytest
@@ -38,14 +41,17 @@ def client():
     command.upgrade(Config(os.path.join(os.path.dirname(__file__), "..", "alembic.ini")), "head")
     from backend.seed import main as seed_main
 
-    seed_main()
+    from backend.core import config as app_config
+
+    with patch.object(app_config, "ADMIN_PASSWORD", "admin12345"):
+        seed_main()
     from backend.db.session import SessionLocal
     from backend.tests.demo_data import seed_test_data
 
     with SessionLocal() as session:
         seed_test_data(session)
         # Tests act as the bootstrap administrator directly, so skip its first-sign-in password change.
-    from backend.models import SystemSetting, User
+        from backend.models import SystemSetting, User
 
         session.query(User).filter(User.username == "admin").update({User.must_change_password: False})
         # The acceptance suite uses archived periods; keep that separate from
@@ -149,6 +155,23 @@ ENTRY = {
     "DATA_CLERK": lambda d: {"activity_key": "ctc_data", "start_time": "07:30", "end_time": "15:30", "evidence_text": "Updated CTC database and uploaded dataset", "measures": {"ctc_clients_registered": 8, "ctc_visits_updated": 8, "hts_clients_registered": 12, "pharmacy_visits_entered": 8, "ctc_hts_dataset_uploaded": True}},
     "HCP": lambda d: {"activity_key": "index_testing", "start_time": "16:00", "end_time": "18:00", "evidence_text": "Index testing session at OPD", "measures": {"clients_tested_hiv": 6, "clients_tested_index": 6, "hcp_index_appointments": 6, "hcp_index_positive": 1, "clients_tested_positive_new": 1, "hiv_positive_linked_art": 1}},
 }
+
+
+def _complete_activity_entry(code, factory, day):
+    """Keep legacy fixture counts while explicitly completing new indicators."""
+    from backend.seed import CADRES
+    from backend.services.activities import FIELD_SPECS, activity_for
+
+    body = factory(day)
+    specs = next(c["fields"] for c in CADRES if c["code"] == code) + FIELD_SPECS[code]
+    types = {spec[0]: spec[3] if len(spec) > 3 else "INTEGER" for spec in specs}
+    activity = activity_for(code, body["activity_key"])
+    values = {key: False if types[key] == "BOOLEAN" else 0 for key in activity["required_fields"]}
+    body["measures"] = {**values, **body["measures"]}
+    return body
+
+
+ENTRY = {code: partial(_complete_activity_entry, code, factory) for code, factory in ENTRY.items()}
 PROVIDER_CADRE = {"chw1": "CHW", "clerk1": "DATA_CLERK", "hcp1": "HCP", "hcp2": "HCP"}
 
 

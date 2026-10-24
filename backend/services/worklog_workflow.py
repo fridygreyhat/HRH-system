@@ -33,7 +33,8 @@ from ..models import (
     utcnow,
 )
 from . import notifications
-from .forms import build_snapshot
+from .forms import build_snapshot, entries_with_measures, review_summary
+from .activities import activity_for
 from .scope import assignment_in_role_scope, assignments_in_role_scope, users_in_scope_for
 
 DRAFT = "DRAFT"
@@ -229,6 +230,17 @@ def _validate_submission(db: Session, log: WorkLog) -> None:
         raise HTTPException(status_code=422, detail="Add at least one daily entry before submitting")
     if not log.attested_at:
         raise HTTPException(status_code=422, detail="Confirm the attestation before submitting")
+    cadre = db.get(Cadre, log.cadre_id)
+    for entry, measures in entries_with_measures(db, log.id):
+        activity = activity_for(cadre.code, entry.activity_key)
+        if not activity:
+            raise HTTPException(status_code=422, detail=f"Select an activity for {entry.entry_date} before submitting.")
+        missing = set(activity["required_fields"]) - set(measures)
+        if missing:
+            raise HTTPException(status_code=422, detail=f"Complete all required indicators for {entry.entry_date}: {', '.join(sorted(missing))}. Enter zero when none were recorded.")
+    hour_flags = [flag for flag in review_summary(db, log)["anomalies"] if flag["code"] in {"DAILY_HOURS", "WEEKLY_HOURS"}]
+    if hour_flags:
+        raise HTTPException(status_code=422, detail=hour_flags[0]["message"])
 
 
 def period_label(period: Optional[PayPeriod]) -> str:

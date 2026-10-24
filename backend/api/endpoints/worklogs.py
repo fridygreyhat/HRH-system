@@ -155,7 +155,7 @@ def _detail(db: Session, current: CurrentUser, log: WorkLog) -> dict:
         "period": to_dict(period),
         "entries": entries,
         "totals": totals(db, log),
-        "review_summary": review_summary(db, log),
+        "review_summary": review_summary(db, log, current),
         "location_exception_count": sum(1 for e in entries if e["location_exception"]),
         "gps_visible": show_gps,
         "audit": [{**to_dict(a), "actor_name": name} for a, name in audit_rows],
@@ -301,10 +301,15 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
         raise HTTPException(status_code=422, detail=f"{entry_date} is outside the period {period.start_date} – {period.end_date}")
     if entry_date > local_today():
         raise HTTPException(status_code=422, detail=f"{entry_date} is in the future")
+    entry = db.query(WorkLogEntry).filter(WorkLogEntry.work_log_id == log.id, WorkLogEntry.entry_date == entry_date).first()
     backdate_hours = int(get_setting(db, "backdate_grace_hours"))
     earliest_allowed = datetime.now(TZ) - timedelta(hours=backdate_hours)
-    entry_midnight = datetime.combine(entry_date, time.min, tzinfo=TZ)
-    if entry_midnight < earliest_allowed:
+    # Timed activities use their completion time. Date-only CHW entries use
+    # local end-of-day. Corrections to a previously recorded day are not a new
+    # backdated entry and remain possible after a review return.
+    completion_time = body.end_time if cadre.hours_mode != "DIRECT" and body.end_time else time.max
+    completed_at = datetime.combine(entry_date, completion_time, tzinfo=TZ)
+    if not entry and completed_at < earliest_allowed:
         raise HTTPException(status_code=422, detail=f"Work-log entries may only be backdated {backdate_hours} hours.")
     # Serialize edits by the staff member so concurrent submissions cannot
     # each pass the daily/weekly cap using the same remaining hours.
@@ -352,7 +357,6 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
             values[key] = Decimal(int(raw))
 
     daily_max = Decimal(str(get_setting(db, "max_daily_hours")))
-    entry = db.query(WorkLogEntry).filter(WorkLogEntry.work_log_id == log.id, WorkLogEntry.entry_date == entry_date).first()
     week_start = entry_date - timedelta(days=entry_date.weekday())
     week_end = week_start + timedelta(days=6)
     existing_hours = (

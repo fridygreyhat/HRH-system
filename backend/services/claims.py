@@ -5,7 +5,7 @@ effective-dated rate rules. Anything missing (route, payor, CSO, funding source,
 becomes a visible exception — never a guessed value.
 
 Claim status:   DRAFT | VALIDATION_NEEDED | PENDING_COMMUNITY_VERIFICATION | AWAITING_APPROVAL
-                | APPROVED | HELD | READY | EXPORTED | HANDED_OFF | CANCELLED
+                | APPROVED | BUDGET_HOLD | READY | EXPORTED | HANDED_OFF | CANCELLED
 Payment status: NOT_STARTED | PENDING | PARTIALLY_RECORDED | PROOF_REQUIRED | PAID | FAILED | RECONCILED
 """
 from dataclasses import dataclass, field
@@ -35,16 +35,17 @@ from ..models import (
     WorkLogMeasure,
     utcnow,
 )
-from . import budgets
+from . import budgets, notifications
 from .forms import cadre_fields
-from .scope import assignment_in_role_scope
+from .scope import assignment_in_role_scope, users_in_scope_for
 
 DRAFT = "DRAFT"
 VALIDATION_NEEDED = "VALIDATION_NEEDED"
 PENDING_COMMUNITY = "PENDING_COMMUNITY_VERIFICATION"
 AWAITING_APPROVAL = "AWAITING_APPROVAL"
 APPROVED = "APPROVED"
-HELD = "HELD"
+BUDGET_HOLD = "BUDGET_HOLD"
+HELD = BUDGET_HOLD  # compatibility for service callers using the old constant
 READY = "READY"
 EXPORTED = "EXPORTED"
 HANDED_OFF = "HANDED_OFF"
@@ -52,7 +53,7 @@ CANCELLED = "CANCELLED"
 CLAIM_STATUSES = [DRAFT, VALIDATION_NEEDED, PENDING_COMMUNITY, AWAITING_APPROVAL, APPROVED, HELD, READY, EXPORTED, HANDED_OFF, CANCELLED]
 PAYMENT_STATUSES = ["NOT_STARTED", "PENDING", "PARTIALLY_RECORDED", "PROOF_REQUIRED", "PAID", "FAILED", "RECONCILED"]
 COMMITTED_STATUSES = {APPROVED, READY, EXPORTED, HANDED_OFF}
-CANCELLABLE = {DRAFT, VALIDATION_NEEDED, PENDING_COMMUNITY, AWAITING_APPROVAL, APPROVED, HELD, READY}
+CANCELLABLE = {DRAFT, VALIDATION_NEEDED, PENDING_COMMUNITY, AWAITING_APPROVAL, APPROVED, HELD, "HELD", READY}
 
 # Who prepares/approves claims on each route (approver must be a different person from the preparer).
 ROUTE_FINANCE_ROLE = {"A": FHI360_FINANCE, "B": FHI360_FINANCE, "C": CSO_FINANCE}
@@ -322,7 +323,7 @@ def check_action(db: Session, current: CurrentUser, claim: PaymentClaim, action:
             return "The approver must be a different person from the preparer"
         return finance_role_ok(current, claim)
     if action == "release":
-        if s != HELD:
+        if s not in {HELD, "HELD"}:
             return f"Cannot release a claim in status {s}"
         return None if RPM in current.roles and assignment_in_role_scope(db, current, RPM, claim.assignment_id) else finance_role_ok(current, claim)
     if action == "mark_ready":
@@ -390,8 +391,21 @@ def _commit_budget(db: Session, current: CurrentUser, claim: PaymentClaim) -> di
         claim.exception_reason = None
         return {"budget_line": line.code, "committed": str(claim.amount)}
     except budgets.InsufficientBudget as e:
+        already_held = claim.status in {HELD, "HELD"}
         claim.status = HELD
         claim.exception_reason = f"Budget hold: line {e.line.code} is short by {e.shortfall} {e.line.currency}"
+        assignment = db.get(StaffAssignment, claim.assignment_id) if claim.assignment_id else None
+        if not already_held and assignment:
+            period = db.get(PayPeriod, claim.period_id)
+            staff = db.get(Staff, claim.staff_id)
+            for reviewer in users_in_scope_for(db, RPM, assignment):
+                notifications.enqueue(
+                    db, "CLAIM_BUDGET_HOLD", reviewer, None,
+                    related=("claim", claim.id, BUDGET_HOLD),
+                    provider=staff.legal_name,
+                    period=period.period_label or f"{period.start_date} to {period.end_date}",
+                    claim_id=claim.id,
+                )
         return {"budget_line": e.line.code, "shortfall": str(e.shortfall), "available": str(budgets.available(e.line))}
 
 

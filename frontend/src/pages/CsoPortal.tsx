@@ -27,7 +27,7 @@ const RECON_GROUPS: { status: string; title: string }[] = [
 ];
 const ROUTE_C_GROUPS: { status: string; title: string; hint: string }[] = [
   { status: 'VALIDATION_NEEDED', title: 'Validation needed', hint: 'Fix the problem shown, then revalidate the claim.' },
-  { status: 'HELD', title: 'Held (budget)', hint: 'Not enough budget. Release the hold once budget is available.' },
+  { status: 'BUDGET_HOLD', title: 'Budget hold', hint: 'Not enough budget. Release the hold once budget is available.' },
   { status: 'DRAFT', title: 'Drafts', hint: 'Submit for approval.' },
   {
     status: 'AWAITING_APPROVAL',

@@ -2,6 +2,7 @@
 from decimal import Decimal
 from collections import defaultdict
 from datetime import timedelta
+from calendar import monthrange
 
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
@@ -140,7 +141,7 @@ def build_snapshot(db: Session, log: WorkLog) -> dict:
     })
 
 
-def review_summary(db: Session, log: WorkLog) -> dict:
+def review_summary(db: Session, log: WorkLog, current=None) -> dict:
     """Monthly totals and non-blocking flags for implausible measure funnels/hours."""
     rows = entries_with_measures(db, log.id)
     totals_by_key = totals(db, log)["measures"]
@@ -174,20 +175,57 @@ def review_summary(db: Session, log: WorkLog) -> dict:
                     "date": str(entry.entry_date), "code": "CASCADE",
                     "message": f"{fields.get(lower, lower)} exceeds {fields.get(upper, upper)}. {description}.",
                 })
-    activity_totals: dict[str, dict[str, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
-    for entry, measures in rows:
-        if entry.activity_key:
-            for key, value in measures.items():
-                activity_totals[entry.activity_key][key] += value
-    for activity_key, measures in activity_totals.items():
-        for lower, upper, description in CASCADES.get(activity_key, []):
-            if lower in measures and upper in measures and measures[lower] > measures[upper]:
-                anomalies.append({
-                    "date": None, "code": "MONTHLY_CASCADE",
-                    "message": f"Monthly total: {fields.get(lower, lower)} exceeds {fields.get(upper, upper)}. {description}.",
-                })
+    months = monthly_provider_totals(db, log, current)
+    for month in months:
+        anomalies.extend(month["anomalies"])
     return {
         "metrics": {key: str(value) for key, value in totals_by_key.items()},
+        "months": months,
         "anomalies": anomalies,
         "limits": {"daily_hours": str(daily_max), "weekly_hours": str(weekly_max), "backdate_grace_hours": get_setting(db, "backdate_grace_hours")},
     }
+
+
+def monthly_provider_totals(db: Session, log: WorkLog, current=None) -> list[dict]:
+    """Calendar-month totals across the provider's visible logs, including weekly pay periods."""
+    from .scope import worklog_visibility
+
+    period = db.get(PayPeriod, log.period_id)
+    start = period.start_date.replace(day=1)
+    end = period.end_date.replace(day=monthrange(period.end_date.year, period.end_date.month)[1])
+    query = (
+        db.query(WorkLogEntry).join(WorkLog, WorkLog.id == WorkLogEntry.work_log_id)
+        .filter(WorkLog.staff_id == log.staff_id, WorkLogEntry.entry_date >= start, WorkLogEntry.entry_date <= end)
+    )
+    if current is not None:
+        query = query.filter(worklog_visibility(current))
+    entries = query.all()
+    by_id = {entry.id: entry for entry in entries}
+    measures = db.query(WorkLogMeasure).filter(WorkLogMeasure.entry_id.in_(by_id)).all() if by_id else []
+    months = {}
+    cursor = start
+    while cursor <= end:
+        months[cursor.strftime("%Y-%m")] = {"dates": set(), "hours": Decimal(0), "metrics": defaultdict(Decimal), "activities": defaultdict(lambda: defaultdict(Decimal))}
+        cursor = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
+    for entry in entries:
+        month = months[entry.entry_date.strftime("%Y-%m")]
+        month["dates"].add(entry.entry_date)
+        month["hours"] += entry.hours_worked
+    for measure in measures:
+        entry = by_id[measure.entry_id]
+        month = months[entry.entry_date.strftime("%Y-%m")]
+        month["metrics"][measure.field_key] += measure.value
+        month["activities"][entry.activity_key][measure.field_key] += measure.value
+    result = []
+    for month_key, month in months.items():
+        anomalies = []
+        for activity_key, values in month["activities"].items():
+            for lower, upper, description in CASCADES.get(activity_key, []):
+                if lower in values and upper in values and values[lower] > values[upper]:
+                    anomalies.append({"date": None, "code": "MONTHLY_CASCADE", "message": f"{month_key}: {description}."})
+        result.append({
+            "month": month_key, "days": len(month["dates"]), "hours": str(month["hours"]),
+            "metrics": {key: str(value) for key, value in month["metrics"].items()},
+            "anomalies": anomalies,
+        })
+    return result

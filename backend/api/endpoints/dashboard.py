@@ -106,7 +106,7 @@ def dashboard(
         if region_id:
             budget_q = budget_q.filter(or_(BudgetLine.region_id.is_(None), BudgetLine.region_id == region_id))
         rows = budget_q.all()
-        held = claim_q.filter(PaymentClaim.status == "HELD").count()
+        held = claim_q.filter(PaymentClaim.status.in_(("HELD", "BUDGET_HOLD"))).count()
         budgets = {
             "allocated": float(sum(b.allocated_amount for b in rows)),
             "committed": float(sum(b.committed_amount for b in rows)),

@@ -155,7 +155,12 @@ def test_budget_hold_reallocation_and_spend(api, db):
         claims.append(claim)
     first = api.post(f"/claims/{claims[0]['id']}/actions/approve", "fhifin2")
     second = api.post(f"/claims/{claims[1]['id']}/actions/approve", "fhifin2")
-    assert first["status"] == "APPROVED" and second["status"] == "HELD" and "short by" in second["exception_reason"]
+    assert first["status"] == "APPROVED" and second["status"] == "BUDGET_HOLD" and "short by" in second["exception_reason"]
+    from backend.models import SMSOutbox, User
+    rpm = db.query(User).filter(User.username == "rpm1").one()
+    assert db.query(SMSOutbox).filter(
+        SMSOutbox.event_name == "CLAIM_BUDGET_HOLD", SMSOutbox.related_id == second["id"], SMSOutbox.user_id == rpm.id
+    ).count() == 1
     api.post(f"/claims/{second['id']}/actions/mark_ready", "fhifin1", expect=409)  # holds block payroll release
     a_line = next(l for l in api.get(f"/budgets/lines?period_id={period['id']}", "fhifin1") if l["code"] == "DEMO-A-01")
     assert (a_line["committed_amount"], a_line["available_amount"]) == (40000, 20000)

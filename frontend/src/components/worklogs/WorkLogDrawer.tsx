@@ -226,19 +226,23 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
           <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} technicalReviewer={log.cadre?.technical_reviewer_title} />
           <Section title="Monthly provider summary">
             <div className="row">
-              <span className="badge badge-neutral">{num(log.review_summary?.metrics ? log.totals.days : log.entry_count)} days worked</span>
-              <span className="badge badge-neutral">{num(log.totals.hours)} total hours</span>
               <span className="badge badge-neutral">Daily limit: {log.review_summary?.limits.daily_hours} h</span>
               <span className="badge badge-neutral">Weekly limit: {log.review_summary?.limits.weekly_hours} h</span>
             </div>
-            <dl className="totals-list">
-              {log.cadre.fields.filter((field) => Number(log.review_summary?.metrics?.[field.key] ?? 0) > 0).map((field) => (
-                <div key={field.key}>
-                  <dt>{field.label_en}</dt>
-                  <dd>{num(Number(log.review_summary.metrics[field.key]))}</dd>
-                </div>
-              ))}
-            </dl>
+            {(log.review_summary?.months || []).map((month) => (
+              <div key={month.month} className="stack">
+                <h4>{month.month} · {num(month.days)} days · {num(Number(month.hours))} hours</h4>
+                <dl className="totals-list">
+                  {log.cadre.fields.filter((field) => Number(month.metrics[field.key] ?? 0) > 0).map((field) => (
+                    <div key={field.key}>
+                      <dt>{field.label_en}</dt>
+                      <dd>{num(Number(month.metrics[field.key]))}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            ))}
+            <p className="muted small">Calendar-month totals include this provider's work logs visible within your permissions. The daily entries below belong to the selected log.</p>
             {log.review_summary?.anomalies?.length > 0 && (
               <div className="alert alert-warn" role="status">
                 <strong>Review flags — check these before deciding.</strong>

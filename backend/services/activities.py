@@ -37,8 +37,8 @@ ACTIVITIES = {
             "ctc_hts_dataset_uploaded",
         ]},
         {"key": "lab_data", "label_en": "HVL and EID requests and results", "label_sw": "Maombi na majibu ya vipimo vya HVL na EID", "fields": [
-            "ctc_hvl_eligible", "ctc_eid_eligible", "ctc_hvl_eid_requests",
-            "ctc_hvl_eid_results_received",
+            "ctc_hvl_eligible", "ctc_eid_eligible", "ctc_hvl_requests", "ctc_eid_requests",
+            "ctc_hvl_results_received", "ctc_eid_results_received",
         ]},
         {"key": "reporting", "label_en": "Backups, reporting, and weekly lists", "label_sw": "Nakala za akiba, taarifa na orodha za wiki", "fields": [
             "ctc_full_backup", "ctc_monthly_portal_submission", "ctc_nashcop_raw_export",
@@ -51,7 +51,8 @@ ACTIVITIES = {
             "ctc_clients_tb_screened", "ctc_tpt_eligible", "ctc_tpt_initiated",
             "hei_visits_updated", "hts_clients_registered", "hts_clients_positive",
             "ctc_elicited_contacts", "ctc_hvl_eligible", "ctc_eid_eligible",
-            "ctc_hvl_eid_requests", "ctc_hvl_eid_results_received", "ctc_full_backup",
+            "ctc_hvl_requests", "ctc_eid_requests", "ctc_hvl_results_received",
+            "ctc_eid_results_received", "ctc_full_backup",
             "ctc_monthly_portal_submission", "ctc_nashcop_raw_export",
             "ctc_nashcop_aggregate_export",
         ]},
@@ -89,7 +90,9 @@ ACTIVITIES = {
             "hcp_cd4_samples_taken", "hcp_hvl_samples_taken",
         ]},
         {"key": "laboratory", "label_en": "HVL, DBS and CD4 laboratory services", "label_sw": "Huduma za maabara za HVL, DBS na CD4", "fields": [
-            "hcp_lab_samples_received", "hcp_lab_samples_processed", "hcp_lab_results_disbursed",
+            "hcp_lab_hvl_received", "hcp_lab_hvl_processed", "hcp_lab_hvl_disbursed",
+            "hcp_lab_dbs_received", "hcp_lab_dbs_processed", "hcp_lab_dbs_disbursed",
+            "hcp_lab_cd4_received", "hcp_lab_cd4_processed", "hcp_lab_cd4_disbursed",
         ]},
     ],
 }
@@ -126,6 +129,10 @@ FIELD_SPECS = {
         ("ctc_eid_eligible", "HEI eligible for EID samples", "Watoto walio katika hatari wanaostahili sampuli ya EID"),
         ("ctc_hvl_eid_requests", "HVL/EID test requests entered and uploaded", "Maombi ya vipimo vya HVL/EID yaliyoingizwa na kupakiwa"),
         ("ctc_hvl_eid_results_received", "HVL/EID results received and updated", "Majibu ya HVL/EID yaliyopokelewa na kusasishwa"),
+        ("ctc_hvl_requests", "HVL requests registered and uploaded to CTC-3", "Maombi ya HVL yaliyosajiliwa na kupakiwa CTC-3"),
+        ("ctc_eid_requests", "EID requests registered and uploaded to CTC-3", "Maombi ya EID yaliyosajiliwa na kupakiwa CTC-3"),
+        ("ctc_hvl_results_received", "HVL results received and updated in CTC-2", "Majibu ya HVL yaliyopokelewa na kusasishwa CTC-2"),
+        ("ctc_eid_results_received", "EID results received and updated in HEI profile", "Majibu ya EID yaliyopokelewa na kusasishwa kwenye HEI"),
         ("ctc_full_backup", "CTC-2 full backup saved externally (Yes/No)", "Nakala kamili ya CTC-2 imehifadhiwa nje (Ndiyo/Hapana)", "BOOLEAN"),
         ("ctc_monthly_portal_submission", "Monthly Portal dataset submitted (Yes/No)", "Takwimu zimewasilishwa kwenye Monthly Portal (Ndiyo/Hapana)", "BOOLEAN"),
         ("ctc_nashcop_raw_export", "NASHCoP comprehensive raw export (Yes/No)", "Takwimu ghafi za NASHCoP zimesafirishwa (Ndiyo/Hapana)", "BOOLEAN"),
@@ -166,10 +173,31 @@ FIELD_SPECS = {
     ],
 }
 
+# The laboratory sheet separates HVL, DBS and CD4 rather than combining them
+# into a single total, so the received → processed → disbursed cascade remains
+# traceable for each sample type.
+for sample in ("hvl", "dbs", "cd4"):
+    for stage, english, swahili in (
+        ("received", "samples received", "sampuli zilizopokelewa"),
+        ("processed", "samples processed", "sampuli zilizochakatwa"),
+        ("disbursed", "results disbursed", "majibu yaliyotolewa"),
+    ):
+        FIELD_SPECS["HCP"].append((f"hcp_lab_{sample}_{stage}", f"{sample.upper()} {english}", f"{sample.upper()} {swahili}"))
+
+# Legacy aggregate rows remain readable for historical logs, but are not extra
+# mandatory indicators in the updated activity-specific sheets.
+OPTIONAL_LEGACY = {
+    "index_testing": {"clients_tested_hiv", "clients_tested_positive_new"},
+    "hiv_testing": {"clients_screened_hiv_tb", "clients_linked_hiv_tb_testing"},
+}
+for groups in ACTIVITIES.values():
+    for activity in groups:
+        activity["required_fields"] = [key for key in activity["fields"] if key not in OPTIONAL_LEGACY.get(activity["key"], set())]
+
 CASCADES = {
     "hiv_testing": [
         ("chw_hiv_eligible", "chw_hiv_counselled", "HIV-testing eligibility exceeds counselling"),
-        ("chw_hiv_positive", "clients_screened_hiv_tb", "New positives exceed clients screened for HIV/TB"),
+        ("chw_hiv_positive", "chw_hiv_eligible", "New positives exceed clients eligible for HIV testing"),
         ("chw_hiv_linked_art", "chw_hiv_positive", "Linked-to-ART clients exceed new positives"),
     ],
     "index_testing": [
@@ -213,8 +241,11 @@ CASCADES = {
         ("weekend_clinic_attended", "hcp_special_clinic_expected", "Clinic attendees served exceed expected attendees"),
     ],
     "laboratory": [
-        ("hcp_lab_samples_processed", "hcp_lab_samples_received", "Samples processed exceed samples received"),
-        ("hcp_lab_results_disbursed", "hcp_lab_samples_processed", "Results disbursed exceed samples processed"),
+        (f"hcp_lab_{sample}_processed", f"hcp_lab_{sample}_received", f"{sample.upper()} samples processed exceed samples received")
+        for sample in ("hvl", "dbs", "cd4")
+    ] + [
+        (f"hcp_lab_{sample}_disbursed", f"hcp_lab_{sample}_processed", f"{sample.upper()} results disbursed exceed samples processed")
+        for sample in ("hvl", "dbs", "cd4")
     ],
 }
 

@@ -66,6 +66,12 @@ EVENTS: dict[str, dict] = {
         "en": "HRH: The {period} work log for {provider} has waited for your action for more than {hours} hours.",
         "sw": "HRH: Kumbukumbu ya kazi ya {provider} ya {period} imesubiri hatua yako kwa zaidi ya saa {hours}.",
     },
+    "CLAIM_BUDGET_HOLD": {
+        "recipient": "Regional Program Manager",
+        "variables": ["provider", "period", "claim_id"],
+        "en": "HRH: Claim #{claim_id} for {provider}, {period}, is on budget hold. Review the claim and its budget line.",
+        "sw": "HRH: Dai #{claim_id} la {provider}, {period}, limesimamishwa kwa sababu ya bajeti. Kagua dai na mstari wake wa bajeti.",
+    },
     "PAYMENT_RECORDED": {
         "recipient": "Provider",
         "variables": ["period", "reference"],

@@ -62,10 +62,35 @@ change but cannot yet access the dashboard. Run it before changing the initial
 password, not afterwards: the bootstrap secret will no longer be the login
 password. Health and build checks do not require a login.
 
-The original backend acceptance-test harness creates/drops a database called
-`hrh_test` on the configured PostgreSQL server and assumes fixture passwords.
-Do not run it against production or a server with an existing database of that
-name. It was not run as part of this setup.
+The backend acceptance-test harness creates/drops a throwaway database on the
+configured PostgreSQL server. Set `HRH_TEST_DATABASE` to an unused test-only name
+(the default remains `hrh_test`). Never run this harness against production or
+select a database containing data you need. Fixture admin credentials are isolated
+from the real bootstrap password.
+
+## Imported activity and review requirements
+
+- CHW, Data Clerk and HCP daily forms use activity-specific indicators from the
+  uploaded activity sheets. Required indicators must be complete before submission;
+  zero counts and explicit No checklist answers are valid.
+- The imported daily-entry model is retained: one activity per provider/date within
+  each work log. Secondary-facility data entry also records the supporting facility.
+- User-specified limits are **8.5 hours/day** and **45 hours/Monday–Sunday week**,
+  summed across the provider's logs. The API serializes staff entry edits to prevent
+  concurrent writes from bypassing those limits.
+- New backdated entries have a **48-hour** grace period measured from activity
+  completion. Date-only CHW entries use the end of the local workday. Corrections
+  to previously recorded dates remain available in editable/returned logs, with
+  audit history, so the review-and-return workflow does not become impossible.
+- Reviewer summaries aggregate visible provider logs by calendar month, even for
+  weekly pay periods. Daily and monthly cascade inversions appear as warnings.
+  Review confirmation is required in the UI before reviewer actions at the bottom
+  of the log. Returns and rejections continue to require comments.
+- Claims exceeding their budget line enter `BUDGET_HOLD`; the relevant RPM receives
+  a queued notification. Real SMS delivery still requires the separate gateway setup.
+- Clinical activities are recorded as aggregate counts/checklists, not identifiable
+  patient lists. CTC-2/CTC-3/LIS activities are tracked but no external clinical-system
+  connection is configured.
 
 ## SMS and file storage
 

@@ -71,6 +71,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
   const [comment, setComment] = useState(entry?.comment || '');
   const [gps, setGps] = useState<GpsFix | null>(null);
   const [gpsState, setGpsState] = useState<'idle' | 'busy' | 'ok' | 'failed'>('idle');
+  const [validationError, setValidationError] = useState<string | null>(null);
   const save = useAction();
   const remove = useAction();
 
@@ -87,6 +88,12 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const missing = (selectedActivity?.required_fields || []).filter((key) => measures[key] === undefined || measures[key] === '');
+    if (missing.length) {
+      setValidationError(lang === 'sw' ? 'Jaza viashiria vyote vinavyohitajika. Weka sifuri au chagua Ndiyo/Hapana.' : 'Complete all required activity indicators. Enter zero for none and choose Yes or No for each checklist item.');
+      return;
+    }
+    setValidationError(null);
     const payload: Record<string, unknown> = {
       activity_key: activityKey,
       ...(activityKey === 'secondary_facility' ? { activity_location: activityLocation.trim() } : {}),
@@ -201,6 +208,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
                 min="0"
                 max="10000"
                 step="1"
+                required={selectedActivity?.required_fields?.includes(f.key)}
                 value={String(measures[f.key] ?? '')}
                 onChange={(e) => setMeasures({ ...measures, [f.key]: e.target.value })}
               />
@@ -237,7 +245,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
         </div>
       )}
 
-      <Alert>{save.error || remove.error}</Alert>
+      <Alert>{validationError || save.error || remove.error}</Alert>
       <div className="row">
         <button className="btn btn-primary" disabled={busy || evidence.trim().length < 3}>
           {save.busy ? t('saving') : t('saveDay')}

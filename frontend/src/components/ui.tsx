@@ -25,6 +25,7 @@ const CLAIM_TONE: Record<string, Tone> = {
   DRAFT: 'neutral',
   VALIDATION_NEEDED: 'warn',
   HELD: 'warn',
+  BUDGET_HOLD: 'warn',
   CANCELLED: 'neutral',
   APPROVED: 'success',
   READY: 'success',

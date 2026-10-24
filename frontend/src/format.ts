@@ -99,6 +99,7 @@ export const CLAIM_STATUS_LABELS: Record<string, string> = {
   AWAITING_APPROVAL: 'Awaiting approval',
   APPROVED: 'Approved',
   HELD: 'Held (budget)',
+  BUDGET_HOLD: 'Budget hold',
   READY: 'Ready for payment',
   EXPORTED: 'Exported',
   HANDED_OFF: 'Handed off to CSO',
