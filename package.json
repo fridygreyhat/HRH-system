@@ -8,7 +8,11 @@
     "build": "npm run build --workspace=hrh-frontend",
     "start": "python scripts/run_replit.py"
   },
+  "overrides": {
+    "@types/node": "$@types/node"
+  },
   "dependencies": {
+    "@types/node": "^18.11.18",
     "hrh-frontend": "^0.1.0"
   }
 }

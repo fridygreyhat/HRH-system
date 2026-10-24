@@ -1,6 +1,9 @@
 import os
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://hrh_user:hrh_password@localhost:5432/hrh_db")
+# SQLAlchemy 2.1 defaults plain PostgreSQL URLs to psycopg3; this project uses psycopg2.
+if DATABASE_URL.startswith(("postgresql://", "postgres://")):
+    DATABASE_URL = "postgresql+psycopg2://" + DATABASE_URL.split("://", 1)[1]
 SECRET_KEY = os.getenv("SECRET_KEY") or os.getenv("SESSION_SECRET") or "dev-insecure-secret-change-me-0123456789"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"))
 TIMEZONE = os.getenv("APP_TIMEZONE", "Africa/Dar_es_Salaam")

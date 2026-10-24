@@ -1,0 +1,1 @@
+- [Imported frontend compatibility](frontend-compatibility.md) — preserve the legacy TypeScript/Node typing constraint when installing through the root npm workspace.

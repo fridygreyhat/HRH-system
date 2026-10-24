@@ -114,7 +114,9 @@ def get_current_user(request: Request, token: str = Depends(oauth2_scheme), db: 
     user = db.get(User, user_id)
     if not user or not user.is_active or payload.get("pwv", 0) != password_version(user):
         raise unauthorized  # deactivated, or the password changed since this token was issued
-    if user.must_change_password and request.url.path not in PASSWORD_CHANGE_ALLOWED_PATHS:
+    # Mounted deployments add /api to the URL, but these are API-relative routes.
+    api_path = request.scope["path"].removeprefix(request.scope.get("root_path", ""))
+    if user.must_change_password and api_path not in PASSWORD_CHANGE_ALLOWED_PATHS:
         raise HTTPException(status_code=403, detail="You must change your temporary password before continuing")
     return load_current_user(db, user)
 
