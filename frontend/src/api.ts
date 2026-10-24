@@ -1,4 +1,4 @@
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8001';
+const API_URL = process.env.REACT_APP_API_URL || '/api';
 const TOKEN_KEY = 'hrh_token';
 
 export const getToken = (): string | null => {

@@ -1,3 +1,11 @@
+.pythonlibs/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+node_modules/
+frontend/build/
+.data/
+/generated-artifacts/
 node_modules/
 build/
 __pycache__/

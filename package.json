@@ -1,0 +1,14 @@
+{
+  "name": "hrh-replit",
+  "private": true,
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=hrh-frontend",
+    "start": "python scripts/run_replit.py"
+  },
+  "dependencies": {
+    "hrh-frontend": "^0.1.0"
+  }
+}
