@@ -84,18 +84,20 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
     : applicableActivities;
   const isHcp = log.cadre.code === 'HCP';
   const isChw = log.cadre.code === 'CHW';
-  const hidesEvidence = isHcp || isChw;
+  const isDataClerk = log.cadre.code === 'DATA_CLERK';
+  const hidesEvidence = isHcp || isChw || isDataClerk;
   const defaultChwActivity = applicableActivities.find((activity) => activity.key === 'chw_daily_timesheet');
-  const [activityKey, setActivityKey] = useState(entry?.activity_key || (isHcp ? '' : (isChw ? defaultChwActivity : undefined)?.key || applicableActivities[0]?.key || allActivities[0]?.key || ''));
+  const defaultClerkActivity = applicableActivities.find((activity) => activity.key === 'data_clerk_daily_timesheet');
+  const [activityKey, setActivityKey] = useState(entry?.activity_key || (isHcp ? '' : (isChw ? defaultChwActivity : isDataClerk ? defaultClerkActivity : undefined)?.key || applicableActivities[0]?.key || allActivities[0]?.key || ''));
   const selectedActivity = activities.find((activity) => activity.key === activityKey);
   const activityType = selectedActivity?.item_type || log.work_type;
   const [indicatorGroupKey, setIndicatorGroupKey] = useState('');
-  const isGroupedChwPayroll = isChw && activityType === 'PAYROLL' && Boolean(selectedActivity?.groups?.length);
+  const isGroupedIndicators = Boolean(selectedActivity?.groups?.length) && ((isChw && activityType === 'PAYROLL') || isDataClerk);
   const selectedIndicatorGroup = selectedActivity?.groups?.find((group) => group.key === indicatorGroupKey)
     || selectedActivity?.groups?.[0];
   const requiresLocation = Boolean(selectedActivity?.requires_location || activityKey === 'secondary_facility');
   const direct = log.cadre.hours_mode === 'DIRECT' || Boolean(selectedActivity?.hours_input);
-  const visibleFields = !isHcp && !isChw && (selectedActivity?.item_type === 'PAYROLL' || log.work_type === 'PAYROLL')
+  const visibleFields = !isHcp && !isChw && !isDataClerk && (selectedActivity?.item_type === 'PAYROLL' || log.work_type === 'PAYROLL')
     ? []
     : selectedActivity
       ? selectedActivity.fields.flatMap((key) => log.cadre.fields.filter((field) => field.key === key))
@@ -132,7 +134,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
     }
     const missing = (selectedActivity?.required_fields || []).filter((key) => measures[key] === undefined || measures[key] === '');
     if (missing.length) {
-      if (isGroupedChwPayroll) {
+      if (isGroupedIndicators) {
         const firstIncompleteGroup = selectedActivity?.groups?.find((group) => group.fields.some((key) => missing.includes(key)));
         if (firstIncompleteGroup) setIndicatorGroupKey(firstIncompleteGroup.key);
         const groupName = firstIncompleteGroup ? (lang === 'sw' ? firstIncompleteGroup.label_sw : firstIncompleteGroup.label_en) : '';
@@ -217,6 +219,8 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
             ? activityType === 'PAYROLL' ? (lang === 'sw' ? 'Kituo cha kila siku' : 'Daily facility cascade')
               : activityType === 'SERVICES' ? (lang === 'sw' ? 'Huduma' : 'Service')
                 : (lang === 'sw' ? 'Aina ya shughuli ya HCP' : 'HCP activity type')
+            : isDataClerk
+              ? (lang === 'sw' ? 'Shughuli ya siku' : 'Daily, secondary facility, or clinic activity')
             : lang === 'sw' ? 'Aina ya shughuli' : 'Activity'}
           hint={isHcp
             ? (lang === 'sw'
@@ -228,7 +232,15 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
             {isHcp && <option value="">— {lang === 'sw' ? 'Chagua shughuli' : 'Select an activity'} —</option>}
             {activities.map((activity) => (
               <option key={activity.key} value={activity.key}>
-                {lang === 'sw' ? activity.label_sw : activity.label_en}
+                {isDataClerk
+                  ? activity.key === 'data_clerk_daily_timesheet'
+                    ? (lang === 'sw' ? 'Daftari la kila siku' : 'Daily timesheet')
+                    : activity.key === 'data_clerk_secondary_facility'
+                      ? (lang === 'sw' ? 'Kituo kingine' : 'Secondary facility')
+                      : activity.key === 'data_clerk_weekend_clinic'
+                        ? (lang === 'sw' ? 'Kliniki ya wikendi' : 'Weekend clinic')
+                        : (lang === 'sw' ? activity.label_sw : activity.label_en)
+                  : (lang === 'sw' ? activity.label_sw : activity.label_en)}
               </option>
             ))}
           </select>
@@ -266,9 +278,10 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
           yesLabel={t('yes')}
           noLabel={t('no')}
           onChange={(key, value) => setMeasures({ ...measures, [key]: value })}
-          selectedGroupKey={isGroupedChwPayroll ? selectedIndicatorGroup?.key : undefined}
-          onGroupChange={isGroupedChwPayroll ? setIndicatorGroupKey : undefined}
-          nativeRequired={!isGroupedChwPayroll}
+          selectedGroupKey={isGroupedIndicators ? selectedIndicatorGroup?.key : undefined}
+          onGroupChange={isGroupedIndicators ? setIndicatorGroupKey : undefined}
+          nativeRequired={!isGroupedIndicators}
+          groupSelectorLabel={isDataClerk ? (lang === 'sw' ? 'Kundi la viashiria' : 'Indicator group') : undefined}
         />
       )}
 

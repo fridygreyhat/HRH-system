@@ -352,7 +352,7 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
         late_access = active_access(db, log.staff_id, entry_date, log.assignment_id)
         if not late_access:
             raise HTTPException(status_code=422, detail=f"New timesheet entries are limited to {backdate_hours} hours after work completion. Ask your Technical Officer to unlock this missed date.")
-    if cadre.code not in {"HCP", "CHW"} and len((body.evidence_text or "").strip()) < 3:
+    if cadre.code not in {"HCP", "CHW", "DATA_CLERK"} and len((body.evidence_text or "").strip()) < 3:
         raise HTTPException(status_code=422, detail="Evidence must contain at least 3 characters")
     if ID_PATTERN.search(body.evidence_text or "") or (body.comment and ID_PATTERN.search(body.comment)):
         raise HTTPException(status_code=422, detail="Evidence looks like it contains an ID or phone number. Do not record patient or client identifiers.")
@@ -379,7 +379,7 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
     if not requires_location and body.activity_location:
         raise HTTPException(status_code=422, detail="A secondary-facility name is only valid for that activity.")
     allowed_fields = set(activity["fields"])
-    if cadre.code in {"HCP", "CHW"} and log.workflow_version >= 2:
+    if cadre.code in {"HCP", "CHW", "DATA_CLERK"} and log.workflow_version >= 2:
         missing = set(activity.get("required_fields", [])) - set(body.measures)
         if missing:
             raise HTTPException(status_code=422, detail=f"Complete all selected cascade indicators (enter zero for none): {sorted(missing)}")
@@ -441,11 +441,11 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
         entry.activity_snapshot = jsonable_encoder(activity)
     entry.start_time, entry.end_time, entry.hours_worked = start, end, hours
     # Hidden provider inputs must not erase text recorded on an older entry.
-    if cadre.code not in {"HCP", "CHW"} or "evidence_text" in body.model_fields_set:
+    if cadre.code not in {"HCP", "CHW", "DATA_CLERK"} or "evidence_text" in body.model_fields_set:
         entry.evidence_text = (body.evidence_text or "").strip()
     elif entry.evidence_text is None:
         entry.evidence_text = ""
-    if cadre.code not in {"HCP", "CHW"} or "comment" in body.model_fields_set:
+    if cadre.code not in {"HCP", "CHW", "DATA_CLERK"} or "comment" in body.model_fields_set:
         entry.comment = (body.comment or "").strip() or None
     if capture:
         entry.gps_lat, entry.gps_lon, entry.gps_accuracy_m = lat, lon, body.gps_accuracy_m if lat is not None else None

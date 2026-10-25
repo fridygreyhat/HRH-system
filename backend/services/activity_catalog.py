@@ -8,6 +8,7 @@ from fastapi.encoders import jsonable_encoder
 from ..models import ActivityRate, Cadre, CadreFormField, StaffAssignment, WorkLogEntry, PayPeriod
 from .activities import ACTIVITIES, CASCADES, activity_for
 from .chw_forms import CHW_GROUPS, chw_builtins
+from .data_clerk_forms import DATA_CLERK_KEYS, clerk_metadata, data_clerk_builtins
 
 HCP_DAILY_CASCADES = {"opd_screening", "ctc_art_refills", "laboratory"}
 
@@ -31,6 +32,8 @@ def definition_out(row: ActivityRate) -> dict:
             result["groups"] = deepcopy(CHW_GROUPS)
         elif row.source_key == "chw_weekend_clinic":
             result["cascade_pairs"] = [("chw_special_clinic_served", "chw_special_clinic_expected", "Clients served exceed expected attendees")]
+        elif row.source_key in DATA_CLERK_KEYS:
+            clerk_metadata(result)
     elif row.form_mode == "CASCADE" and len(fields) == 4:
         result["cascade_pairs"] = [(fields[index]["key"], fields[index - 1]["key"], "A downstream cascade total exceeds its upstream total") for index in range(1, 4)]
     return result
@@ -43,6 +46,8 @@ def builtins(db, cadre_id: int) -> list[dict]:
     result = []
     if cadre.code == "CHW":
         return chw_builtins(fields, cadre_id)
+    if cadre.code == "DATA_CLERK":
+        return data_clerk_builtins(fields, cadre_id)
     for original in ACTIVITIES.get(cadre.code, []):
         item = deepcopy(original)
         item.update(item_type="SERVICES", form_mode="CASCADE" if len(item["fields"]) > 1 else "SINGLE",

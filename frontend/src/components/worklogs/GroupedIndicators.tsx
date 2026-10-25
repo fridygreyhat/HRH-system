@@ -18,6 +18,7 @@ interface Props {
   selectedGroupKey?: string;
   onGroupChange?: (key: string) => void;
   nativeRequired?: boolean;
+  groupSelectorLabel?: string;
 }
 
 /** Renders activity indicators in API order, with named, accessible group panels when supplied. */
@@ -34,6 +35,7 @@ export function GroupedIndicators({
   selectedGroupKey,
   onGroupChange,
   nativeRequired = true,
+  groupSelectorLabel,
 }: Props) {
   const fieldByKey = new Map(fields.map((field) => [field.key, field]));
   const orderedGroups = (groups || []).map((group) => ({
@@ -83,7 +85,7 @@ export function GroupedIndicators({
   return (
     <div className="indicator-groups">
       {groupSelectorEnabled && (
-        <Field label={lang === 'sw' ? 'Kundi la viashiria vya kila siku' : 'Daily indicator group'}>
+        <Field label={groupSelectorLabel || (lang === 'sw' ? 'Kundi la viashiria vya kila siku' : 'Daily indicator group')}>
           <select value={activeGroup.key} onChange={(event) => onGroupChange(event.target.value)}>
             {orderedGroups.map((group) => (
               <option key={group.key} value={group.key}>

@@ -57,7 +57,21 @@ Expected Client Attendees and Clients attended and served. Regional Technical
 Officers can add scoped service activities through the existing Rates setup.
 No rates or budgets are invented. CHW evidence, daily-comment and period-comment
 inputs are removed; older text and immutable entry snapshots remain intact.
-Data Clerk comment/evidence behavior is unchanged.
+
+## Data Clerk daily timesheets and services
+
+Use the supplied Data Clerk roles document for roles 1–18: 18 numeric
+indicators and four Yes/No checks. Both CARE_NEW and transferred-in
+registrations, and separate HVL/EID requests and results, must be represented.
+Daily Payroll and secondary-facility support use these fields; secondary
+support also requires the facility name. Weekly eligible-list sharing and
+HVL/EID result-sharing are available but optional on a daily entry.
+
+The user requested Weekend Clinics as the only initial Data Clerk service;
+it uses the same Data Clerk data-entry indicators. Regional Technical can add
+scoped services later. Do not invent rates or budgets. Remove daily evidence
+and comment inputs, preserving older saved text and entry snapshots.
+Period comments are unchanged for Data Clerks.
 
 ## Provider location and Health Care Provider forms
 

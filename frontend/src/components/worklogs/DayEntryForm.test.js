@@ -153,3 +153,70 @@ test('missing hidden CHW counts select the incomplete group instead of saving', 
   expect(container.querySelector('legend').textContent).toBe('HIV self-testing');
   expect(container.textContent).toContain('HIV self-testing');
 });
+
+const renderClerk = (kind = 'PAYROLL', missingKey) => {
+  const groups = [
+    ['ctc', 'CTC-2 and treatment data', 9],
+    ['hts', 'HTS and contact data', 3],
+    ['laboratory', 'HVL / EID requests and results', 6],
+    ['reporting', 'Backups and reporting', 4],
+    ['followup', 'Weekly lists and result sharing (optional)', 2],
+  ].map(([key, label_en, count]) => ({
+    key, label_en, label_sw: label_en, color: 'teal',
+    fields: Array.from({ length: count }, (_, index) => `${key}_${index}`),
+  }));
+  const fields = groups.flatMap(group => group.fields.map((key, index) => ({
+    key, label_en: key, field_type: group.key === 'reporting' || (group.key === 'followup' && index === 1) ? 'BOOLEAN' : 'INTEGER',
+  })));
+  const required = groups.slice(0, 4).flatMap(group => group.fields);
+  const values = Object.fromEntries(fields.filter(field => required.includes(field.key) && field.key !== missingKey)
+    .map(field => [field.key, field.field_type === 'BOOLEAN' ? false : 0]));
+  const activity = {
+    key: kind === 'PAYROLL' ? 'data_clerk_daily_timesheet' : 'data_clerk_weekend_clinic',
+    label_en: kind === 'PAYROLL' ? 'Daily Data Clerk timesheet' : 'Weekend Clinics',
+    fields: fields.map(field => field.key), required_fields: required, item_type: kind,
+    hours_input: false, groups,
+  };
+  const log = logFor('DATA_CLERK');
+  log.work_type = kind;
+  log.cadre.fields = fields;
+  log.cadre.activities = [activity, ...(kind === 'PAYROLL' ? [{
+    ...activity, key: 'data_clerk_secondary_facility', label_en: 'Data entry at a secondary facility',
+    requires_location: true,
+  }] : [])];
+  act(() => root.render(<DayEntryForm log={log} date="2026-10-23"
+    entry={{ activity_key: activity.key, hours_worked: 1, start_time: '08:00:00', end_time: '09:00:00', measures: values }}
+    flags={[]} captureOnEntry={true} onSaved={jest.fn()} onClose={jest.fn()} />));
+  return required;
+};
+const clerkGroup = () => Array.from(container.querySelectorAll('select'))
+  .find(select => Array.from(select.options).some(option => option.textContent === 'CTC-2 and treatment data'));
+
+test.each(['PAYROLL', 'SERVICES'])('Data Clerk %s shows indicators and saves without evidence/comments', async kind => {
+  const required = renderClerk(kind);
+  expect(clerkGroup().options).toHaveLength(5);
+  expect(container.querySelectorAll('input[type="number"]')).toHaveLength(9);
+  expect(container.querySelectorAll('textarea')).toHaveLength(0);
+  await captureGps();
+  await submitDay();
+  expect(api.put).toHaveBeenCalledTimes(1);
+  const payload = api.put.mock.calls[0][1];
+  expect(Object.keys(payload.measures).sort()).toEqual([...required].sort());
+  expect(payload.measures.reporting_0).toBe(false);
+  expect(payload).not.toHaveProperty('evidence_text');
+  expect(payload).not.toHaveProperty('comment');
+});
+
+test('Data Clerk missing hidden Yes/No check opens reporting; optional notes do not block saving', async () => {
+  renderClerk('PAYROLL', 'reporting_0');
+  await captureGps();
+  await submitDay();
+  expect(api.put).not.toHaveBeenCalled();
+  expect(clerkGroup().value).toBe('reporting');
+  const no = Array.from(container.querySelectorAll('button')).find(b => b.textContent === 'no');
+  act(() => no.click());
+  await submitDay();
+  expect(api.put).toHaveBeenCalledTimes(1);
+  expect(api.put.mock.calls[0][1].measures.reporting_0).toBe(false);
+  expect(api.put.mock.calls[0][1].measures).not.toHaveProperty('followup_0');
+});

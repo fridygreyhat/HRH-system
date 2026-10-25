@@ -65,7 +65,7 @@ const isFlagged = (flags: ReturnFlag[], date: string, field?: string) => flags.s
 /** Daily entries: a table on wide screens, cards on phones. Flagged dates/fields are highlighted. */
 export function EntriesView({ log, lang, flags = [] }: { log: WorkLogDetail; lang: Lang; flags?: ReturnFlag[] }) {
   const { cadre, entries } = log;
-  const suppressEmptyEvidence = cadre.code === 'HCP' || cadre.code === 'CHW';
+  const suppressEmptyEvidence = cadre.code === 'HCP' || cadre.code === 'CHW' || cadre.code === 'DATA_CLERK';
   const showEvidence = !suppressEmptyEvidence || entries.some((entry) => Boolean(entry.evidence_text?.trim() || entry.comment?.trim()));
   const startEnd = cadre.hours_mode !== 'DIRECT';
   const activityFor = (key: string | null) => cadre.activities?.find((activity) => activity.key === key);
