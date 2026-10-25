@@ -2,7 +2,7 @@
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PositiveInt, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -24,6 +24,14 @@ class OrganizationIn(BaseModel):
     code: Optional[str] = Field(default=None, max_length=50)
     type: Literal["CSO", "PARTNER"] = "CSO"
     is_active: bool = True
+    region_ids: list[PositiveInt] = Field(default_factory=list, max_length=100)
+
+    @field_validator("region_ids")
+    @classmethod
+    def unique_regions(cls, value):
+        if len(value) != len(set(value)):
+            raise ValueError("Select each region only once")
+        return value
 
     @field_validator("name", "code")
     @classmethod
@@ -84,7 +92,13 @@ def overview(db: Session = Depends(get_db), current: CurrentUser = Depends(requi
 
 @router.post("/create-org", status_code=201)
 def create_org(body: OrganizationIn, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(CENTRAL_ADMIN))):
-    row = Organization(**body.model_dump())
+    if body.region_ids:
+        if body.type != "CSO" or not body.is_active:
+            raise HTTPException(422, "Regional payment assignments require an active CSO")
+        known = {region.id for region in db.query(Region).filter(Region.id.in_(body.region_ids))}
+        if known != set(body.region_ids):
+            raise HTTPException(422, "One or more selected regions do not exist; reload the regions and try again")
+    row = Organization(**body.model_dump(exclude={"region_ids"}))
     db.add(row)
     try:
         db.flush()
@@ -92,6 +106,11 @@ def create_org(body: OrganizationIn, db: Session = Depends(get_db), current: Cur
         db.rollback()
         raise HTTPException(409, "An organization with this name or code already exists")
     audit.record(db, current, "organizations", row.id, "create", after=to_dict(row))
+    for region_id in body.region_ids:
+        assignment = CSORegionAssignment(organization_id=row.id, region_id=region_id, is_active=True)
+        db.add(assignment)
+        db.flush()
+        audit.record(db, current, "cso_region_assignment", assignment.id, "create", after=to_dict(assignment))
     db.commit()
     return to_dict(row)
 

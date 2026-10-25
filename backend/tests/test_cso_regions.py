@@ -50,6 +50,43 @@ def test_admin_creates_cso_maps_multiple_regions_and_preserves_audit(api, db, cs
     api.post("/organizations/create-org", "central1", {**body, "name": "   "}, expect=422)
 
 
+def test_create_cso_with_selected_regions_is_atomic_and_audited(api, db, cso_context):
+    from backend.models import AuditEvent, CSORegionAssignment
+    _, first, second = cso_context
+    org = api.post("/organizations/create-org", "central1", {
+        "name": "Configured CSO " + uuid.uuid4().hex, "type": "CSO", "region_ids": [first, second],
+    })
+    rows = db.query(CSORegionAssignment).filter_by(organization_id=org["id"]).all()
+    assert {row.region_id for row in rows} == {first, second}
+    assert all(row.is_active for row in rows)
+    assert db.query(AuditEvent).filter(AuditEvent.entity_type == "cso_region_assignment",
+                                      AuditEvent.entity_id.in_([str(row.id) for row in rows]),
+                                      AuditEvent.action == "create").count() == 2
+    metadata = api.get("/organizations", "central1")
+    assert {r["id"] for r in metadata["regions"]} >= {first, second}
+    assert {a["region_id"] for a in metadata["assignments"] if a["organization_id"] == org["id"]} == {first, second}
+    api.post("/organizations/create-org", "central1", {
+        "name": org["name"], "type": "CSO", "region_ids": [first],
+    }, expect=409)
+    assert db.query(CSORegionAssignment).filter_by(organization_id=org["id"]).count() == 2
+
+
+def test_invalid_creation_regions_never_leave_partial_organizations_or_authority(api, db, cso_context):
+    from backend.models import Organization
+    _, region, _ = cso_context
+    for changes in (
+        {"region_ids": [region, 2147483647]}, {"region_ids": [region, region]},
+        {"region_ids": [-1]}, {"region_ids": [region], "type": "PARTNER"},
+        {"region_ids": [region], "is_active": False},
+    ):
+        name = "Rejected CSO " + uuid.uuid4().hex
+        api.post("/organizations/create-org", "central1", {"name": name, "type": "CSO", **changes}, expect=422)
+        assert not db.query(Organization).filter_by(name=name).first()
+    api.post("/organizations/create-org", "csofin1", {
+        "name": "Forbidden regional setup", "region_ids": [region],
+    }, expect=403)
+
+
 def test_only_admin_manages_mapping_and_only_csos_can_be_mapped(api, db, cso_context):
     org, region, _ = cso_context
     for username in ("csofin1", "fhifin1", "rpm1", "tofficer1", "chw1"):
