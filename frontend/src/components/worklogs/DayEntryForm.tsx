@@ -177,13 +177,13 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
         <Field
           label={isHcp
             ? activityType === 'PAYROLL' ? (lang === 'sw' ? 'Kituo cha kila siku' : 'Daily facility cascade')
-              : activityType === 'SERVICES' ? (lang === 'sw' ? 'Huduma ya uhamasishaji' : 'Outreach service')
+              : activityType === 'SERVICES' ? (lang === 'sw' ? 'Huduma' : 'Service')
                 : (lang === 'sw' ? 'Aina ya shughuli ya HCP' : 'HCP activity type')
             : lang === 'sw' ? 'Aina ya shughuli' : 'Activity'}
           hint={isHcp
             ? (lang === 'sw'
-              ? 'Malipo (PAYROLL) ni daftari la kila siku la kituo; Huduma (SERVICES) ni shughuli tofauti za uhamasishaji.'
-              : 'PAYROLL is the daily facility timesheet; SERVICES records separate outreach activities.')
+              ? 'Malipo (PAYROLL) ni daftari la kila siku la kituo; Huduma (SERVICES) hurekodi huduma kando.'
+              : 'PAYROLL is the daily facility timesheet; SERVICES records services separately.')
             : lang === 'sw' ? 'Chagua shughuli ili kuonyesha viashiria vyake.' : 'Select an activity to show its specific indicators.'}
         >
           <select required value={activityKey} onChange={(e) => setActivityKey(e.target.value)}>

@@ -244,10 +244,10 @@ function PayoutEstimate({ logId, version }: { logId: number; version: string }) 
 }
 
 /** Provider work-log editor: header, day-by-day entries, totals, submission, OTP confirmation. */
-export function WorkLogEditor({ logId, onBack }: { logId: number; onBack: () => void }) {
+export function WorkLogEditor({ logId, initialDate, onBack }: { logId: number; initialDate?: string; onBack: () => void }) {
   const { me, t, lang } = useAuth();
   const { data: log, error, loading, setData, reload } = useApi<WorkLogDetail>(`/worklogs/${logId}`);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(initialDate || null);
   const [cancelling, setCancelling] = useState(false);
   const flags = useMemo(() => (log ? returnFlags(log) : []), [log]);
   const flaggedDates = useMemo(() => new Set(flags.map((f) => f.entry_date)), [flags]);

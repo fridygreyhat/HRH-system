@@ -51,6 +51,12 @@ requires a selected cascade/service, its indicators and start/end times.
 Evidence and comment inputs are removed for HCP only; previously recorded text
 and immutable activity snapshots remain intact. Other cadres are unchanged.
 
+The provider start form uses the labels **Services** and **Payroll**, with
+distinct type-specific panels and a work date instead of a pay-period selector.
+The date resolves to a configured open reporting period internally; no periods
+are invented. Matching existing logs are continued rather than duplicated.
+Overlapping schedules require administrator correction.
+
 ## Simulated workflow walkthrough status
 
 The Demo walkthrough has been removed from the app navigation and page routing
