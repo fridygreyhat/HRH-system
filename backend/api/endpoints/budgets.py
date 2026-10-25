@@ -7,7 +7,7 @@ import csv
 import io
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -73,10 +73,12 @@ def _fhi360_org(db: Session) -> Organization:
 
 def _out(db: Session, line: BudgetLine) -> dict:
     period = db.get(PayPeriod, line.period_id)
+    category = db.get(ClaimCategory, line.category_id)
     return {
         **to_dict(line),
         "organization_name": db.get(Organization, line.organization_id).name,
-        "category_name": db.get(ClaimCategory, line.category_id).name,
+        "category_name": category.name,
+        "activity_type": bg.category_activity_type(category),
         "period_label": period.period_label or str(period.start_date),
         "region_name": db.get(Region, line.region_id).name if line.region_id else "All regions",
         "available_amount": bg.available(line),
@@ -89,6 +91,7 @@ class LineIn(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     organization_id: int
     category_id: int
+    activity_type: Optional[Literal["SERVICES", "PAYROLL"]] = None
     period_id: int
     region_id: Optional[int] = None
     allocated_amount: Decimal = Field(ge=0, max_digits=15, decimal_places=2)
@@ -150,12 +153,18 @@ def create_line(body: LineIn, db: Session = Depends(get_db), current: CurrentUse
     if not _can_manage(current, org):
         raise HTTPException(status_code=403, detail="You cannot manage this organization's budget")
     _validate_dimensions(db, org, body.category_id, body.period_id, body.region_id)
+    if body.activity_type is not None:
+        category = db.get(ClaimCategory, body.category_id)
+        if not category.is_active:
+            raise HTTPException(422, "The selected payment item is inactive")
+        if bg.category_activity_type(category) != body.activity_type:
+            raise HTTPException(422, "The selected payment item does not match the activity type")
     if org.type == "CSO" and db.query(BudgetLine.id).filter_by(
         organization_id=org.id, category_id=body.category_id, period_id=body.period_id, region_id=body.region_id,
     ).first():
         raise HTTPException(409, "This CSO already has a budget for the selected region, category and pay period")
     line = BudgetLine(
-        **body.model_dump(),
+        **body.model_dump(exclude={"activity_type"}),
         source="FHI360_TRACKER" if org.type == "FHI360" else "CSO",
         sync_status="UNSYNCED" if org.type == "FHI360" else "NOT_APPLICABLE",
     )

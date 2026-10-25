@@ -111,13 +111,17 @@ export function BudgetHierarchy({
                 <span>Region</span><strong>{region.label}</strong>
                 <SummaryTotals lines={region.lines} />
               </summary>
-              {grouped(region.lines, (line) => String(line.category_id), (line) => line.category_name).map((category) => (
-                <details className="budget-level budget-category" key={`${region.label}-${category.lines[0]?.category_id}`} open>
+              {grouped(
+                region.lines,
+                (line) => line.activity_type || 'UNCONFIGURED',
+                (line) => line.activity_type === 'SERVICES' ? 'Services' : line.activity_type === 'PAYROLL' ? 'Payroll' : 'Type not configured',
+              ).map((activity) => (
+                <details className="budget-level budget-category" key={`${region.label}-${activity.label}`} open>
                   <summary>
-                    <span>Activity or payment type</span><strong>{category.label}</strong>
-                    <SummaryTotals lines={category.lines} />
+                    <span>Activity type</span><strong>{activity.label}</strong>
+                    <SummaryTotals lines={activity.lines} />
                   </summary>
-                  {grouped(category.lines, (line) => String(line.period_id), (line) => line.period_label).map((period) => (
+                  {grouped(activity.lines, (line) => String(line.period_id), (line) => line.period_label).map((period) => (
                     <section className="budget-period" key={period.lines[0]?.period_id}>
                       <div className="budget-period-title">
                         <span>Pay period</span><strong>{period.label}</strong><SummaryTotals lines={period.lines} />
@@ -125,7 +129,7 @@ export function BudgetHierarchy({
                       <div className="table-wrap">
                         <table className={`${hasActions ? 'clickable ' : ''}budget-line-table`}>
                           <thead><tr>
-                            <th>Allocation</th><th>Organization</th><th>Region</th><th>Activity or payment type</th><th>Period</th>
+                            <th>Allocation</th><th>Organization</th><th>Region</th><th>Activity type</th><th>Payment item</th><th>Period</th>
                             <th className="num">Estimate</th><th className="num">Exposure</th><th>Status</th>
                             <th className="num">Hard cap</th><th className="num">Committed</th><th className="num">Spent</th><th className="num">Remaining</th>
                             <th>Tracker</th><th>Source</th>{hasActions && <th>Actions</th>}
@@ -141,6 +145,7 @@ export function BudgetHierarchy({
                                 <td className="nowrap"><strong>{line.code}</strong><div className="muted small">{line.name}</div></td>
                                 <td>{line.organization_name}</td>
                                 <td>{line.region_id == null && !isFhiLine(line) ? <span className="badge badge-warn">{regionLabel(line)}</span> : regionLabel(line)}</td>
+                                <td>{line.activity_type === 'SERVICES' ? 'Services' : line.activity_type === 'PAYROLL' ? 'Payroll' : 'Type not configured'}</td>
                                 <td>{line.category_name}</td><td className="nowrap">{line.period_label}</td>
                                 <td className="num">{line.estimated_amount == null ? <span className="muted">Not set</span> : money(line.estimated_amount, line.currency)}</td>
                                 <td className="num">{money(line.exposure_amount ?? (line.committed_amount + line.spent_amount), line.currency)}</td>

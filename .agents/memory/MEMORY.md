@@ -1,3 +1,4 @@
 - [Imported frontend compatibility](frontend-compatibility.md) — preserve the legacy TypeScript/Node typing constraint when installing through the root npm workspace.
 - [Demo boundaries](demo-boundaries.md) — simulated workflow demonstrations must not be presented as confirmation of live SMS or real payments.
 - [Budget lock freshness](budget-lock-freshness.md) — refresh cached ORM balances when acquiring row locks; locking alone does not guarantee fresh financial values.
+- [Activity types](activity-types.md) — user-facing activity types are Services and Payroll, not individual configured payment categories.

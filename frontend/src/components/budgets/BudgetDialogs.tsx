@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api';
 import { useAction, useApi } from '../../hooks';
 import { money } from '../../format';
@@ -6,6 +6,23 @@ import { BudgetLine, ClaimCategory, Named, Organization, OrganizationsResponse, 
 import { Alert, Field, Modal } from '../ui';
 
 const periodName = (p: PayPeriod) => p.period_label || `${p.start_date} – ${p.end_date}`;
+
+export type ActivityType = 'SERVICES' | 'PAYROLL';
+export type ActivityClassification = ActivityType | 'UNCLASSIFIED';
+
+export function activityTypeForFormType(formType: string | null | undefined): ActivityClassification {
+  switch ((formType || '').toUpperCase()) {
+    case 'SALARY':
+      return 'PAYROLL';
+    case 'CHW_PNP':
+    case 'HCP_PNP':
+    case 'COORDINATION':
+    case 'COMMUNITY_SERVICE':
+      return 'SERVICES';
+    default:
+      return 'UNCLASSIFIED';
+  }
+}
 
 export function CreateLineModal({
   organizations,
@@ -29,6 +46,7 @@ export function CreateLineModal({
     name: '',
     organization_id: organizations.length === 1 ? String(organizations[0].id) : '',
     category_id: '',
+    activity_type: '',
     period_id: periods.find((period) => period.region_id == null) ? String(periods.find((period) => period.region_id == null)!.id) : '',
     region_id: '',
     estimated_amount: '',
@@ -39,7 +57,24 @@ export function CreateLineModal({
   const { busy, error, setError, run } = useAction();
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
   const selectedOrg = organizations.find((organization) => String(organization.id) === form.organization_id);
-  const selectedCategory = categories.find((category) => String(category.id) === form.category_id);
+  const activeCategories = useMemo(() => categories.filter((category) => category.is_active), [categories]);
+  const eligibleCategories = useMemo(
+    () => activeCategories.filter((category) => activityTypeForFormType(category.form_type) === form.activity_type),
+    [activeCategories, form.activity_type],
+  );
+  const selectedCategory = eligibleCategories.find((category) => String(category.id) === form.category_id);
+  const activityName = form.activity_type === 'SERVICES' ? 'Services' : 'Payroll';
+  const activityContext = categoriesLoading
+    ? 'Loading configured payment items…'
+    : activeCategories.length === 0
+      ? 'No active payment items are configured. Ask a finance administrator to configure Services or Payroll items.'
+      : !form.activity_type
+        ? 'Choose Services or Payroll, then select a matching configured payment item. Approved payments must match the activity type, region and pay period.'
+        : eligibleCategories.length === 0
+          ? `No active payment items are configured for ${activityName}. Ask a finance administrator to configure an eligible item.`
+          : selectedCategory
+            ? <><strong>{activityName} · {selectedCategory.name}.</strong> Approved payments must match this activity type, payment item, region and pay period.</>
+            : `Choose one configured payment item for ${activityName}.`;
   const isCsoBudget = selectedOrg?.type === 'CSO';
   const existingLines = useApi<BudgetLine[]>('/budgets/lines');
   const mappedRegionIds = new Set((mappingData.data?.assignments || [])
@@ -54,13 +89,32 @@ export function CreateLineModal({
   const periodRegionMismatch = !!selectedPeriod && selectedPeriod.region_id != null && selectedPeriod.region_id !== Number(form.region_id);
   const estimateValue = form.estimated_amount.trim() === '' ? null : Number(form.estimated_amount);
   const estimateInvalid = estimateValue !== null && (!Number.isFinite(estimateValue) || estimateValue < 0 || estimateValue > Number(form.allocated_amount));
-  const existingBucket = isCsoBudget && form.organization_id && form.region_id && form.category_id && form.period_id
+  const existingBucket = isCsoBudget && form.organization_id && form.region_id && selectedCategory && form.period_id
     ? (existingLines.data || []).find((line) =>
         line.organization_id === Number(form.organization_id) &&
         line.region_id === Number(form.region_id) &&
-        line.category_id === Number(form.category_id) &&
+        line.category_id === selectedCategory.id &&
         line.period_id === Number(form.period_id))
     : undefined;
+  const changeActivityType = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const activity_type = event.target.value as ActivityType | '';
+    const matches = activeCategories.filter((category) => activityTypeForFormType(category.form_type) === activity_type);
+    setForm((current) => ({
+      ...current,
+      activity_type,
+      category_id: matches.length === 1 ? String(matches[0].id) : '',
+    }));
+  };
+  useEffect(() => {
+    if (!form.activity_type) return;
+    const remainsEligible = eligibleCategories.some((category) => String(category.id) === form.category_id);
+    if (eligibleCategories.length === 1) {
+      const singleId = String(eligibleCategories[0].id);
+      if (form.category_id !== singleId) setForm((current) => ({ ...current, category_id: singleId }));
+    } else if (form.category_id && !remainsEligible) {
+      setForm((current) => ({ ...current, category_id: '' }));
+    }
+  }, [eligibleCategories, form.activity_type, form.category_id]);
   const setOrganization = (event: React.ChangeEvent<HTMLSelectElement>) => {
     setForm({ ...form, organization_id: event.target.value, region_id: '', period_id: '' });
   };
@@ -76,8 +130,8 @@ export function CreateLineModal({
       setError('Choose a global pay period or one assigned to the selected region.');
       return;
     }
-    if (!selectedCategory) {
-      setError('Choose an activity or payment type before creating this budget.');
+    if (!form.activity_type || !selectedCategory || activityTypeForFormType(selectedCategory.form_type) !== form.activity_type) {
+      setError('Choose Services or Payroll and a matching payment item before creating this budget.');
       return;
     }
     if (estimateInvalid) {
@@ -94,6 +148,7 @@ export function CreateLineModal({
         name: form.name.trim(),
         organization_id: Number(form.organization_id),
         category_id: Number(form.category_id),
+        activity_type: form.activity_type,
         period_id: Number(form.period_id),
         region_id: form.region_id ? Number(form.region_id) : null,
         estimated_amount: estimateValue,
@@ -124,25 +179,34 @@ export function CreateLineModal({
               ))}
             </select>
           </Field>
-          <Field label="Activity or payment type" hint="Choose what this budget pays for—for example payroll, services or community work.">
-            <select value={form.category_id} onChange={set('category_id')} required disabled={categoriesLoading || categories.length === 0}>
-              <option value="">Select…</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
+          <Field label="Activity type" hint="Services covers CHW/HCP PNP, coordination and community services. Payroll is salary.">
+            <select value={form.activity_type} onChange={changeActivityType} required>
+              <option value="">Choose type…</option>
+              <option value="SERVICES">Services</option>
+              <option value="PAYROLL">Payroll</option>
             </select>
           </Field>
+          {form.activity_type && eligibleCategories.length > 1 && (
+            <Field label="Payment item" hint="Choose the configured item this budget will pay for.">
+              <select
+                value={selectedCategory ? String(selectedCategory.id) : ''}
+                onChange={(event) => setForm((current) => ({ ...current, category_id: event.target.value }))}
+                required
+                disabled={categoriesLoading}
+              >
+                <option value="">Choose payment item…</option>
+                {eligibleCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </select>
+            </Field>
+          )}
+          {form.activity_type && eligibleCategories.length === 1 && selectedCategory && (
+            <Field label="Payment item">
+              <input value={selectedCategory.name} readOnly aria-readonly="true" />
+            </Field>
+          )}
         </div>
         <div className="notice notice-info" role="status">
-          {selectedCategory
-            ? <><strong>Selected type: {selectedCategory.name}.</strong> This is what the budget pays for. Approved payments must match this type, region and pay period.</>
-            : categoriesLoading
-              ? 'Loading configured activities and payment types…'
-              : categories.length === 0
-                ? 'No activities or payment types are configured yet. Ask a finance administrator to configure one before creating a budget.'
-                : 'Select the activity or payment type this budget will pay for. The approved payments must match it, along with the selected region and pay period.'}
+          {activityContext}
         </div>
         <div className="grid-2">
           <Field label="Pay period" hint="Choose a global schedule or a regional schedule matching the selected region.">
@@ -182,13 +246,15 @@ export function CreateLineModal({
         <p className="muted small">FHI360 lines start as “Unsynced” until they are exported to or reconciled with the HQ tracker. Historical all-region lines remain visible but cannot be used for new CSO budgets.</p>
         {isCsoBudget && !mappingData.loading && allowedRegions.length === 0 && <Alert>No active regional assignment is configured for this organization. Add an assignment before creating a CSO budget.</Alert>}
         {periodRegionMismatch && <Alert>That regional pay period does not match the selected budget region.</Alert>}
-        {!categoriesLoading && categories.length === 0 && <Alert kind="warn">This budget cannot be created until an activity or payment type is configured.</Alert>}
+        {!categoriesLoading && (activeCategories.length === 0 || (form.activity_type && eligibleCategories.length === 0)) && (
+          <Alert kind="warn">This budget cannot be created until an active payment item is configured for the selected activity type.</Alert>
+        )}
         {estimateInvalid && <Alert kind="warn">Estimated spend must be between zero and the hard cap. Leave blank if no estimate has been approved.</Alert>}
-        {existingBucket && <Alert>A CSO budget already exists for this organization, region, activity or payment type, and pay period. Change the budget combination rather than creating a duplicate.</Alert>}
+        {existingBucket && <Alert>A CSO budget already exists for this organization, region, payment item, and pay period. Change the budget combination rather than creating a duplicate.</Alert>}
         <Alert>{mappingData.error || (isCsoBudget ? existingLines.error : null) || error}</Alert>
         {isCsoBudget && existingLines.error && <button type="button" className="btn btn-secondary btn-sm" onClick={existingLines.reload}>Retry budget check</button>}
         <div className="row">
-            <button className="btn btn-primary" disabled={busy || categoriesLoading || categories.length === 0 || !form.category_id || periodRegionMismatch || estimateInvalid || !!existingBucket || (isCsoBudget && (mappingData.loading || existingLines.loading || !existingLines.data || !form.region_id || !mappedRegionIds.has(Number(form.region_id))))}>
+            <button className="btn btn-primary" disabled={busy || categoriesLoading || eligibleCategories.length === 0 || !form.activity_type || !selectedCategory || periodRegionMismatch || estimateInvalid || !!existingBucket || (isCsoBudget && (mappingData.loading || existingLines.loading || !existingLines.data || !form.region_id || !mappedRegionIds.has(Number(form.region_id))))}>
             {busy ? 'Saving…' : 'Create line'}
           </button>
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>

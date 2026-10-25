@@ -1,13 +1,15 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { act, Simulate } from 'react-dom/test-utils';
-import { CreateLineModal, EditAllocationModal } from './BudgetDialogs';
+import { activityTypeForFormType, CreateLineModal, EditAllocationModal } from './BudgetDialogs';
 import { api } from '../../api';
 import { canManageBudgetLine, creatableBudgetOrganizations } from './budgetAccess';
 import { budgetStatus, totalsByCurrency } from './BudgetHierarchy';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let mockExistingLines = [];
+const selectWithValue = (container, value) => Array.from(container.querySelectorAll('select'))
+  .find((select) => Array.from(select.options).some((option) => option.value === String(value)));
 jest.mock('../../hooks', () => ({
   useApi: path => ({
     data: path === '/organizations'
@@ -39,7 +41,7 @@ test('CSO budget form only offers actively mapped regions and applicable periods
       { id: 1, name: 'FHI360', code: null, type: 'FHI360', is_active: true },
       { id: 2, name: 'Afya Kwanza', code: null, type: 'CSO', is_active: true },
     ]}
-    categories={[{ id: 5, name: 'Services', is_active: true }]}
+    categories={[{ id: 5, name: 'CHW support', form_type: 'CHW_PNP', is_active: true }]}
     periods={[
       { id: 11, start_date: '2026-01-01', end_date: '2026-01-31', period_label: 'Global Jan', region_id: null },
       { id: 12, start_date: '2026-01-01', end_date: '2026-01-31', period_label: 'Mara Jan', region_id: 7 },
@@ -50,8 +52,7 @@ test('CSO budget form only offers actively mapped regions and applicable periods
     onCreated={jest.fn()}
   />));
   try {
-    const selects = container.querySelectorAll('select');
-    act(() => Simulate.change(selects[0], { target: { value: '2' } }));
+    act(() => Simulate.change(selectWithValue(container, '2'), { target: { value: '2' } }));
     const regionSelect = Array.from(container.querySelectorAll('select')).find(select => Array.from(select.options).some(option => option.value === '7'));
     expect(Array.from(regionSelect.options).map(option => option.value)).toEqual(['', '7']);
     expect(regionSelect.value).toBe('');
@@ -72,7 +73,7 @@ test('duplicate CSO allocation bucket is blocked regardless of budget code', () 
   const root = createRoot(container);
   act(() => root.render(<CreateLineModal
     organizations={[{ id: 2, name: 'Afya Kwanza', code: null, type: 'CSO', is_active: true }]}
-    categories={[{ id: 5, name: 'Services', is_active: true }]}
+    categories={[{ id: 5, name: 'CHW support', form_type: 'CHW_PNP', is_active: true }]}
     periods={[
       { id: 11, start_date: '2026-01-01', end_date: '2026-01-31', period_label: 'Global Jan', region_id: null },
       { id: 12, start_date: '2026-01-01', end_date: '2026-01-31', period_label: 'Mara Jan', region_id: 7 },
@@ -82,14 +83,13 @@ test('duplicate CSO allocation bucket is blocked regardless of budget code', () 
     onCreated={jest.fn()}
   />));
   try {
-    const selects = container.querySelectorAll('select');
-    const region = Array.from(selects).find(select => Array.from(select.options).some(option => option.value === '7'));
+    const region = selectWithValue(container, '7');
     act(() => Simulate.change(region, { target: { value: '7' } }));
     const period = Array.from(container.querySelectorAll('select')).find(select => Array.from(select.options).some(option => option.value === '12'));
-    const category = Array.from(container.querySelectorAll('select')).find(select => Array.from(select.options).some(option => option.value === '5'));
     act(() => Simulate.change(period, { target: { value: '12' } }));
-    act(() => Simulate.change(category, { target: { value: '5' } }));
-    expect(container.textContent).toContain('A CSO budget already exists for this organization, region, activity or payment type, and pay period.');
+    const activityType = selectWithValue(container, 'SERVICES');
+    act(() => Simulate.change(activityType, { target: { value: 'SERVICES' } }));
+    expect(container.textContent).toContain('A CSO budget already exists for this organization, region, payment item, and pay period.');
     expect(Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Create line').disabled).toBe(true);
     expect(api.post).not.toHaveBeenCalled();
   } finally { act(() => root.unmount()); container.remove(); }
@@ -101,7 +101,7 @@ test('FHI360 regional pay period options are limited to the selected region', ()
   const root = createRoot(container);
   act(() => root.render(<CreateLineModal
     organizations={[{ id: 1, name: 'FHI360', code: null, type: 'FHI360', is_active: true }]}
-    categories={[{ id: 5, name: 'Services', is_active: true }]}
+    categories={[{ id: 5, name: 'CHW support', form_type: 'CHW_PNP', is_active: true }]}
     periods={[
       { id: 11, start_date: '2026-01-01', end_date: '2026-01-31', period_label: 'Global Jan', region_id: null },
       { id: 12, start_date: '2026-01-01', end_date: '2026-01-31', period_label: 'Mara Jan', region_id: 7 },
@@ -125,7 +125,7 @@ test('estimate is optional and blank remains null while zero remains an explicit
   const root = createRoot(container);
   act(() => root.render(<CreateLineModal
     organizations={[{ id: 1, name: 'FHI360', code: null, type: 'FHI360', is_active: true }]}
-    categories={[{ id: 5, name: 'Services', is_active: true }]}
+    categories={[{ id: 5, name: 'Outreach item', form_type: 'CHW_PNP', is_active: true }]}
     periods={[{ id: 11, start_date: '2026-01-01', end_date: '2026-01-31', period_label: 'Global Jan', region_id: null }]}
     regions={[]}
     onClose={jest.fn()}
@@ -136,26 +136,25 @@ test('estimate is optional and blank remains null while zero remains an explicit
     act(() => Simulate.change(inputs[0], { target: { value: 'B-4' } }));
     act(() => Simulate.change(inputs[1], { target: { value: 'Outreach' } }));
     act(() => Simulate.change(inputs[2], { target: { value: '100' } }));
-    const selects = container.querySelectorAll('select');
-    expect(container.textContent).toContain('Select the activity or payment type this budget will pay for.');
-    expect(selects[1].required).toBe(true);
-    expect(selects[1].value).toBe('');
-    act(() => Simulate.change(selects[0], { target: { value: '1' } }));
-    act(() => Simulate.change(selects[1], { target: { value: '5' } }));
-    act(() => Simulate.change(selects[2], { target: { value: '11' } }));
-    expect(container.textContent).toContain('Selected type: Services.');
+    expect(container.textContent).toContain('Choose Services or Payroll, then select a matching configured payment item.');
+    const activityType = selectWithValue(container, 'SERVICES');
+    expect(activityType.required).toBe(true);
+    expect(activityType.options.length).toBe(3);
+    act(() => Simulate.change(activityType, { target: { value: 'SERVICES' } }));
+    expect(container.textContent).toContain('Services · Outreach item.');
+    expect(container.querySelector('input[readonly]').value).toBe('Outreach item');
     expect(Array.from(inputs).some(input => input.value === '0')).toBe(false);
     const estimate = Array.from(inputs).find(input => input.type === 'number' && input.value === '');
     expect(estimate).toBeTruthy();
     await act(async () => { await Simulate.submit(container.querySelector('form')); });
-    expect(api.post).toHaveBeenCalledWith('/budgets/lines', expect.objectContaining({ category_id: 5, estimated_amount: null }));
+    expect(api.post).toHaveBeenCalledWith('/budgets/lines', expect.objectContaining({ category_id: 5, activity_type: 'SERVICES', estimated_amount: null }));
     act(() => Simulate.change(estimate, { target: { value: '0' } }));
     await act(async () => { await Simulate.submit(container.querySelector('form')); });
-    expect(api.post).toHaveBeenLastCalledWith('/budgets/lines', expect.objectContaining({ category_id: 5, estimated_amount: 0 }));
+    expect(api.post).toHaveBeenLastCalledWith('/budgets/lines', expect.objectContaining({ category_id: 5, activity_type: 'SERVICES', estimated_amount: 0 }));
   } finally { act(() => root.unmount()); container.remove(); }
 });
 
-test('activity or payment type selection is required, and empty configuration has clear help', async () => {
+test('activity type and payment item are explicit, filtered, and never silently picked from multiple active items', () => {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -166,13 +165,34 @@ test('activity or payment type selection is required, and empty configuration ha
     onClose: jest.fn(),
     onCreated: jest.fn(),
   };
-  act(() => root.render(<CreateLineModal {...props} categories={[{ id: 5, name: 'Services', is_active: true }]} />));
+  const categories = [
+    { id: 5, name: 'CHW PNP item', form_type: 'CHW_PNP', is_active: true },
+    { id: 6, name: 'Community services', form_type: 'COMMUNITY_SERVICE', is_active: true },
+    { id: 7, name: 'Monthly salary', form_type: 'SALARY', is_active: true },
+    { id: 8, name: 'Retired services item', form_type: 'HCP_PNP', is_active: false },
+    { id: 9, name: 'Unclassified item', form_type: null, is_active: true },
+  ];
+  act(() => root.render(<CreateLineModal {...props} categories={categories} />));
   try {
-    const categorySelect = Array.from(container.querySelectorAll('select')).find((select) => Array.from(select.options).some((option) => option.value === '5'));
-    expect(categorySelect.required).toBe(true);
-    expect(categorySelect.value).toBe('');
+    const activityType = selectWithValue(container, 'SERVICES');
+    expect(Array.from(activityType.options).map((option) => option.value)).toEqual(['', 'SERVICES', 'PAYROLL']);
+    expect(activityType.required).toBe(true);
+    expect(activityType.value).toBe('');
     expect(Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Create line').disabled).toBe(true);
-    await act(async () => { await Simulate.submit(container.querySelector('form')); });
+    act(() => Simulate.change(activityType, { target: { value: 'SERVICES' } }));
+    const paymentItem = selectWithValue(container, '5');
+    expect(paymentItem.required).toBe(true);
+    expect(Array.from(paymentItem.options).map((option) => option.value)).toEqual(['', '5', '6']);
+    expect(paymentItem.value).toBe('');
+    expect(container.textContent).not.toContain('Retired services item');
+    expect(container.textContent).not.toContain('Unclassified item');
+    expect(container.textContent).toContain('Choose one configured payment item for Services.');
+    expect(Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Create line').disabled).toBe(true);
+    act(() => Simulate.change(activityType, { target: { value: 'PAYROLL' } }));
+    expect(container.querySelector('input[readonly]').value).toBe('Monthly salary');
+    act(() => Simulate.change(activityType, { target: { value: 'SERVICES' } }));
+    expect(selectWithValue(container, '5').value).toBe('');
+    expect(Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Create line').disabled).toBe(true);
     expect(api.post).not.toHaveBeenCalled();
   } finally {
     act(() => root.unmount());
@@ -181,12 +201,59 @@ test('activity or payment type selection is required, and empty configuration ha
   const emptyRoot = createRoot(container);
   act(() => emptyRoot.render(<CreateLineModal {...props} categories={[]} />));
   try {
-    expect(container.textContent).toContain('No activities or payment types are configured yet.');
-    expect(container.textContent).toContain('cannot be created until an activity or payment type is configured');
+    const activityType = selectWithValue(container, 'SERVICES');
+    act(() => Simulate.change(activityType, { target: { value: 'SERVICES' } }));
+    expect(container.textContent).toContain('No active payment items are configured.');
+    expect(container.textContent).toContain('cannot be created until an active payment item is configured');
     expect(Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Create line').disabled).toBe(true);
     expect(api.post).not.toHaveBeenCalled();
   } finally {
     act(() => emptyRoot.unmount());
+    container.remove();
+  }
+});
+
+test('activity type mapping is explicit and never guesses from unknown metadata', () => {
+  expect(activityTypeForFormType('SALARY')).toBe('PAYROLL');
+  expect(activityTypeForFormType('CHW_PNP')).toBe('SERVICES');
+  expect(activityTypeForFormType('HCP_PNP')).toBe('SERVICES');
+  expect(activityTypeForFormType('COORDINATION')).toBe('SERVICES');
+  expect(activityTypeForFormType('COMMUNITY_SERVICE')).toBe('SERVICES');
+  expect(activityTypeForFormType(null)).toBe('UNCLASSIFIED');
+  expect(activityTypeForFormType('OTHER')).toBe('UNCLASSIFIED');
+});
+
+test('metadata refresh cannot submit a payment item that no longer matches selected activity type', async () => {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  const baseProps = {
+    organizations: [{ id: 1, name: 'FHI360', code: null, type: 'FHI360', is_active: true }],
+    periods: [{ id: 11, start_date: '2026-01-01', end_date: '2026-01-31', period_label: 'Global Jan', region_id: null }],
+    regions: [],
+    onClose: jest.fn(),
+    onCreated: jest.fn(),
+  };
+  const initialItems = [
+    { id: 5, name: 'Service item', form_type: 'CHW_PNP', is_active: true },
+    { id: 6, name: 'Second service item', form_type: 'COMMUNITY_SERVICE', is_active: true },
+  ];
+  act(() => root.render(<CreateLineModal {...baseProps} categories={initialItems} />));
+  try {
+    act(() => Simulate.change(selectWithValue(container, 'SERVICES'), { target: { value: 'SERVICES' } }));
+    act(() => Simulate.change(selectWithValue(container, '5'), { target: { value: '5' } }));
+    act(() => root.render(<CreateLineModal
+      {...baseProps}
+      categories={[{ id: 7, name: 'Salary item', form_type: 'SALARY', is_active: true }]}
+    />));
+    expect(container.textContent).toContain('No active payment items are configured for Services.');
+    expect(Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Create line').disabled).toBe(true);
+    await act(async () => { await Simulate.submit(container.querySelector('form')); });
+    expect(api.post).not.toHaveBeenCalled();
+    act(() => Simulate.change(selectWithValue(container, 'PAYROLL'), { target: { value: 'PAYROLL' } }));
+    expect(container.querySelector('input[readonly]').value).toBe('Salary item');
+  } finally {
+    act(() => root.unmount());
     container.remove();
   }
 });
@@ -197,7 +264,7 @@ test('estimate validation prevents values above hard cap', async () => {
   const root = createRoot(container);
   act(() => root.render(<CreateLineModal
     organizations={[{ id: 1, name: 'FHI360', code: null, type: 'FHI360', is_active: true }]}
-    categories={[{ id: 5, name: 'Services', is_active: true }]}
+    categories={[{ id: 5, name: 'Payment item', form_type: 'CHW_PNP', is_active: true }]}
     periods={[{ id: 11, start_date: '2026-01-01', end_date: '2026-01-31', period_label: 'Global Jan', region_id: null }]}
     regions={[]}
     onClose={jest.fn()}
@@ -211,12 +278,8 @@ test('estimate validation prevents values above hard cap', async () => {
       Simulate.change(inputs[2], { target: { value: '25' } });
       Simulate.change(inputs[3], { target: { value: '26' } });
     });
-    const selects = container.querySelectorAll('select');
-    act(() => {
-      Simulate.change(selects[0], { target: { value: '1' } });
-      Simulate.change(selects[1], { target: { value: '5' } });
-      Simulate.change(selects[2], { target: { value: '11' } });
-    });
+    const activityType = selectWithValue(container, 'SERVICES');
+    act(() => Simulate.change(activityType, { target: { value: 'SERVICES' } }));
     expect(container.textContent).toContain('Estimated spend must be between zero and the hard cap.');
     expect(Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Create line').disabled).toBe(true);
     await act(async () => { await Simulate.submit(container.querySelector('form')); });

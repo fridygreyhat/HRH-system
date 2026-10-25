@@ -10,7 +10,16 @@ from fastapi import HTTPException
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from ..models import BudgetLine, BudgetTransaction
+from ..models import BudgetLine, BudgetTransaction, ClaimCategory
+
+
+def category_activity_type(category: ClaimCategory) -> Optional[str]:
+    """Keep payment-rule detail separate from the two user-facing activity types."""
+    if category.form_type == "SALARY":
+        return "PAYROLL"
+    if category.form_type in ("CHW_PNP", "HCP_PNP", "COORDINATION", "COMMUNITY_SERVICE"):
+        return "SERVICES"
+    return None
 
 
 class InsufficientBudget(Exception):

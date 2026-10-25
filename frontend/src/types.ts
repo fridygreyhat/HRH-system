@@ -572,6 +572,7 @@ export interface BudgetLine {
   source: string;
   organization_id: number;
   category_id: number;
+  activity_type?: 'SERVICES' | 'PAYROLL' | null;
   period_id: number;
   region_id: number | null;
   /** Null means no historical estimate was recorded; do not treat it as zero. */

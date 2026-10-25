@@ -49,7 +49,8 @@ export function LedgerDrawer({
               items={[
                 ['Name', line.name],
                 ['Organization', line.organization_name],
-                ['Activity or payment type', line.category_name],
+                ['Activity type', line.activity_type === 'SERVICES' ? 'Services' : line.activity_type === 'PAYROLL' ? 'Payroll' : 'Type not configured'],
+                ['Payment item', line.category_name],
                 ['Period', line.period_label],
                 ['Region', line.region_name],
                 ['Source', humanize(line.source)],
