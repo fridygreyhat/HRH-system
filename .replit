@@ -34,3 +34,10 @@ outputType = "webview"
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[userenv]
+
+[userenv.shared]
+EXPOSE_DEV_OTP = "false"
+SMS_GATEWAY_TYPE = "vodacom"
+VODACOM_SENDER_ID = "Tanzania HRH"

@@ -50,4 +50,10 @@ class TwilioSMSGateway(SMSGateway):
 def get_sms_gateway() -> SMSGateway:
     if config.SMS_GATEWAY_TYPE == "twilio":
         return TwilioSMSGateway()
-    return MockSMSGateway()
+    if config.SMS_GATEWAY_TYPE == "vodacom":
+        from .vodacom_sms import VodacomSMSGateway
+
+        return VodacomSMSGateway()
+    if config.SMS_GATEWAY_TYPE == "mock":
+        return MockSMSGateway()
+    raise ValueError("Unsupported SMS_GATEWAY_TYPE; use mock, twilio or vodacom")

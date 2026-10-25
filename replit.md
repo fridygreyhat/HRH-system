@@ -130,9 +130,17 @@ from the real bootstrap password.
 
 ## SMS and file storage
 
-- SMS remains in the repository's **mock** mode, with development OTP exposure
-  disabled. No real SMS messages are sent. Confirmation-dependent workflows need
-  either a configured real gateway or an explicit development-only OTP setting.
+- SMS supports `SMS_GATEWAY_TYPE=vodacom`, `twilio`, or `mock`; unknown values
+  fail explicitly rather than reporting mock success. Replit is configured for
+  Vodacom with sender ID **Tanzania HRH** (provided by the user). Credentials are
+  exclusively in `VODACOM_API_KEY` and `VODACOM_AUTH_TOKEN` Secrets; the sender is
+  `VODACOM_SENDER_ID`. Development OTP exposure remains disabled.
+- Vodacom's portal's published WASP guide specifies HTTPS
+  `https://bulksms.vodacom.co.tz:9113/api/v1/wasp_sms_request`, JSON requests and
+  `x-auth-key` / `x-auth-token` headers. The adapter uses these instructions, checks
+  documented JSON/XML status 0 plus a nonempty MessageID, and never logs response
+  bodies or credentials. Acceptance is not proof of handset delivery. A real
+  delivery test is still required; automated tests use simulated responses only.
 - On Replit, payment proofs are written to `.data/uploads`, which is excluded
   from Git. These local files are for workspace development, not durable
   published-app storage. Configure durable object storage before using real
