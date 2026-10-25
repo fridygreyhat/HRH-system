@@ -89,6 +89,10 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
   const [activityKey, setActivityKey] = useState(entry?.activity_key || (isHcp ? '' : (isChw ? defaultChwActivity : undefined)?.key || applicableActivities[0]?.key || allActivities[0]?.key || ''));
   const selectedActivity = activities.find((activity) => activity.key === activityKey);
   const activityType = selectedActivity?.item_type || log.work_type;
+  const [indicatorGroupKey, setIndicatorGroupKey] = useState('');
+  const isGroupedChwPayroll = isChw && activityType === 'PAYROLL' && Boolean(selectedActivity?.groups?.length);
+  const selectedIndicatorGroup = selectedActivity?.groups?.find((group) => group.key === indicatorGroupKey)
+    || selectedActivity?.groups?.[0];
   const requiresLocation = Boolean(selectedActivity?.requires_location || activityKey === 'secondary_facility');
   const direct = log.cadre.hours_mode === 'DIRECT' || Boolean(selectedActivity?.hours_input);
   const visibleFields = !isHcp && !isChw && (selectedActivity?.item_type === 'PAYROLL' || log.work_type === 'PAYROLL')
@@ -128,7 +132,16 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
     }
     const missing = (selectedActivity?.required_fields || []).filter((key) => measures[key] === undefined || measures[key] === '');
     if (missing.length) {
-      setValidationError(lang === 'sw' ? 'Jaza viashiria vyote vinavyohitajika. Weka sifuri au chagua Ndiyo/Hapana.' : 'Complete all required activity indicators. Enter zero for none and choose Yes or No for each checklist item.');
+      if (isGroupedChwPayroll) {
+        const firstIncompleteGroup = selectedActivity?.groups?.find((group) => group.fields.some((key) => missing.includes(key)));
+        if (firstIncompleteGroup) setIndicatorGroupKey(firstIncompleteGroup.key);
+        const groupName = firstIncompleteGroup ? (lang === 'sw' ? firstIncompleteGroup.label_sw : firstIncompleteGroup.label_en) : '';
+        setValidationError(lang === 'sw'
+          ? `Jaza viashiria vyote vinavyohitajika katika kundi la ${groupName}. Weka sifuri au chagua Ndiyo/Hapana.`
+          : `Complete all required indicators in ${groupName}. Enter zero for none and choose Yes or No for each checklist item.`);
+      } else {
+        setValidationError(lang === 'sw' ? 'Jaza viashiria vyote vinavyohitajika. Weka sifuri au chagua Ndiyo/Hapana.' : 'Complete all required activity indicators. Enter zero for none and choose Yes or No for each checklist item.');
+      }
       return;
     }
     setValidationError(null);
@@ -253,6 +266,9 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
           yesLabel={t('yes')}
           noLabel={t('no')}
           onChange={(key, value) => setMeasures({ ...measures, [key]: value })}
+          selectedGroupKey={isGroupedChwPayroll ? selectedIndicatorGroup?.key : undefined}
+          onGroupChange={isGroupedChwPayroll ? setIndicatorGroupKey : undefined}
+          nativeRequired={!isGroupedChwPayroll}
         />
       )}
 

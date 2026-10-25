@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { act } from 'react-dom/test-utils';
+import { act, Simulate } from 'react-dom/test-utils';
 import { DayEntryForm, captureLocation } from './DayEntryForm';
 import { api } from '../../api';
 
@@ -63,7 +63,7 @@ test('missing geolocation or invalid accuracy never produces a valid fix', async
   expect(await captureLocation()).toBeNull();
 });
 
-test('CHW daily timesheet shows all five colour groups and no evidence/comment inputs', () => {
+const renderGroupedChw = (entryMeasures) => {
   const groups = [
     ['hiv', 'HIV testing and linkage', 'teal', 6],
     ['tb', 'TB screening', 'amber', 2],
@@ -82,12 +82,74 @@ test('CHW daily timesheet shows all five colour groups and no evidence/comment i
     key: 'chw_daily_timesheet', label_en: 'Daily CHW timesheet',
     fields: keys, required_fields: keys, item_type: 'PAYROLL', hours_input: true, groups,
   }];
-  act(() => root.render(<DayEntryForm log={log} date="2026-10-23" flags={[]} captureOnEntry={true}
+  const entry = entryMeasures ? {
+    activity_key: 'chw_daily_timesheet', hours_worked: 1, measures: entryMeasures,
+  } : undefined;
+  act(() => root.render(<DayEntryForm log={log} date="2026-10-23" entry={entry} flags={[]} captureOnEntry={true}
     onSaved={jest.fn()} onClose={jest.fn()} />));
-  expect(container.querySelectorAll('fieldset')).toHaveLength(5);
-  groups.forEach(group => expect(container.textContent).toContain(group.label_en));
-  expect(container.querySelectorAll('input[type="number"]')).toHaveLength(15);
+  return { groups, keys };
+};
+const groupDropdown = () => Array.from(container.querySelectorAll('select'))
+  .find(select => Array.from(select.options).some(option => option.textContent === 'HIV testing and linkage'));
+const chooseGroup = key => act(() => Simulate.change(groupDropdown(), { target: { value: key } }));
+const captureGps = async () => {
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: {
+    getCurrentPosition: success => success({ coords: { latitude: -7.77, longitude: 35.69, accuracy: 12 } }),
+  } });
+  await act(async () => button('captureGps').click());
+};
+const submitDay = async () => {
+  await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+};
+
+test('CHW group dropdown lists five groups and only reveals the selected fields', () => {
+  const { groups } = renderGroupedChw();
+  expect(groupDropdown().options).toHaveLength(5);
+  expect(container.querySelectorAll('fieldset')).toHaveLength(1);
+  groups.forEach(group => expect(groupDropdown().textContent).toContain(group.label_en));
+  expect(container.querySelectorAll('input[type="number"]')).toHaveLength(7);
+  chooseGroup('tb');
+  expect(container.querySelectorAll('input[type="number"]')).toHaveLength(3);
+  expect(container.querySelector('legend').textContent).toBe('TB screening');
+  chooseGroup('self_testing');
+  expect(container.querySelectorAll('input[type="number"]')).toHaveLength(2);
   expect(container.querySelectorAll('textarea')).toHaveLength(0);
   expect(container.textContent).not.toContain('evidenceWarning');
   expect(button('saveDay').disabled).toBe(true);
+});
+
+test('switching CHW groups retains counts and saves all 14 indicators together', async () => {
+  const values = Object.fromEntries([
+    ...Array.from({ length: 6 }, (_, i) => [`hiv_${i}`, 0]),
+    ...['tb', 'laboratory'].flatMap(group => [0, 1].map(i => [`${group}_${i}`, 0])),
+    ...[0, 1, 2].map(i => [`appointments_${i}`, 0]),
+    ['self_testing_0', 0],
+  ]);
+  const { keys } = renderGroupedChw(values);
+  const firstIndicator = container.querySelectorAll('input[type="number"]')[1];
+  act(() => Simulate.change(firstIndicator, { target: { value: '7' } }));
+  chooseGroup('tb');
+  chooseGroup('hiv');
+  expect(container.querySelectorAll('input[type="number"]')[1].value).toBe('7');
+  await captureGps();
+  await submitDay();
+  expect(api.put).toHaveBeenCalledTimes(1);
+  expect(Object.keys(api.put.mock.calls[0][1].measures).sort()).toEqual([...keys].sort());
+  expect(api.put.mock.calls[0][1].measures.hiv_0).toBe(7);
+});
+
+test('missing hidden CHW counts select the incomplete group instead of saving', async () => {
+  const values = Object.fromEntries([
+    ...Array.from({ length: 6 }, (_, i) => [`hiv_${i}`, 0]),
+    ...['tb', 'laboratory'].flatMap(group => [0, 1].map(i => [`${group}_${i}`, 0])),
+    ...[0, 1, 2].map(i => [`appointments_${i}`, 0]),
+  ]);
+  renderGroupedChw(values);
+  expect(groupDropdown().value).toBe('hiv');
+  await captureGps();
+  await submitDay();
+  expect(api.put).not.toHaveBeenCalled();
+  expect(groupDropdown().value).toBe('self_testing');
+  expect(container.querySelector('legend').textContent).toBe('HIV self-testing');
+  expect(container.textContent).toContain('HIV self-testing');
 });

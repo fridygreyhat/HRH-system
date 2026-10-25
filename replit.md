@@ -48,6 +48,9 @@ HIV testing/linkage (6), TB screening (2), appointment follow-up (3), HVL/DBS
 follow-up (2), and HIV self-testing (1). All 14 indicators are filled together
 on the daily PAYROLL timesheet. The uploaded copy had no coloured activity
 groups; the user explicitly approved these five named groups instead.
+The user selected a dropdown listing the five groups, revealing the selected
+group's indicators rather than displaying all groups at once. Switching groups
+must retain entered counts, and all 14 indicators remain required for saving.
 
 CHW SERVICES initially includes Special and Weekend Clinics only, with
 Expected Client Attendees and Clients attended and served. Regional Technical

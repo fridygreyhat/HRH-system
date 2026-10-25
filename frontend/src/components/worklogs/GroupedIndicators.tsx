@@ -15,6 +15,9 @@ interface Props {
   yesLabel: string;
   noLabel: string;
   onChange: (key: string, value: string | boolean | undefined) => void;
+  selectedGroupKey?: string;
+  onGroupChange?: (key: string) => void;
+  nativeRequired?: boolean;
 }
 
 /** Renders activity indicators in API order, with named, accessible group panels when supplied. */
@@ -28,6 +31,9 @@ export function GroupedIndicators({
   yesLabel,
   noLabel,
   onChange,
+  selectedGroupKey,
+  onGroupChange,
+  nativeRequired = true,
 }: Props) {
   const fieldByKey = new Map(fields.map((field) => [field.key, field]));
   const orderedGroups = (groups || []).map((group) => ({
@@ -61,7 +67,7 @@ export function GroupedIndicators({
         min="0"
         max="10000"
         step="1"
-        required={requiredFields.includes(field.key)}
+        required={nativeRequired && requiredFields.includes(field.key)}
         value={String(measures[field.key] ?? '')}
         onChange={(event) => onChange(field.key, event.target.value)}
       />
@@ -70,15 +76,30 @@ export function GroupedIndicators({
 
   if (!orderedGroups.length) return <div className="measure-grid">{fields.map(renderField)}</div>;
 
+  const activeGroup = orderedGroups.find((group) => group.key === selectedGroupKey) || orderedGroups[0];
+  const groupSelectorEnabled = selectedGroupKey !== undefined && onGroupChange !== undefined;
+  const displayedGroups = groupSelectorEnabled ? [activeGroup] : orderedGroups;
+
   return (
     <div className="indicator-groups">
-      {orderedGroups.map((group) => (
+      {groupSelectorEnabled && (
+        <Field label={lang === 'sw' ? 'Kundi la viashiria vya kila siku' : 'Daily indicator group'}>
+          <select value={activeGroup.key} onChange={(event) => onGroupChange(event.target.value)}>
+            {orderedGroups.map((group) => (
+              <option key={group.key} value={group.key}>
+                {lang === 'sw' ? group.label_sw : group.label_en}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+      {displayedGroups.map((group) => (
         <fieldset key={group.key} className={`indicator-group indicator-group-${group.color.toLowerCase()}`}>
           <legend>{lang === 'sw' ? group.label_sw : group.label_en}</legend>
           <div className="measure-grid">{group.indicators.map(renderField)}</div>
         </fieldset>
       ))}
-      {ungrouped.length > 0 && <div className="measure-grid indicator-ungrouped">{ungrouped.map(renderField)}</div>}
+      {!groupSelectorEnabled && ungrouped.length > 0 && <div className="measure-grid indicator-ungrouped">{ungrouped.map(renderField)}</div>}
     </div>
   );
 }
