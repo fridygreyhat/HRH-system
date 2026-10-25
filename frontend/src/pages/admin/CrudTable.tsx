@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { preserveExistingOption } from './selectOptions';
 import { api } from '../../api';
 import { useAuth } from '../../AuthContext';
 import { dateOnly, roleLabel } from '../../format';
@@ -28,6 +29,8 @@ export interface FieldSpec {
   hint?: string;
   /** Fixed options for a select. */
   options?: Option[];
+  /** Allow a stored legacy value to survive edits even when it is not a preset. */
+  preserveExistingOption?: boolean;
   /** Options loaded from another endpoint; values are ids (sent as numbers). */
   ref?: RefSpec;
   /** Value for a new row. */
@@ -148,7 +151,7 @@ function FieldInput({
       <Field label={label} hint={hint}>
         <select value={String(value)} onChange={(e) => onChange(e.target.value)} disabled={disabled} required={f.required}>
           <option value="">{f.required ? 'Choose…' : '— None —'}</option>
-          {optionsFor(f, lists).map((o) => (
+          {preserveExistingOption(optionsFor(f, lists), String(value), Boolean(f.preserveExistingOption)).map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>

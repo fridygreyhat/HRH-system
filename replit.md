@@ -22,6 +22,13 @@ remain intact. The root npm configuration wraps the existing frontend workspace.
 Python dependencies are installed through the root `pyproject.toml` / `uv.lock`;
 the original Docker requirements files remain in `backend/`.
 
+## Facility ownership/type
+
+Facility ownership/type choices are **Public**, **Police** and **Prison**,
+separate from funding sources (where payment money comes from). Keep existing
+PNP and other legacy facility type values valid when editing records. Facility
+ownership does not automatically select a funding source, payor or payment route.
+
 ## First sign-in
 
 Username: **admin**. Use the initial password entered as the `ADMIN_PASSWORD`

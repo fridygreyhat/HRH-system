@@ -90,13 +90,23 @@ export const TABLES: TableSpec[] = [
     path: '/admin/facilities',
     writeRoles: CENTRAL,
     extraPaths: ['/admin/districts'],
-    description: 'The geofence is used to flag facility work-log entries recorded outside the facility area. It never blocks an entry.',
+    description: 'Facility ownership/type is separate from funding sources and does not change payment routing. The geofence flags entries outside the facility area; it never blocks an entry.',
     validate: validateGeofence,
     fields: [
       { key: 'name', label: 'Name', type: 'text', required: true, maxLength: 255 },
       { key: 'ward_id', label: 'Ward', type: 'select', required: true, ref: { path: '/admin/wards', label: wardLabel } },
       { key: 'cluster_id', label: 'Cluster', type: 'select', ref: { path: '/admin/clusters' } },
-      { key: 'facility_type', label: 'Facility type', type: 'text', maxLength: 50, hint: 'e.g. PUBLIC or PNP' },
+      {
+        key: 'facility_type', label: 'Facility ownership / type', type: 'select',
+        options: [
+          { value: 'PUBLIC', label: 'Public' },
+          { value: 'POLICE', label: 'Police' },
+          { value: 'PRISON', label: 'Prison' },
+          { value: 'PNP', label: 'PNP' },
+        ],
+        preserveExistingOption: true,
+        hint: 'Classify the facility here, not under funding sources. Existing type values are preserved when editing.',
+      },
       ...GEOFENCE_FIELDS,
       { key: 'is_active', label: 'Active', type: 'bool', defaultValue: true },
     ],
@@ -149,6 +159,7 @@ export const TABLES: TableSpec[] = [
     singular: 'funding source',
     path: '/admin/funding-sources',
     writeRoles: FINANCE,
+    description: 'Where payment money comes from, such as a government budget or donor programme. Public, Police and Prison classify facilities; they are not funding-source categories.',
     fields: [
       { key: 'code', label: 'Code', type: 'text', required: true, maxLength: 50 },
       { key: 'name', label: 'Name', type: 'text', required: true, maxLength: 255 },
