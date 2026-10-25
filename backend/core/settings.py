@@ -17,8 +17,8 @@ DEFAULTS: dict[str, Any] = {
     "gps_capture_events": ["ENTRY", "SUBMIT"],
     # Refuse a submission that arrives without a location fix (the location is still never auto-rejected).
     "gps_required_on_submit": False,
-    "reminder_after_hours": 48,
-    "reminder_repeat_hours": 48,
+    "reminder_after_hours": 24,
+    "reminder_repeat_hours": 24,
     "max_daily_hours": 9.0,
     "max_weekly_hours": 45.0,
     "saturday_min_hours": 4.0,

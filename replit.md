@@ -3,8 +3,10 @@
 ## Run
 
 Use the **Run** button (`Start application`), or `npm start` from the project root.
-The workflow runs `scripts/run_replit.py`, which starts Uvicorn and the existing
-notification worker together. It stops both processes when the workflow stops.
+The workflow runs `python scripts/run_replit.py` directly, which starts Uvicorn
+and the existing notification worker together. Monitoring Python directly avoids
+an npm/shell wrapper leaving an old server behind during restarts. It stops both
+processes when the workflow stops. `npm start` remains available for manual use.
 
 - Preview: port **5000**, bound to `0.0.0.0`.
 - Frontend: the existing React/TypeScript CRA application, compiled into `frontend/build`.
@@ -105,6 +107,10 @@ from the real bootstrap password.
   completion. Date-only CHW entries use the end of the local workday. Corrections
   to previously recorded dates remain available in editable/returned logs, with
   audit history, so the review-and-return workflow does not become impossible.
+- Reviewer reminders start **24 hours** after submission into a pending stage
+  and repeat no more than once every **24 hours** while it remains unresolved.
+  Each new review stage starts a new pending clock. The worker checks hourly.
+  This reminder policy is separate from the unchanged 48-hour backdating limit.
 - Reviewer summaries aggregate visible provider logs by calendar month, even for
   weekly pay periods. Daily and monthly cascade inversions appear as warnings.
   Review confirmation is required in the UI before reviewer actions at the bottom

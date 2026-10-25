@@ -29,7 +29,7 @@ function LogTable({ rows, queue, onOpen }: { rows: WorkLogSummary[]; queue: bool
         </thead>
         <tbody>
           {rows.map((l) => {
-            const overdue = l.hours_in_status > 48 && l.status.startsWith('PENDING');
+            const overdue = l.is_overdue;
             return (
               <tr
                 key={l.id}
@@ -51,10 +51,10 @@ function LogTable({ rows, queue, onOpen }: { rows: WorkLogSummary[]; queue: bool
                 <td className="num">{num(l.entry_count)}</td>
                 <td className="num">{num(l.total_hours)}</td>
                 <td className="nowrap small">
-                  {queue || l.status.startsWith('PENDING') ? (
+                  {queue || overdue || l.status.startsWith('PENDING') ? (
                     <span className={overdue ? 'over-48' : undefined}>
                       {hoursAge(l.hours_in_status)}
-                      {overdue ? ' (over 48 h)' : ''}
+                      {overdue ? ` (${l.reminder_after_hours} h or more)` : ''}
                     </span>
                   ) : (
                     dateTime(l.updated_at)
@@ -88,7 +88,7 @@ export function ReviewWorkLogs() {
       <header className="page-header">
         <div>
           <h1>Work logs</h1>
-          <p className="muted small">Each log is reviewed and decided individually. Items waiting more than 48 hours are highlighted.</p>
+          <p className="muted small">Each log is reviewed and decided individually. Overdue items are highlighted using the configured reviewer-reminder threshold.</p>
         </div>
         <div className="row">
           {isReviewer && (

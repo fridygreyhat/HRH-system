@@ -1,5 +1,6 @@
-"""Acceptance criteria 17–18: SMS after commit via outbox, 48h reminders, stale suppression, failures isolated."""
+"""Acceptance criteria 17–18: SMS via outbox, 24h reminders, stale suppression, failures isolated."""
 from sqlalchemy import text
+import pytest
 
 from .conftest import draft_log, submit_and_verify
 
@@ -35,31 +36,77 @@ def test_stage_notifications_are_queued_and_delivered_by_the_worker(api, period,
     assert "TZS" not in body
 
 
-def test_reminders_after_48_hours_without_duplicates(api, period, db):
+def test_reminders_after_24_hours_without_duplicates(api, period, db, monkeypatch):
+    from datetime import timedelta
+    from backend import worker
+    from backend.models import utcnow
     from backend.worker import run_reminders
 
+    now = utcnow()
+    monkeypatch.setattr(worker, "utcnow", lambda: now)
     log = draft_log(api, "hcp1", period)
     api.post(f"/worklogs/{log['id']}/actions/submit", "hcp1", {"attest": True})
     assert run_reminders(db) == 0 or not _outbox(db, log["id"], "WORKLOG_REMINDER")
-    db.execute(text("update work_logs set status_changed_at = now() - interval '49 hours' where id = :i"), {"i": log["id"]})
+    db.execute(text("update work_logs set status_changed_at = :pending where id = :i"),
+               {"i": log["id"], "pending": now - timedelta(hours=24) + timedelta(seconds=1)})
+    db.commit()
+    run_reminders(db)
+    assert not _outbox(db, log["id"], "WORKLOG_REMINDER")
+    db.execute(text("update work_logs set status_changed_at = :pending where id = :i"),
+               {"i": log["id"], "pending": now - timedelta(hours=24)})
     db.commit()
     run_reminders(db)
     assert len(_outbox(db, log["id"], "WORKLOG_REMINDER")) == 1
     run_reminders(db)
-    assert len(_outbox(db, log["id"], "WORKLOG_REMINDER")) == 1  # no duplicate within 48h
-    db.execute(text("update sms_outbox set created_at = created_at - interval '49 hours' where related_id = :i and event_name = 'WORKLOG_REMINDER'"), {"i": log["id"]})
-    db.execute(text("update work_logs set status_changed_at = now() - interval '100 hours' where id = :i"), {"i": log["id"]})
+    assert len(_outbox(db, log["id"], "WORKLOG_REMINDER")) == 1
+    db.execute(text("update work_logs set status_changed_at = :pending where id = :i"),
+               {"i": log["id"], "pending": now - timedelta(hours=100)})
+    db.execute(text("update sms_outbox set created_at = :sent where related_id = :i and event_name = 'WORKLOG_REMINDER'"),
+               {"i": log["id"], "sent": now - timedelta(hours=24) + timedelta(seconds=1)})
     db.commit()
     run_reminders(db)
-    assert len(_outbox(db, log["id"], "WORKLOG_REMINDER")) == 2  # repeats no more often than every 48h
+    assert len(_outbox(db, log["id"], "WORKLOG_REMINDER")) == 1
+    db.execute(text("update sms_outbox set created_at = :sent where related_id = :i and event_name = 'WORKLOG_REMINDER'"),
+               {"i": log["id"], "sent": now - timedelta(hours=24)})
+    db.commit()
+    run_reminders(db)
+    assert len(_outbox(db, log["id"], "WORKLOG_REMINDER")) == 2
 
     api.post(f"/worklogs/{log['id']}/actions/verify", "supervisor1")  # stage resolved
     from backend.worker import process_outbox
 
+    # New outbox rows use real creation timestamps; thaw the boundary-test clock
+    # before processing rows whose next_attempt_at was created during this test.
+    monkeypatch.setattr(worker, "utcnow", utcnow)
     process_outbox(db)
     db.expire_all()
     statuses = {s for _, s, _ in _outbox(db, log["id"], "WORKLOG_REMINDER")}
     assert statuses == {"SUPPRESSED"}  # stale reminders are not delivered
+
+
+@pytest.mark.parametrize("threshold,age,overdue", [(24, 23.99, False), (24, 24, True), (36, 25, False), (36, 36, True)])
+def test_reminder_queue_and_dashboard_use_same_deadline(api, period, db, monkeypatch, threshold, age, overdue):
+    from datetime import timedelta
+    from backend.api.endpoints import dashboard, worklogs
+    from backend.core.settings import DEFAULTS
+    from backend.models import utcnow
+
+    monkeypatch.setitem(DEFAULTS, "reminder_after_hours", threshold)
+    now = utcnow()
+    monkeypatch.setattr(dashboard, "utcnow", lambda: now)
+    monkeypatch.setattr(worklogs, "utcnow", lambda: now)
+    log = draft_log(api, "chw1", period)
+    log = api.post(f"/worklogs/{log['id']}/actions/submit", "chw1", {"attest": True})
+    db.execute(text("update work_logs set status_changed_at = :pending where id = :i"),
+               {"i": log["id"], "pending": now - timedelta(hours=age)})
+    db.commit()
+    detail = api.get(f"/worklogs/{log['id']}", "supervisor1")
+    assert detail["reminder_after_hours"] == threshold
+    assert detail["is_overdue"] is overdue
+    report = api.get(f"/dashboard?period_id={period['id']}", "supervisor1")
+    assert report["work_logs"]["reminder_after_hours"] == threshold
+    queue = next(q for q in report["work_logs"]["queues"] if q["status"] == log["status"])
+    assert queue["over_threshold"] == int(overdue)
 
 
 def test_sms_failure_never_changes_workflow_state(api, period, db, monkeypatch):

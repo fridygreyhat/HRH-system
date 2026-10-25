@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from ...core.roles import CSO_FINANCE, FHI360_FINANCE, OVERSIGHT, RPM, TECHNICAL_OFFICER, SUPERVISOR, CENTRAL_ADMIN, REGIONAL_ADMIN, REGIONAL_FINANCE
 from ...core.security import CurrentUser, require_roles
+from ...core.settings import get_setting
 from ...db.session import get_db
 from ...models import BudgetLine, Cadre, PaymentClaim, PayPeriod, Staff, StaffAssignment, WorkLog, WorkLogAudit, utcnow
 from ...services import worklog_workflow as wf
@@ -28,6 +29,7 @@ def dashboard(
 ):
     period = db.get(PayPeriod, period_id) if period_id else None
     now = utcnow()
+    reminder_after = get_setting(db, "reminder_after_hours")
 
     # Staff
     staff_q = db.query(Staff).filter(staff_visibility(current))
@@ -66,6 +68,7 @@ def dashboard(
             "max_age_hours": round(max(ages), 1) if ages else 0,
             "avg_age_hours": round(sum(ages) / len(ages), 1) if ages else 0,
             "over_48h": sum(1 for a in ages if a > 48),
+            "over_threshold": sum(1 for a in ages if a >= reminder_after),
         })
     active_ids = {s.id for s in staff_rows if s.status == "ACTIVE"}
     logged_ids = {l.staff_id for l in logs if l.status != wf.CANCELLED}
@@ -126,6 +129,7 @@ def dashboard(
             "rotations_in_period": rotations,
         },
         "work_logs": {
+            "reminder_after_hours": reminder_after,
             "by_status": by_status,
             "queues": queues,
             "completeness": {

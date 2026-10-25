@@ -1,4 +1,4 @@
-"""Background worker: delivers the SMS outbox and runs the hourly 48-hour reminder check.
+"""Background worker: delivers the SMS outbox and checks the 24-hour reminder policy hourly.
 
 Run: python -m backend.worker            (loop)
      python -m backend.worker --once     (one pass of each job; used by tests)

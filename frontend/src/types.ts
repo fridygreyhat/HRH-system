@@ -113,6 +113,8 @@ export interface WorkLogSummary {
   entry_count: number;
   total_hours: number;
   hours_in_status: number;
+  reminder_after_hours: number;
+  is_overdue: boolean;
 }
 
 export interface RoutingPayor {
@@ -726,7 +728,8 @@ export interface DashboardData {
   staff: { total: number; active: number; exited: number; mid_period_exits: number; rotations_in_period: number };
   work_logs: {
     by_status: Record<string, number>;
-    queues: { status: string; owner: string; count: number; max_age_hours: number; avg_age_hours: number; over_48h: number }[];
+    reminder_after_hours: number;
+    queues: { status: string; owner: string; count: number; max_age_hours: number; avg_age_hours: number; over_48h: number; over_threshold: number }[];
     completeness: { active_staff: number; with_log: number; missing: number | null };
     exceptions: Record<string, number>;
   };

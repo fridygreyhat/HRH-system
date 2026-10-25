@@ -115,8 +115,9 @@ function TotalsTable({ title, totals, kind, labels }: { title: string; totals: T
 
 function DashboardBody({ d, periodSelected }: { d: DashboardData; periodSelected: boolean }) {
   const queues = d.work_logs.queues;
+  const reminderHours = d.work_logs.reminder_after_hours;
   const waiting = queues.reduce((s, q) => s + q.count, 0);
-  const late = queues.reduce((s, q) => s + q.over_48h, 0);
+  const late = queues.reduce((s, q) => s + q.over_threshold, 0);
   const routes = Object.keys(d.claims).sort();
   const paid = routes.reduce((s, r) => s + ['PAID', 'RECONCILED'].reduce((x, k) => x + (d.claims[r].by_payment_status[k]?.amount || 0), 0), 0);
   const approvedUnpaid = routes.reduce(
@@ -140,7 +141,7 @@ function DashboardBody({ d, periodSelected }: { d: DashboardData; periodSelected
       <div className="kpis">
         <Kpi icon="users" label="Active staff" value={num(d.staff.active)} hint={`${num(d.staff.exited)} exited · ${num(d.staff.total)} total`} />
         <Kpi icon="clipboard" label="Awaiting review" value={num(waiting)} hint="Across CTC, technical and RPM stages" />
-        <Kpi icon="clock" label="Waiting over 48 h" value={num(late)} tone={late ? 'danger' : 'success'} hint={late ? 'Reminders are sent hourly' : 'All queues within target'} />
+        <Kpi icon="clock" label={`Waiting ${reminderHours} h or more`} value={num(late)} tone={late ? 'danger' : 'success'} hint={late ? 'Reminder checks run hourly' : 'All queues within target'} />
         <Kpi icon="receipt" label="Approved, not yet paid" value={compactMoney(Math.max(approvedUnpaid, 0))} hint="Liabilities still moving to payment" />
         <Kpi icon="wallet" label="Paid & recorded" value={compactMoney(paid)} tone="success" hint="Payment status Paid or Reconciled" />
         <Kpi
@@ -182,7 +183,7 @@ function DashboardBody({ d, periodSelected }: { d: DashboardData; periodSelected
 
         <ChartCard
           title="Oldest item per review queue"
-          subtitle="Against the 48-hour reminder threshold."
+          subtitle={`Against the ${reminderHours}-hour reminder threshold.`}
           table={
             <table>
               <thead>
@@ -199,19 +200,19 @@ function DashboardBody({ d, periodSelected }: { d: DashboardData; periodSelected
                     Oldest
                   </th>
                   <th scope="col" className="num">
-                    Over 48 h
+                    {reminderHours} h or more
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {queues.map((q) => (
-                  <tr key={q.status} className={q.over_48h ? 'row-over-48' : undefined}>
+                  <tr key={q.status} className={q.over_threshold ? 'row-over-48' : undefined}>
                     <td>{label(WORKLOG_STATUS_LABELS, q.status)}</td>
                     <td>{roleLabel(q.owner)}</td>
                     <td className="num">{num(q.count)}</td>
                     <td className="num">{q.count ? hoursAge(q.avg_age_hours) : '—'}</td>
                     <td className="num">{q.count ? hoursAge(q.max_age_hours) : '—'}</td>
-                    <td className="num">{num(q.over_48h)}</td>
+                    <td className="num">{num(q.over_threshold)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -223,20 +224,20 @@ function DashboardBody({ d, periodSelected }: { d: DashboardData; periodSelected
               key: q.status,
               label: roleLabel(q.owner),
               value: q.max_age_hours,
-              flagged: q.over_48h > 0,
+              flagged: q.over_threshold > 0,
               note: (
                 <>
                   {num(q.count)} waiting
-                  {q.over_48h > 0 && (
+                  {q.over_threshold > 0 && (
                     <span className="late-note">
-                      <Icon name="alert" size={13} /> {num(q.over_48h)} over 48 h
+                      <Icon name="alert" size={13} /> {num(q.over_threshold)} waiting {reminderHours} h or more
                     </span>
                   )}
                 </>
               ),
             }))}
             format={(h) => (h ? hoursAge(h) : '—')}
-            reference={{ value: 48, label: '48 h' }}
+            reference={{ value: reminderHours, label: `${reminderHours} h` }}
           />
         </ChartCard>
 

@@ -120,6 +120,8 @@ def _summary(db: Session, log: WorkLog) -> dict:
     t = totals(db, log)
     assignment = db.get(StaffAssignment, log.assignment_id)
     facility = db.get(Facility, assignment.facility_id) if assignment.facility_id else None
+    hours_pending = (utcnow() - log.status_changed_at).total_seconds() / 3600
+    reminder_after = get_setting(db, "reminder_after_hours")
     return {
         **to_dict(log, exclude=("submit_gps_lat", "submit_gps_lon", "submit_gps_accuracy_m")),
         "staff_name": staff.legal_name,
@@ -128,7 +130,9 @@ def _summary(db: Session, log: WorkLog) -> dict:
         "period_label": wf.period_label(db.get(PayPeriod, log.period_id)),
         "entry_count": t["days"],
         "total_hours": t["hours"],
-        "hours_in_status": round((utcnow() - log.status_changed_at).total_seconds() / 3600, 1),
+        "hours_in_status": round(hours_pending, 1),
+        "reminder_after_hours": reminder_after,
+        "is_overdue": log.status in wf.STAGE_OWNER and hours_pending >= reminder_after,
     }
 
 
