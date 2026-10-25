@@ -69,15 +69,19 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
   const activities = entry?.activity_key && !applicableActivities.some((activity) => activity.key === entry.activity_key)
     ? [...applicableActivities, ...allActivities.filter((activity) => activity.key === entry.activity_key)]
     : applicableActivities;
-  const [activityKey, setActivityKey] = useState(entry?.activity_key || applicableActivities[0]?.key || allActivities[0]?.key || '');
+  const isHcp = log.cadre.code === 'HCP';
+  const [activityKey, setActivityKey] = useState(entry?.activity_key || (isHcp ? '' : applicableActivities[0]?.key || allActivities[0]?.key || ''));
   const selectedActivity = activities.find((activity) => activity.key === activityKey);
+  const activityType = selectedActivity?.item_type || log.work_type;
   const requiresLocation = Boolean(selectedActivity?.requires_location || activityKey === 'secondary_facility');
   const direct = log.cadre.hours_mode === 'DIRECT' || Boolean(selectedActivity?.hours_input);
-  const visibleFields = selectedActivity?.item_type === 'PAYROLL' || log.work_type === 'PAYROLL'
+  const visibleFields = !isHcp && (selectedActivity?.item_type === 'PAYROLL' || log.work_type === 'PAYROLL')
     ? []
     : selectedActivity
-      ? log.cadre.fields.filter((field) => selectedActivity.fields.includes(field.key))
-      : log.cadre.fields;
+      ? (isHcp
+        ? selectedActivity.fields.flatMap((key) => log.cadre.fields.filter((field) => field.key === key))
+        : log.cadre.fields.filter((field) => selectedActivity.fields.includes(field.key)))
+      : isHcp ? [] : log.cadre.fields;
   const [hours, setHours] = useState(entry ? String(Number(entry.hours_worked)) : '');
   const [activityLocation, setActivityLocation] = useState(entry?.activity_location || '');
   const [start, setStart] = useState(entry?.start_time?.slice(0, 5) || '');
@@ -113,8 +117,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
     const payload: Record<string, unknown> = {
       activity_key: activityKey,
       ...(requiresLocation ? { activity_location: activityLocation.trim() } : {}),
-      evidence_text: evidence.trim(),
-      comment: comment.trim() || null,
+      ...(!isHcp ? { evidence_text: evidence.trim(), comment: comment.trim() || null } : {}),
       measures: Object.fromEntries(
         visibleFields
           .filter((f) => measures[f.key] !== undefined && measures[f.key] !== '')
@@ -171,8 +174,20 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
       )}
 
       {activities.length > 0 && (
-        <Field label={lang === 'sw' ? 'Aina ya shughuli' : 'Activity'} hint={lang === 'sw' ? 'Chagua shughuli ili kuonyesha viashiria vyake.' : 'Select an activity to show its specific indicators.'}>
+        <Field
+          label={isHcp
+            ? activityType === 'PAYROLL' ? (lang === 'sw' ? 'Kituo cha kila siku' : 'Daily facility cascade')
+              : activityType === 'SERVICES' ? (lang === 'sw' ? 'Huduma ya uhamasishaji' : 'Outreach service')
+                : (lang === 'sw' ? 'Aina ya shughuli ya HCP' : 'HCP activity type')
+            : lang === 'sw' ? 'Aina ya shughuli' : 'Activity'}
+          hint={isHcp
+            ? (lang === 'sw'
+              ? 'Malipo (PAYROLL) ni daftari la kila siku la kituo; Huduma (SERVICES) ni shughuli tofauti za uhamasishaji.'
+              : 'PAYROLL is the daily facility timesheet; SERVICES records separate outreach activities.')
+            : lang === 'sw' ? 'Chagua shughuli ili kuonyesha viashiria vyake.' : 'Select an activity to show its specific indicators.'}
+        >
           <select required value={activityKey} onChange={(e) => setActivityKey(e.target.value)}>
+            {isHcp && <option value="">— {lang === 'sw' ? 'Chagua shughuli' : 'Select an activity'} —</option>}
             {activities.map((activity) => (
               <option key={activity.key} value={activity.key}>
                 {lang === 'sw' ? activity.label_sw : activity.label_en}
@@ -239,16 +254,18 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
         )}
       </div>
 
-      <p className="notice" role="note">
-        ⚠ {t('evidenceWarning')}
-      </p>
-      <Field label={t('evidence')} className={flaggedFields.has('evidence') ? 'flagged-field' : undefined}>
-        <textarea rows={3} required minLength={3} maxLength={2000} value={evidence} onChange={(e) => setEvidence(e.target.value)} />
-      </Field>
-      <Field label={t('comment')} className={flaggedFields.has('comment') ? 'flagged-field' : undefined}>
-        <textarea rows={2} maxLength={1000} value={comment} onChange={(e) => setComment(e.target.value)} />
-      </Field>
-      {idWarning && <Alert kind="warn">{t('evidenceWarning')}</Alert>}
+      {!isHcp && (
+        <>
+          <p className="notice" role="note">{t('evidenceWarning')}</p>
+          <Field label={t('evidence')} className={flaggedFields.has('evidence') ? 'flagged-field' : undefined}>
+            <textarea rows={3} required minLength={3} maxLength={2000} value={evidence} onChange={(e) => setEvidence(e.target.value)} />
+          </Field>
+          <Field label={t('comment')} className={flaggedFields.has('comment') ? 'flagged-field' : undefined}>
+            <textarea rows={2} maxLength={1000} value={comment} onChange={(e) => setComment(e.target.value)} />
+          </Field>
+          {idWarning && <Alert kind="warn">{t('evidenceWarning')}</Alert>}
+        </>
+      )}
 
       {captureOnEntry && (
         <div className={`stack${flaggedFields.has('location') ? ' flagged-field' : ''}`}>
@@ -269,7 +286,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
 
       <Alert>{validationError || save.error || remove.error}</Alert>
       <div className="row">
-        <button className="btn btn-primary" disabled={busy || isSunday || evidence.trim().length < 3}>
+        <button className="btn btn-primary" disabled={busy || isSunday || (!isHcp && evidence.trim().length < 3)}>
           {save.busy ? t('saving') : t('saveDay')}
         </button>
         {entry && (

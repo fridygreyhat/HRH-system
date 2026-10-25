@@ -41,7 +41,17 @@ Follow the README's first-time setup sequence to configure the organization and 
 The bootstrap secret is only used to create the account. Changing it later does
 not reset the password of an existing account.
 
-## Simulated workflow walkthrough
+## Health Care Provider activity forms
+
+For new v2 HCP entries, Part A of the provider outreach sheet is SERVICES
+(Index, SNS-RNR, TB contact tracing, special/weekend clinics, community TB active
+case finding and quarterly inmate screening). Part B is the daily PAYROLL
+timesheet (OPD, CTC ART initiation/refills and laboratory cascades). Each date
+requires a selected cascade/service, its indicators and start/end times.
+Evidence and comment inputs are removed for HCP only; previously recorded text
+and immutable activity snapshots remain intact. Other cadres are unchanged.
+
+## Simulated workflow walkthrough status
 
 The Demo walkthrough has been removed from the app navigation and page routing
 at the user's request. Old `#demos` links fall back to the account's normal home

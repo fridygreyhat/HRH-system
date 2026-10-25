@@ -16,6 +16,7 @@ const WEEK_SW = ['Jtt', 'Jnn', 'Jtn', 'Alh', 'Ijm', 'Jms', 'Jpl'];
 
 function HeaderForm({ log, onSaved }: { log: WorkLogDetail; onSaved: (l: WorkLogDetail) => void }) {
   const { t } = useAuth();
+  const isHcp = log.cadre.code === 'HCP';
   const sections = useApi<SectionRow[]>(log.cadre.uses_section ? '/admin/sections' : null);
   const [occupation, setOccupation] = useState(log.occupation || '');
   const [occupationOther, setOccupationOther] = useState(log.occupation_other || '');
@@ -30,7 +31,8 @@ function HeaderForm({ log, onSaved }: { log: WorkLogDetail; onSaved: (l: WorkLog
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaved(false);
-    const body: Record<string, string | null> = { period_comment: comment.trim() || null };
+    const body: Record<string, string | null> = {};
+    if (!isHcp) body.period_comment = comment.trim() || null;
     if (options.length && occupation) {
       body.occupation = occupation;
       body.occupation_other = isOther ? occupationOther.trim() : null;
@@ -95,9 +97,9 @@ function HeaderForm({ log, onSaved }: { log: WorkLogDetail; onSaved: (l: WorkLog
           </Field>
         )}
       </div>
-      <Field label={t('periodComment')}>
+      {!isHcp && <Field label={t('periodComment')}>
         <textarea rows={2} maxLength={2000} disabled={!log.can_edit} value={comment} onChange={(e) => setComment(e.target.value)} />
-      </Field>
+      </Field>}
       <Alert>{error || sections.error}</Alert>
       {saved && <Alert kind="success">{t('saved')}</Alert>}
       {log.can_edit && (

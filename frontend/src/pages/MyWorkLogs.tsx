@@ -10,6 +10,7 @@ import { PayPeriod, WorkLogDetail, WorkLogSummary } from '../types';
 
 export function MyWorkLogs() {
   const { me, t } = useAuth();
+  const isHcp = me?.cadre?.code === 'HCP';
   const logs = useApi<WorkLogSummary[]>('/worklogs?mine=true');
   const periods = useApi<PayPeriod[]>('/admin/pay-periods');
   const [openId, setOpenId] = useState<number | null>(null);
@@ -65,10 +66,10 @@ export function MyWorkLogs() {
           <p className="muted">{t('noOpenPeriods')}</p>
         ) : (
           <div className="row" style={{ alignItems: 'flex-end' }}>
-            <Field label="Work type">
+            <Field label={isHcp ? 'Timesheet / activity type' : 'Work type'} hint={isHcp ? 'PAYROLL is your daily facility timesheet. SERVICES is a separate outreach activity log.' : undefined}>
               <select value={workType} onChange={(e) => { setWorkType(e.target.value as 'SERVICES' | 'PAYROLL'); setPeriodId(''); }}>
-                <option value="SERVICES">Services</option>
-                <option value="PAYROLL">Payroll</option>
+                <option value="SERVICES">{isHcp ? 'Outreach service — SERVICES' : 'Services'}</option>
+                <option value="PAYROLL">{isHcp ? 'Daily timesheet — PAYROLL' : 'Payroll'}</option>
               </select>
             </Field>
             <Field label={t('payPeriod')}>
@@ -96,7 +97,7 @@ export function MyWorkLogs() {
               <button key={l.id} type="button" className="card log-card" onClick={() => setOpenId(l.id)} aria-label={`${t('open')} ${l.period_label}`}>
                 <div className="row-between">
                   <strong>{l.period_label}</strong>
-                  <span className="row"><span className="badge badge-neutral">{l.work_type === 'LEGACY' ? 'Legacy' : l.work_type}</span><StatusBadge kind="log" status={l.status} /></span>
+                   <span className="row"><span className="badge badge-neutral">{l.work_type === 'LEGACY' ? 'Legacy' : isHcp ? l.work_type === 'PAYROLL' ? 'Daily timesheet · PAYROLL' : 'Outreach · SERVICES' : l.work_type}</span><StatusBadge kind="log" status={l.status} /></span>
                 </div>
                 <MiniStepper status={l.status} />
                 <div className="muted small">

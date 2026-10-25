@@ -65,6 +65,8 @@ const isFlagged = (flags: ReturnFlag[], date: string, field?: string) => flags.s
 /** Daily entries: a table on wide screens, cards on phones. Flagged dates/fields are highlighted. */
 export function EntriesView({ log, lang, flags = [] }: { log: WorkLogDetail; lang: Lang; flags?: ReturnFlag[] }) {
   const { cadre, entries } = log;
+  const isHcp = cadre.code === 'HCP';
+  const showEvidence = !isHcp || entries.some((entry) => Boolean(entry.evidence_text?.trim() || entry.comment?.trim()));
   const startEnd = cadre.hours_mode !== 'DIRECT';
   const activityFor = (key: string | null) => cadre.activities?.find((activity) => activity.key === key);
   const fieldsFor = (key: string | null) => {
@@ -82,7 +84,7 @@ export function EntriesView({ log, lang, flags = [] }: { log: WorkLogDetail; lan
               {startEnd && <th>Start–end</th>}
               <th className="num">Hours</th>
               <th>Activity and indicators</th>
-              <th>Evidence / comment</th>
+              {showEvidence && <th>Evidence / comment</th>}
               <th>Location</th>
             </tr>
           </thead>
@@ -110,10 +112,10 @@ export function EntriesView({ log, lang, flags = [] }: { log: WorkLogDetail; lan
                       ))}
                   </ul>
                 </td>
-                <td className={isFlagged(flags, e.entry_date, 'evidence') ? 'flagged' : undefined}>
-                  {e.evidence_text}
-                  {e.comment && <div className="muted small">{e.comment}</div>}
-                </td>
+                {showEvidence && <td className={isFlagged(flags, e.entry_date, 'evidence') ? 'flagged' : undefined}>
+                  {e.evidence_text?.trim() && e.evidence_text}
+                  {e.comment?.trim() && <div className="muted small">{e.comment}</div>}
+                </td>}
                 <td className={isFlagged(flags, e.entry_date, 'location') ? 'flagged' : undefined}>
                   <LocationBadge status={e.location_status} />
                   <Coordinates entry={e} />
@@ -149,8 +151,8 @@ export function EntriesView({ log, lang, flags = [] }: { log: WorkLogDetail; lan
                 </React.Fragment>
               ))}
             </dl>
-            <div className={isFlagged(flags, e.entry_date, 'evidence') ? 'flagged-field small' : 'small'}>{e.evidence_text}</div>
-            {e.comment && <div className="muted small">{e.comment}</div>}
+            {(!isHcp || e.evidence_text?.trim()) && <div className={isFlagged(flags, e.entry_date, 'evidence') ? 'flagged-field small' : 'small'}>{e.evidence_text}</div>}
+            {e.comment?.trim() && <div className="muted small">{e.comment}</div>}
           </article>
         ))}
       </div>

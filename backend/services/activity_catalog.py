@@ -8,6 +8,8 @@ from fastapi.encoders import jsonable_encoder
 from ..models import ActivityRate, Cadre, CadreFormField, StaffAssignment, WorkLogEntry, PayPeriod
 from .activities import ACTIVITIES, CASCADES, activity_for
 
+HCP_DAILY_CASCADES = {"opd_screening", "ctc_art_refills", "laboratory"}
+
 
 def definition_out(row: ActivityRate) -> dict:
     fields = row.field_definitions
@@ -39,9 +41,24 @@ def builtins(db, cadre_id: int) -> list[dict]:
         item.update(item_type="SERVICES", form_mode="CASCADE" if len(item["fields"]) > 1 else "SINGLE",
                     field_definitions=[fields[key] for key in item["fields"]], hours_input=False,
                     rate_value=None, currency="TZS", unit_type="PER_UNIT", billable_field=item["fields"][-1], cadre_id=cadre_id)
+        if cadre.code == "HCP":
+            # Part B belongs to the daily timesheet; Part A remains outreach.
+            # Do not change legacy definitions or immutable saved snapshots.
+            if item["key"] == "index_testing":
+                item["fields"] = ["hcp_index_appointments", "clients_tested_index",
+                                  "hcp_index_positive", "hiv_positive_linked_art"]
+            item.update(
+                item_type="PAYROLL" if item["key"] in HCP_DAILY_CASCADES else "SERVICES",
+                hours_input=False,
+                required_fields=list(item["fields"]),
+                field_definitions=[fields[key] for key in item["fields"]],
+                billable_field=item["fields"][-1],
+            )
         item["cascade_pairs"] = CASCADES.get(item["key"], [])
         item["requires_location"] = item["key"] == "secondary_facility"
         result.append(item)
+    if cadre.code == "HCP":
+        return result
     result.append({
         "key": "daily_attendance", "label_en": "Daily attendance", "label_sw": "Mahudhurio ya kila siku",
         "item_type": "PAYROLL", "form_mode": "SINGLE", "hours_input": True,

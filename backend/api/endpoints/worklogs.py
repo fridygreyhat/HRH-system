@@ -70,7 +70,7 @@ class EntryIn(BaseModel):
     start_time: Optional[time] = None
     end_time: Optional[time] = None
     hours_worked: Optional[Decimal] = Field(default=None, gt=0, le=24)
-    evidence_text: str = Field(min_length=3, max_length=2000)
+    evidence_text: Optional[str] = Field(default=None, max_length=2000)
     comment: Optional[str] = Field(default=None, max_length=1000)
     measures: dict[str, Union[bool, int, float]] = {}
     gps_lat: Optional[float] = Field(default=None, ge=-90, le=90)
@@ -342,7 +342,9 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
     # Serialize edits by the staff member so concurrent submissions cannot
     # each pass the daily/weekly cap using the same remaining hours.
     db.query(Staff).filter(Staff.id == log.staff_id).with_for_update().one()
-    if ID_PATTERN.search(body.evidence_text) or (body.comment and ID_PATTERN.search(body.comment)):
+    if cadre.code != "HCP" and len((body.evidence_text or "").strip()) < 3:
+        raise HTTPException(status_code=422, detail="Evidence must contain at least 3 characters")
+    if ID_PATTERN.search(body.evidence_text or "") or (body.comment and ID_PATTERN.search(body.comment)):
         raise HTTPException(status_code=422, detail="Evidence looks like it contains an ID or phone number. Do not record patient or client identifiers.")
 
     if direct_hours:
@@ -367,6 +369,10 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
     if not requires_location and body.activity_location:
         raise HTTPException(status_code=422, detail="A secondary-facility name is only valid for that activity.")
     allowed_fields = set(activity["fields"])
+    if cadre.code == "HCP" and log.workflow_version >= 2:
+        missing = set(activity.get("required_fields", [])) - set(body.measures)
+        if missing:
+            raise HTTPException(status_code=422, detail=f"Complete all selected cascade indicators (enter zero for none): {sorted(missing)}")
     unknown = set(body.measures) - set(fields)
     if unknown:
         raise HTTPException(status_code=422, detail=f"Not on the {cadre.code} form: {sorted(unknown)}")
@@ -424,7 +430,13 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
     if log.workflow_version >= 2:
         entry.activity_snapshot = jsonable_encoder(activity)
     entry.start_time, entry.end_time, entry.hours_worked = start, end, hours
-    entry.evidence_text, entry.comment = body.evidence_text.strip(), (body.comment or "").strip() or None
+    # Hidden HCP inputs must not erase text already recorded on an older entry.
+    if cadre.code != "HCP" or "evidence_text" in body.model_fields_set:
+        entry.evidence_text = (body.evidence_text or "").strip()
+    elif entry.evidence_text is None:
+        entry.evidence_text = ""
+    if cadre.code != "HCP" or "comment" in body.model_fields_set:
+        entry.comment = (body.comment or "").strip() or None
     if capture:
         entry.gps_lat, entry.gps_lon, entry.gps_accuracy_m = lat, lon, body.gps_accuracy_m if lat is not None else None
         entry.gps_captured_at = utcnow() if lat is not None else None
