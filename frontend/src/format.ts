@@ -103,6 +103,7 @@ export const CLAIM_STATUS_LABELS: Record<string, string> = {
   VALIDATION_NEEDED: 'Validation needed',
   PENDING_COMMUNITY_VERIFICATION: 'Awaiting community verification',
   AWAITING_APPROVAL: 'Awaiting approval',
+  PENDING_FINANCE_REVIEW: 'Awaiting regional finance review',
   APPROVED: 'Approved',
   HELD: 'Held (budget)',
   BUDGET_HOLD: 'Budget hold',

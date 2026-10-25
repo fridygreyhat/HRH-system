@@ -78,7 +78,7 @@ def _summary(db: Session, claim: PaymentClaim) -> dict:
     return {
         **to_dict(claim, exclude=("calculation_snapshot",)),
         "staff_name": staff.legal_name,
-        "category_name": db.get(ClaimCategory, claim.category_id).name,
+        "category_name": db.get(ClaimCategory, claim.category_id).name if claim.category_id else None,
         "period_label": period_label(db.get(PayPeriod, claim.period_id)),
         "payor_name": _org(db, claim.payor_org_id),
         "executor_name": _org(db, claim.executor_org_id),

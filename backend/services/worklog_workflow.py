@@ -128,7 +128,7 @@ def check_action(db: Session, current: CurrentUser, log: WorkLog, action: str) -
     if log.workflow_version >= 2 and role in {TECHNICAL_OFFICER, RPM, REGIONAL_FINANCE}:
         from .v22_scope import may_manage
         assignment = db.get(StaffAssignment, log.assignment_id)
-        if not may_manage(current, assignment.region_id, log.cadre_id):
+        if not may_manage(current, assignment.region_id, log.cadre_id, role=role):
             return "This work log is outside your assigned Region × Cadre"
     if action.startswith("route_"):
         expected = "route_fhi360" if log.work_type == "SERVICES" else "route_cso"
@@ -184,7 +184,7 @@ def queue_condition(current: CurrentUser):
             if scope is not None:
                 condition = (WorkLog.workflow_version == version) & (WorkLog.status == status) & WorkLog.assignment_id.in_(scope)
                 if version >= 2 and role in {TECHNICAL_OFFICER, RPM, REGIONAL_FINANCE}:
-                    condition &= record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id)
+                    condition &= record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id, role=role)
                 conditions.append(condition)
     if FACILITY_IN_CHARGE in current.roles:
         scope = assignments_in_role_scope(current, FACILITY_IN_CHARGE)
@@ -250,7 +250,11 @@ def transition(
     log.status = next_status
     if log.workflow_version >= 2:
         from . import finance_gate
-        if action == "finance_review":
+        if action == "authorize" and next_status == PENDING_FINANCE:
+            claim = finance_gate.prepare_after_rpm(db, current, log)
+            details = {**(details or {}), "prepared_claim_id": claim.id}
+            log.approved_at = now
+        elif action == "finance_review":
             finance_gate.review(db, current, log, (details or {}).get("category_id"))
         elif action.startswith("route_"):
             details = {**(details or {}), **finance_gate.route(db, current, log, "FHI360" if action == "route_fhi360" else "CSO", (details or {}).get("target_payor_id"))}
@@ -258,7 +262,7 @@ def transition(
             details = {**(details or {}), **finance_gate.route(db, current, log, log.finance_snapshot["channel"], log.finance_snapshot["payor_org_id"])}
         elif action == "release":
             log.status = PENDING_FINANCE
-        elif next_status == RETURNED:
+        elif next_status in {RETURNED, REJECTED}:
             finance_gate.cancel_pending(db, current, log, comment)
             log.finance_snapshot = None
             log.routed_channel = None

@@ -109,18 +109,29 @@ from the real bootstrap password.
   at `/rates`. Entry snapshots retain the rate and indicator definitions used.
   Per-unit cascade pricing requires an explicitly selected billable indicator;
   never infer that positives, linkage, or the final cascade field is payable.
-  Unpriced work cannot pass final finance review.
-- Technical, RPM, Regional Finance and new channel-finance records enforce
+  Unpriced work cannot pass RPM approval: preparing a priced liability and the
+  operational approval are one transaction, with an explicit configuration error
+  when pricing is missing. Rate revisions do not silently reprice recorded work.
+- RPM operational authority covers **every cadre within its assigned regions**,
+  without needing cadre grants. Technical, Regional Finance and new channel-finance records enforce
   **Region × Cadre** scopes. Configure reviewer cadres and region scopes for
   these users; CSO Finance additionally requires the assigned CSO organization.
-- Finance review prepares a `PENDING_ROUTING` claim without committing budget.
+  Broad RPM authority must not widen a separate finance or technical role.
+- RPM approval automatically derives a `PENDING_FINANCE_REVIEW` claim, with
+  recorded-rate amount and components, but no category, payor or committed budget.
+  **Why:** operational approval records the liability; finance alone selects its
+  financial configuration. Finance review fills in the category, payor and budget
+  line on that same claim and moves it to `PENDING_ROUTING`, without committing
+  budget. Historical reviewed v2 logs without a claim remain supported; no existing
+  claims are backfilled.
   The Regional Finance Routing Queue shows the provider, captured cadre, assigned
   facility and region. Channeling requires an explicit eligible `target_payor_id`:
   the assigned CSO for Payroll or FHI360 for Services, never an arbitrary payor.
   The `/finance/pending-routing`, `/finance/payors`, `/finance/regions` and
   `/finance/channel` APIs enforce the same scope and approval controls as the UI.
   Every channel action records the actor, timestamp and chosen payor. Returning
-  a finance-reviewed log cancels only its unpaid pending proposal, retaining audit.
+  or rejecting an unreviewed/reviewed log cancels only its unpaid pending proposal,
+  retaining snapshots and audit. Resubmission creates a fresh proposal on RPM approval.
 - Routing makes the claim budget-committed and READY; it is not a bank transfer.
   Insufficient budget holds both the claim and log. Only a fully recorded actual
   payment, with required evidence, marks the log PAID.

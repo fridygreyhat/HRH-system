@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { api, openBlob, saveBlob } from '../../api';
+import { useAuth } from '../../AuthContext';
 import {
   CLAIM_ACTION_LABELS,
   CLAIM_REASON_REQUIRED,
@@ -213,6 +214,8 @@ type Dialog = { kind: 'action'; action: string } | { kind: 'record_payment' } | 
 
 /** Claim detail drawer: components, budget line, exceptions, audit, workflow and payment actions (server-provided only). */
 export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; onClose: () => void; onChanged?: () => void }) {
+  const { hasRole } = useAuth();
+  const isRpmWithoutFinanceRole = hasRole('RPM') && !hasRole('REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE');
   const { data: claim, error, loading, setData } = useApi<ClaimDetail>(`/claims/${claimId}`);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [tab, setTab] = useState<'overview' | 'trace'>('overview');
@@ -240,6 +243,8 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
 
   const outstanding = claim ? Math.max(0, Number(claim.amount) - Number(claim.amount_paid)) : 0;
   const paid = claim && (claim.payment_status === 'PAID' || claim.payment_status === 'RECONCILED');
+  const financeReviewPending = claim?.status === 'PENDING_FINANCE_REVIEW';
+  const paymentActions = claim && !isRpmWithoutFinanceRole && !financeReviewPending ? claim.payment_actions : [];
 
   return (
     <Drawer title={`Claim #${claimId}`} onClose={onClose} wide>
@@ -288,11 +293,16 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
             </div>
           )}
           <Alert kind="success">{notice}</Alert>
+          {financeReviewPending && (
+            <p className="notice notice-info">
+              This claim was created from the RPM-approved work log’s saved activity rates. It is awaiting Regional Finance review and category selection. The amount is not routed, budget-committed or payable; finance will review this same claim before routing.
+            </p>
+          )}
 
           {claim.available_actions.length > 0 && (
             <Section title="Claim actions">
               <div className="row">
-                {claim.available_actions.map((a) => (
+                {claim.available_actions.filter((a) => !financeReviewPending || !['mark_ready', 'export'].includes(a)).map((a) => (
                   <button
                     key={a}
                     className={`btn ${DESTRUCTIVE_ACTIONS.has(a) ? 'btn-secondary' : 'btn-primary'}`}
@@ -310,7 +320,7 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
             <Facts
               items={[
                 ['Staff', claim.staff_name],
-                ['Category', claim.category_name],
+                ['Category', claim.category_name || (claim.category_id == null ? 'Not selected yet' : `Category #${claim.category_id}`)],
                 ['Period', claim.period_label],
                 ['Payor', claim.payor_name],
                 ['Executor (pays)', claim.executor_name],
@@ -353,10 +363,10 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
             )}
           </Section>
 
-          {(claim.payments.length > 0 || claim.proofs.length > 0 || claim.payment_actions.length > 0) && (
+          {(claim.payments.length > 0 || claim.proofs.length > 0 || paymentActions.length > 0) && (
             <Section
               title="Payment"
-              actions={claim.payment_actions.map((a) => (
+              actions={paymentActions.map((a) => (
                 <button
                   key={a}
                   className={`btn btn-sm ${a === 'record_payment' ? 'btn-primary' : 'btn-secondary'}`}

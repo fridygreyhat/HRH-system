@@ -90,6 +90,11 @@ class PaymentClaim(Base):
     __table_args__ = (
         CheckConstraint(f"route_code IS NULL OR route_code IN {ROUTE_CODES}", name="route"),
         CheckConstraint("amount >= 0", name="amount"),
+        CheckConstraint(
+            "category_id IS NOT NULL OR (workflow_version >= 2 AND work_log_id IS NOT NULL "
+            "AND status IN ('PENDING_FINANCE_REVIEW', 'CANCELLED'))",
+            name="pending_finance_category",
+        ),
         # Duplicate prevention: one live claim per staff member, category and period.
         Index(
             "uq_payment_claims_live",
@@ -105,7 +110,7 @@ class PaymentClaim(Base):
     workflow_version = Column(Integer, nullable=False, default=1, server_default="1")
     work_type = Column(String(20), nullable=False, default="LEGACY", server_default="LEGACY")
     staff_id = Column(Integer, ForeignKey("staff.id"), nullable=False, index=True)
-    category_id = Column(Integer, ForeignKey("claim_categories.id"), nullable=False)
+    category_id = Column(Integer, ForeignKey("claim_categories.id"))
     period_id = Column(Integer, ForeignKey("pay_periods.id"), nullable=False)
     assignment_id = Column(Integer, ForeignKey("staff_assignments.id"))
     community_area_id = Column(Integer, ForeignKey("community_areas.id"))

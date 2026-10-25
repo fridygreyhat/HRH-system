@@ -11,7 +11,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import and_, or_, true, exists
+from sqlalchemy import and_, or_, true, exists, select
 from sqlalchemy.orm import Session
 
 from ..core import audit as system_audit
@@ -35,6 +35,8 @@ from ..models import (
 )
 from . import claims as cl
 from .scope import claim_visibility
+from .v22_scope import record_condition
+from ..models import WorkLog
 from .worklog_workflow import period_label
 
 EXPORTED, HANDED_OFF, RECEIVED = "EXPORTED", "HANDED_OFF", "RECEIVED"
@@ -44,6 +46,14 @@ CSV_COLUMNS = [
     "budget_line", "route", "payor", "executor", "payment_method", "payment_provider", "payment_account",
     "components", "amount", "currency",
 ]
+
+
+def finance_claim_condition(current: CurrentUser):
+    return or_(
+        PaymentClaim.workflow_version == 1,
+        record_condition(current, PaymentClaim.assignment_id,
+                         select(WorkLog.cadre_id).where(WorkLog.id == PaymentClaim.work_log_id).scalar_subquery()),
+    )
 
 
 def batch_visibility(current: CurrentUser):
@@ -63,7 +73,8 @@ def batch_visibility(current: CurrentUser):
     visible = or_(*conditions) if conditions else PayrollBatch.id == -1
     # Do not expose a mixed-region export because just one of its claims is visible.
     return and_(visible, ~exists().where(
-        PaymentClaim.batch_id == PayrollBatch.id, PaymentClaim.workflow_version >= 2, ~claim_visibility(current),
+        PaymentClaim.batch_id == PayrollBatch.id, PaymentClaim.workflow_version >= 2,
+        ~(claim_visibility(current) & finance_claim_condition(current)),
     ))
 
 
@@ -73,14 +84,16 @@ def create_batches(db: Session, current: CurrentUser, route_code: str) -> list[P
         role = CSO_FINANCE
         if not db.query(PaymentClaim).filter(
             PaymentClaim.status == cl.READY, PaymentClaim.route_code == "B",
-            PaymentClaim.workflow_version >= 2, PaymentClaim.payment_status == "NOT_STARTED", claim_visibility(current),
+            PaymentClaim.workflow_version >= 2, PaymentClaim.payment_status == "NOT_STARTED",
+            claim_visibility(current), finance_claim_condition(current),
         ).first():
             raise HTTPException(403, "Legacy Route B batches belong to FHI360; no new CSO-owned payroll is ready")
     if role is None:
         raise HTTPException(status_code=422, detail="Route must be A, B or C")
     if role not in current.roles:
         raise HTTPException(status_code=403, detail=f"Route {route_code} batches are prepared by {role}")
-    query = db.query(PaymentClaim).filter(PaymentClaim.status == cl.READY, PaymentClaim.route_code == route_code, claim_visibility(current))
+    query = db.query(PaymentClaim).filter(PaymentClaim.status == cl.READY, PaymentClaim.route_code == route_code,
+                                         claim_visibility(current), finance_claim_condition(current))
     query = query.filter(or_(PaymentClaim.workflow_version == 1, PaymentClaim.payment_status == "NOT_STARTED"))
     if route_code == "B" and not current.unrestricted and ((FHI360_FINANCE in current.roles) != (CSO_FINANCE in current.roles)):
         query = query.filter(PaymentClaim.workflow_version >= 2 if role == CSO_FINANCE else PaymentClaim.workflow_version == 1)

@@ -36,6 +36,8 @@ def executor_check(current: CurrentUser, claim: PaymentClaim) -> Optional[str]:
         return f"Payments on Route {claim.route_code} are recorded by {role}"
     if role == CSO_FINANCE and not cl.user_in_executor_org(current, claim):
         return "This claim belongs to another CSO"
+    if not cl.channel_scope_ok(current, claim):
+        return "This claim is outside your finance Region × Cadre scope"
     return None
 
 

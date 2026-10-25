@@ -4,7 +4,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 
-from ..core.roles import REGIONAL_FINANCE
+from ..core.roles import REGIONAL_FINANCE, RPM
 from ..models import ClaimCategory, ClaimComponent, Organization, PaymentClaim, PayPeriod, StaffAssignment, utcnow
 from . import budgets, claims
 from .forms import entries_with_measures
@@ -82,10 +82,50 @@ def _context(db, log, category_id):
     return category, owner, line, route, channel
 
 
+def _components(db, claim, snapshot):
+    for component in snapshot["lines"]:
+        db.add(ClaimComponent(
+            claim_id=claim.id, component_name=component["activity"], unit_type=component["unit_type"],
+            measure_key=component["measure_key"], units=Decimal(component["units"]),
+            rate=Decimal(component["rate"]), amount=Decimal(component["amount"]),
+        ))
+
+
+def prepare_after_rpm(db, current, log):
+    """Price verified work without choosing finance configuration or committing funds."""
+    if db.query(PaymentClaim).filter(
+        PaymentClaim.work_log_id == log.id, PaymentClaim.status != claims.CANCELLED,
+    ).with_for_update().first():
+        raise HTTPException(409, "This work log already has a live claim")
+    amount = preview(db, log)
+    if amount["exceptions"]:
+        raise HTTPException(422, "Cannot prepare a claim: " + " ".join(amount["exceptions"]))
+    snapshot = jsonable_encoder({
+        **amount, "operationally_approved_by": current.id,
+        "operationally_approved_at": utcnow(),
+    })
+    claim = PaymentClaim(
+        workflow_version=log.workflow_version, work_type=log.work_type,
+        work_log_id=log.id, staff_id=log.staff_id, period_id=log.period_id,
+        assignment_id=log.assignment_id, amount=Decimal(amount["total"]),
+        currency=amount["currency"], calculation_snapshot=snapshot,
+        created_by=current.id, status=claims.PENDING_FINANCE_REVIEW,
+    )
+    db.add(claim)
+    db.flush()
+    _components(db, claim, snapshot)
+    claims.audit(db, current, claim, "rpm_prepare", RPM, None, claim.payment_status,
+                 details={"work_log_id": log.id, "amount": str(claim.amount), "budget_committed": False})
+    return claim
+
+
 def review(db, current, log, category_id):
     if not category_id:
         raise HTTPException(422, "Select the budget category for finance review")
-    amount = preview(db, log)
+    pending = db.query(PaymentClaim).filter(
+        PaymentClaim.work_log_id == log.id, PaymentClaim.status == claims.PENDING_FINANCE_REVIEW,
+    ).with_for_update().first()
+    amount = pending.calculation_snapshot if pending else preview(db, log)
     if amount["exceptions"]:
         raise HTTPException(422, " ".join(amount["exceptions"]))
     category, owner, line, route, channel = _context(db, log, category_id)
@@ -97,7 +137,8 @@ def review(db, current, log, category_id):
         "channel": channel, "reviewed_by": current.id,
     })
     claim = _prepare_claim(db, current, log, category, owner, line, route)
-    claims.audit(db, current, claim, "finance_prepare", REGIONAL_FINANCE, None, claim.payment_status,
+    claims.audit(db, current, claim, "finance_prepare", REGIONAL_FINANCE,
+                 claims.PENDING_FINANCE_REVIEW if pending else None, claim.payment_status,
                  details={"work_log_id": log.id, "amount": str(claim.amount), "awaiting_explicit_payor": True})
 
 
@@ -105,8 +146,25 @@ def _prepare_claim(db, current, log, category, owner, line, route_code):
     snapshot = log.finance_snapshot
     claim = db.query(PaymentClaim).filter(PaymentClaim.work_log_id == log.id, PaymentClaim.status != claims.CANCELLED).with_for_update().first()
     if claim:
-        if claim.status not in {claims.PENDING_ROUTING, claims.HELD}:
+        if claim.status not in {claims.PENDING_FINANCE_REVIEW, claims.PENDING_ROUTING, claims.HELD}:
             raise HTTPException(409, "This work log already has a routed claim")
+        if claim.status == claims.PENDING_FINANCE_REVIEW:
+            duplicate = db.query(PaymentClaim).filter(
+                PaymentClaim.id != claim.id, PaymentClaim.staff_id == log.staff_id,
+                PaymentClaim.period_id == log.period_id, PaymentClaim.category_id == category.id,
+                PaymentClaim.status != claims.CANCELLED,
+            ).first()
+            if duplicate:
+                raise HTTPException(409, "A live claim already exists for this provider, category and period")
+            claim.category_id = category.id
+            claim.route_code = route_code
+            claim.payor_org_id = owner.id
+            claim.executor_org_id = owner.id
+            claim.funding_source_id = category.funding_source_id
+            claim.budget_line_id = line.id
+            claim.origin_channel = category.origin_channel
+            claim.calculation_snapshot = snapshot
+            claim.status = claims.PENDING_ROUTING
         return claim
     duplicate = db.query(PaymentClaim).filter(
         PaymentClaim.staff_id == log.staff_id, PaymentClaim.period_id == log.period_id,
@@ -125,19 +183,14 @@ def _prepare_claim(db, current, log, category, owner, line, route_code):
     )
     db.add(claim)
     db.flush()
-    for component in snapshot["lines"]:
-        db.add(ClaimComponent(
-            claim_id=claim.id, component_name=component["activity"], unit_type=component["unit_type"],
-            measure_key=component["measure_key"], units=Decimal(component["units"]),
-            rate=Decimal(component["rate"]), amount=Decimal(component["amount"]),
-        ))
+    _components(db, claim, snapshot)
     return claim
 
 
 def cancel_pending(db, current, log, comment):
     """Returning a reviewed log retires its unpaid proposal, retaining its audit history."""
     pending = db.query(PaymentClaim).filter(PaymentClaim.work_log_id == log.id, PaymentClaim.status != claims.CANCELLED).with_for_update().all()
-    if any(claim.status != claims.PENDING_ROUTING for claim in pending):
+    if any(claim.status not in {claims.PENDING_FINANCE_REVIEW, claims.PENDING_ROUTING} for claim in pending):
         raise HTTPException(409, "Cancel any routed claims before returning this work log")
     for claim in pending:
         old = claim.status

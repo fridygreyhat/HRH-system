@@ -48,10 +48,11 @@ BUDGET_HOLD = "BUDGET_HOLD"
 HELD = BUDGET_HOLD  # compatibility for service callers using the old constant
 READY = "READY"
 PENDING_ROUTING = "PENDING_ROUTING"
+PENDING_FINANCE_REVIEW = "PENDING_FINANCE_REVIEW"
 EXPORTED = "EXPORTED"
 HANDED_OFF = "HANDED_OFF"
 CANCELLED = "CANCELLED"
-CLAIM_STATUSES = [DRAFT, VALIDATION_NEEDED, PENDING_COMMUNITY, AWAITING_APPROVAL, PENDING_ROUTING, APPROVED, HELD, READY, EXPORTED, HANDED_OFF, CANCELLED]
+CLAIM_STATUSES = [DRAFT, VALIDATION_NEEDED, PENDING_COMMUNITY, AWAITING_APPROVAL, PENDING_FINANCE_REVIEW, PENDING_ROUTING, APPROVED, HELD, READY, EXPORTED, HANDED_OFF, CANCELLED]
 PAYMENT_STATUSES = ["NOT_STARTED", "PENDING", "PARTIALLY_RECORDED", "PROOF_REQUIRED", "PAID", "FAILED", "RECONCILED"]
 COMMITTED_STATUSES = {APPROVED, READY, EXPORTED, HANDED_OFF}
 CANCELLABLE = {DRAFT, VALIDATION_NEEDED, PENDING_COMMUNITY, AWAITING_APPROVAL, APPROVED, HELD, "HELD", READY}
@@ -291,6 +292,18 @@ def user_in_executor_org(current: CurrentUser, claim: PaymentClaim) -> bool:
     return claim.executor_org_id in current.scope_values("organization_id")
 
 
+def channel_scope_ok(current: CurrentUser, claim: PaymentClaim) -> bool:
+    """An RPM role may widen viewing, never a separate payment role's authority."""
+    if claim.workflow_version < 2 or current.unrestricted:
+        return True
+    if current.db is None:
+        return False
+    from .v22_scope import may_manage
+    assignment = current.db.get(StaffAssignment, claim.assignment_id) if claim.assignment_id else None
+    log = current.db.get(WorkLog, claim.work_log_id) if claim.work_log_id else None
+    return bool(assignment and log and may_manage(current, assignment.region_id, log.cadre_id))
+
+
 def finance_role_ok(current: CurrentUser, claim: PaymentClaim) -> Optional[str]:
     """The route's finance role; CSO users must belong to the claim's CSO."""
     role = finance_role(claim)
@@ -300,6 +313,8 @@ def finance_role_ok(current: CurrentUser, claim: PaymentClaim) -> Optional[str]:
         return f"Requires the {role} role"
     if role == CSO_FINANCE and not user_in_executor_org(current, claim):
         return "This claim belongs to another CSO"
+    if not channel_scope_ok(current, claim):
+        return "This claim is outside your finance Region × Cadre scope"
     return None
 
 

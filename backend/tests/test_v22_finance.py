@@ -52,13 +52,18 @@ def entered_log(api, period, activity, day=None):
     return api.put(f"/worklogs/{log['id']}/entries/{day or period['start_date']}", "chw1", body)
 
 
-def to_finance(api, log):
+def to_rpm(api, log):
     body = {"review_confirmed": True, "review_type": log["work_type"]}
     log = api.post(f"/worklogs/{log['id']}/actions/submit", "chw1", {"attest": True})
     log = api.post(f"/worklogs/{log['id']}/actions/verify", "supervisor1", body)
     log = api.post(f"/worklogs/{log['id']}/otp/confirm", "chw1", {"code": log["otp"]["dev_otp"]})
-    log = api.post(f"/worklogs/{log['id']}/actions/endorse", "tofficer1", body)
-    return api.post(f"/worklogs/{log['id']}/actions/authorize", "rpm1", body)
+    return api.post(f"/worklogs/{log['id']}/actions/endorse", "tofficer1", body)
+
+
+def to_finance(api, log):
+    log = to_rpm(api, log)
+    return api.post(f"/worklogs/{log['id']}/actions/authorize", "rpm1",
+                    {"review_confirmed": True, "review_type": log["work_type"]})
 
 
 def route_log(api, db, v22, log, route):
@@ -79,7 +84,9 @@ def test_services_finance_gate_routing_and_actual_payment(api, db, period, v22):
     assert log["workflow_version"] == 2 and log["work_type"] == "SERVICES"
     assert float(log["financial_preview"]["total"]) == 300
     log = to_finance(api, log)
-    assert log["status"] == "PENDING_FINANCE_REVIEW" and not log["claims"]
+    assert log["status"] == "PENDING_FINANCE_REVIEW"
+    assert log["claims"][0]["status"] == "PENDING_FINANCE_REVIEW"
+    assert log["claims"][0]["category_id"] is None
     # Channel finance cannot bypass the Regional Finance gate.
     api.post(f"/worklogs/{log['id']}/actions/finance_review", "fhifin1",
              {"review_confirmed": True, "review_type": "SERVICES", "category_id": category_id(db, "A")}, expect=403)
@@ -176,11 +183,13 @@ def test_unpriced_work_blocks_finance_and_manual_claim_bypass(api, db, period, v
     from .conftest import ENTRY
     log = api.post("/worklogs", "chw1", {"period_id": period["id"], "work_type": "SERVICES"})
     log = api.put(f"/worklogs/{log['id']}/entries/{period['start_date']}", "chw1", ENTRY["CHW"](None))
-    log = to_finance(api, log)
+    log = to_rpm(api, log)
     assert log["financial_preview"]["exceptions"]
-    api.post(f"/worklogs/{log['id']}/actions/finance_review", v22["finance"], {
-        "review_confirmed": True, "review_type": "SERVICES", "category_id": category_id(db, "A"),
+    api.post(f"/worklogs/{log['id']}/actions/authorize", "rpm1", {
+        "review_confirmed": True, "review_type": "SERVICES",
     }, expect=422)
+    unchanged = api.get(f"/worklogs/{log['id']}", "chw1")
+    assert unchanged["status"] == "PENDING_RPM_AUTHORIZATION" and not unchanged["claims"]
     api.post("/claims", "csofin1", {
         "staff_id": v22["staff_id"], "period_id": period["id"], "category_id": category_id(db, "C"),
         "declared_units": {"PER_DAY": 1}, "evidence_text": "Standalone claims cannot bypass the new finance gate",

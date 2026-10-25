@@ -1,6 +1,7 @@
 import { ApprovalStepper } from './ApprovalStepper';
 import React, { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../api';
+import { useAuth } from '../../AuthContext';
 import {
   dateOnly,
   dateTime,
@@ -170,6 +171,8 @@ function snapshotCategoryId(log: WorkLogDetail): string {
 
 /** Reviewer detail drawer for one work log. Buttons come only from the server's `available_actions`. */
 export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; onClose: () => void; onChanged?: () => void }) {
+  const { hasRole } = useAuth();
+  const isRpmWithoutFinanceRole = hasRole('RPM') && !hasRole('REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE');
   const { data: log, error, loading, setData, reload } = useApi<WorkLogDetail>(`/worklogs/${logId}`);
   const [action, setAction] = useState<string | null>(null);
   const [flags, setFlags] = useState<ReturnFlag[]>([]);
@@ -384,10 +387,16 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
 
           {log.claims.length > 0 && (
             <Section title="Linked claims">
+              {log.claims.some((claim) => claim.status === 'PENDING_FINANCE_REVIEW') && (
+                <p className="notice notice-info">
+                  RPM authorization records a pending finance claim from the activity rate snapshots. This is an operational record for finance review—not routed, budget-committed or payable. Regional Finance reviews this same claim and selects its category.
+                </p>
+              )}
               <ul className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                 {log.claims.map((c) => (
                   <li key={c.id} className="row">
-                    Claim #{c.id} <StatusBadge kind="claim" status={c.status} /> <StatusBadge kind="payment" status={c.payment_status} />
+                    <span>Claim #{c.id}{c.category_name ? ` · ${c.category_name}` : c.category_id == null ? ' · Category not selected' : ''}{c.amount != null ? ` · ${c.currency || 'TZS'} ${num(c.amount)}` : ''}</span>
+                    <StatusBadge kind="claim" status={c.status} /> <StatusBadge kind="payment" status={c.payment_status} />
                   </li>
                 ))}
               </ul>
@@ -427,9 +436,9 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
                       ? String((snapshot.category as { name: unknown }).name)
                       : categoryLookup
                         ? categoryLookup.name
-                      : snapshot.category_id !== undefined
-                        ? `Category #${String(snapshot.category_id)}`
-                        : 'Not recorded';
+                        : snapshot.category_id !== undefined && snapshot.category_id !== null
+                          ? `Category #${String(snapshot.category_id)}`
+                          : 'Not selected yet';
                 return <>
                   <p><strong>Finance category:</strong> {category}</p>
                   {lines.length > 0 && <div className="table-wrap"><table>
@@ -480,7 +489,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
                 <span>I have cross-checked all entries and the monthly summary.</span>
               </label>
               <div className="row">
-                {log.available_actions.map((a) => (
+                {log.available_actions.filter((a) => !isRpmWithoutFinanceRole || !['route_fhi360', 'route_cso', 'paid'].includes(a)).map((a) => (
                   <button key={a} className={`btn ${DESTRUCTIVE_ACTIONS.has(a) ? 'btn-secondary' : 'btn-primary'}`} disabled={!reviewReached || !reviewConfirmed || (a === 'finance_review' && !categoryId)} onClick={() => setAction(a)}>
                     {WORKLOG_ACTION_LABELS[a] || humanize(a)}
                   </button>

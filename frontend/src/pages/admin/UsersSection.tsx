@@ -31,7 +31,7 @@ const PHONE_RE = /^\+?\d{9,15}$/;
 /** Granted automatically with a staff record; never ticked by hand. */
 const PROVIDER = 'PROVIDER';
 const SUPER_ADMIN = 'SUPER_ADMIN';
-const REVIEW_CADRE_ROLES = ['TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE'];
+const REVIEW_CADRE_ROLES = ['TECHNICAL_OFFICER', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE'];
 
 type Maps = Record<Dim, Map<string, string>>;
 
@@ -154,7 +154,7 @@ function TechnicalArea({ value, onChange, disabled }: { value: number[]; onChang
     <fieldset className="stack">
       <legend>Review cadre scope</legend>
       <p className="muted small">
-        Review access is limited to the selected cadres and the user's geographic or organization scopes.
+        Technical and finance access is limited to the selected cadres and the user's geographic or organization scopes. RPM approval covers all cadres within its regional scope.
       </p>
       <Alert>{cadres.error}</Alert>
       {(cadres.data || []).map((c) => (

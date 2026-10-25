@@ -31,6 +31,7 @@ const CLAIM_TONE: Record<string, Tone> = {
   VALIDATION_NEEDED: 'warn',
   HELD: 'warn',
   BUDGET_HOLD: 'warn',
+  PENDING_FINANCE_REVIEW: 'info',
   PENDING_ROUTING: 'info',
   CANCELLED: 'neutral',
   APPROVED: 'success',

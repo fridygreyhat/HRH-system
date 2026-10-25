@@ -7,6 +7,7 @@ import { useAction, useApi } from '../hooks';
 import { AdminUser, Cadre, Named, UserScope } from '../types';
 
 const REVIEWER_ROLES = ['TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE'];
+const CADRE_SCOPED_ROLES = ['TECHNICAL_OFFICER', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE'];
 type ScopeDim = 'region_id' | 'cluster_id' | 'facility_id' | 'community_area_id' | 'organization_id';
 type ScopeDraft = UserScope & { dim?: ScopeDim };
 const SCOPE_DIMS: { key: ScopeDim; label: string; path: string }[] = [
@@ -40,6 +41,7 @@ export function ReviewCadres() {
   const scopeAction = useAction();
   const reviewers = (users.data || []).filter((user) => user.roles.some((role) => REVIEWER_ROLES.includes(role)));
   const selected = reviewers.find((user) => String(user.id) === userId);
+  const canAssignCadres = Boolean(selected?.roles.some((role) => CADRE_SCOPED_ROLES.includes(role)));
   const lists: Record<ScopeDim, Named[]> = {
     region_id: regions.data || [],
     cluster_id: [],
@@ -96,7 +98,7 @@ export function ReviewCadres() {
   };
   if (!hasRole(...REVIEWER_ROLES, 'SUPER_ADMIN')) return <p className="notice">This page is limited to authorized reviewer roles.</p>;
   return <div className="stack-lg">
-    <header className="page-header"><div><h1>Review assignments</h1><p className="muted small">Assign eligible work-log cadres, regions and organizations. Changes are reasoned and audited.</p></div></header>
+    <header className="page-header"><div><h1>Review assignments</h1><p className="muted small">Set geographic and organization scope; technical and finance access also uses assigned cadres. RPM approval covers all cadres in its regions. Changes are reasoned and audited.</p></div></header>
     <AsyncState data={users.data} error={users.error} loading={users.loading} empty="No reviewer or finance users are visible in your scope.">
       {() => <div className="stack-lg">
         <Field label="Reviewer or finance user">
@@ -106,10 +108,10 @@ export function ReviewCadres() {
           </select>
         </Field>
         {selected && <>
-          <form className="card stack" onSubmit={saveCadres}>
+          {canAssignCadres ? <form className="card stack" onSubmit={saveCadres}>
             <fieldset className="stack">
               <legend>Review cadre scope</legend>
-              <p className="muted small">Work-log review access is restricted to these cadres in combination with the user's region and organization scopes.</p>
+              <p className="muted small">Technical and finance access is limited to selected cadres in combination with the user's geographic and organization scopes. These cadre limits do not restrict the user's RPM approval role.</p>
               <Alert>{cadres.error}</Alert>
               {(cadres.data || []).map((cadre) => <label className="row" key={cadre.id}>
                 <input type="checkbox" checked={cadreIds.includes(cadre.id)} disabled={cadreAction.busy} onChange={(event) => setCadreIds((current) => event.target.checked ? [...current, cadre.id] : current.filter((id) => id !== cadre.id))} />
@@ -119,7 +121,7 @@ export function ReviewCadres() {
             <Field label="Reason for cadre assignment change (required)"><input required minLength={3} maxLength={500} value={cadreReason} onChange={(event) => setCadreReason(event.target.value)} /></Field>
             <Alert>{cadreAction.error}</Alert>
             <button className="btn btn-primary" disabled={cadreAction.busy || cadres.loading || cadreReason.trim().length < 3}>{cadreAction.busy ? 'Saving…' : 'Save review cadres'}</button>
-          </form>
+          </form> : selected?.roles.includes('RPM') ? <p className="notice notice-info">RPM authorization covers every cadre within the assigned regions. No cadre restriction is applied.</p> : null}
           <form className="card stack" onSubmit={saveScopes}>
             <fieldset className="stack">
               <legend>Region and organization scopes</legend>

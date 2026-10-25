@@ -29,7 +29,7 @@ export function Claims() {
         <div>
           <h1>{onlyProvider ? 'My payment claims' : 'Payment claims'}</h1>
           <p className="muted small">
-            Claim status and payment status are separate. An approved or exported claim is not paid until a payment is recorded with proof.
+            Claim status and payment status are separate. A work-log claim awaiting finance review is an operational record, not a routed, budget-committed or payable claim.
           </p>
         </div>
         <div className="row">
@@ -120,10 +120,10 @@ export function Claims() {
                     <td>{c.id}</td>
                     <td>{c.staff_name}</td>
                     <td>
-                      {c.category_name}
+                      {c.category_name || (c.category_id == null ? 'Category not selected' : `Category #${c.category_id}`)}
                       {c.exception_reason && (
                         <div className="small" style={{ color: 'var(--warn-fg)' }} title={c.exception_reason}>
-                          ⚠ Exception
+                          Exception
                         </div>
                       )}
                     </td>

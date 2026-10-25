@@ -177,7 +177,9 @@ def _detail(db: Session, current: CurrentUser, log: WorkLog) -> dict:
         "can_edit": owner and log.status in wf.EDITABLE_STATUSES,
         "awaiting_my_otp": owner and log.status == wf.PENDING_OTP,
         "dev_otp": dev_code(log.id) if owner and log.status == wf.PENDING_OTP else None,
-        "claims": [{"id": c.id, "status": c.status, "payment_status": c.payment_status} for c in db.query(PaymentClaim).filter(PaymentClaim.work_log_id == log.id)],
+        "claims": [{"id": c.id, "status": c.status, "payment_status": c.payment_status,
+                    "amount": c.amount, "currency": c.currency, "category_id": c.category_id}
+                   for c in db.query(PaymentClaim).filter(PaymentClaim.work_log_id == log.id)],
     }
     _record_review_open(db, current, log, actions)
     return result

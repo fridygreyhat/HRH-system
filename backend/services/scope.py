@@ -109,7 +109,7 @@ def worklog_visibility(current: CurrentUser):
             if role == REGIONAL_FINANCE:
                 condition = and_(condition, record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id))
             elif role in (TECHNICAL_OFFICER, RPM, CSO_FINANCE):
-                condition = and_(condition, or_(WorkLog.workflow_version == 1, record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id)))
+                condition = and_(condition, or_(WorkLog.workflow_version == 1, record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id, role=role)))
             conditions.append(condition)
     return or_(*conditions)
 
@@ -143,7 +143,7 @@ def claim_visibility(current: CurrentUser):
             if role == COMMUNITY_VERIFIER:
                 condition = and_(condition, PaymentClaim.route_code == "C")
             if role in (RPM, REGIONAL_FINANCE):
-                scoped = record_condition(current, PaymentClaim.assignment_id, select(WorkLog.cadre_id).where(WorkLog.id == PaymentClaim.work_log_id).scalar_subquery())
+                scoped = record_condition(current, PaymentClaim.assignment_id, select(WorkLog.cadre_id).where(WorkLog.id == PaymentClaim.work_log_id).scalar_subquery(), role=role)
                 condition = and_(condition, scoped if role == REGIONAL_FINANCE else or_(PaymentClaim.workflow_version == 1, scoped))
             conditions.append(condition)
     return or_(*conditions)
@@ -216,7 +216,7 @@ def users_in_scope_for(db: Session, role: str, assignment: StaffAssignment, cadr
         .join(UserScope, UserScope.user_id == User.id)
         .filter(Role.name == role, User.is_active.is_(True), or_(*matches))
     )
-    if role == TECHNICAL_OFFICER or strict_cadre:
+    if role == TECHNICAL_OFFICER or (strict_cadre and role != RPM):
         cadre_id = cadre_id or db.get(Staff, assignment.staff_id).cadre_id
         query = query.join(UserReviewCadre, UserReviewCadre.user_id == User.id).filter(UserReviewCadre.cadre_id == cadre_id)
     return query.distinct().all()

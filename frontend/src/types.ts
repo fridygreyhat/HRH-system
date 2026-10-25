@@ -248,7 +248,15 @@ export interface WorkLogDetail extends WorkLogSummary {
   awaiting_my_otp: boolean;
   /** Development only (mock SMS): the code just sent to the provider. */
   dev_otp?: string | null;
-  claims: { id: number; status: string; payment_status: string }[];
+  claims: {
+    id: number;
+    status: string;
+    payment_status: string;
+    amount?: number | string | null;
+    currency?: string | null;
+    category_id?: number | null;
+    category_name?: string | null;
+  }[];
   otp?: { sms_status: string; dev_otp?: string } | null;
 }
 
@@ -285,7 +293,7 @@ export interface ClaimSummary {
   id: number;
   work_log_id: number | null;
   staff_id: number;
-  category_id: number;
+  category_id: number | null;
   period_id: number;
   route_code: string | null;
   payor_org_id: number | null;
@@ -306,7 +314,7 @@ export interface ClaimSummary {
   created_at: string;
   updated_at: string;
   staff_name: string;
-  category_name: string;
+  category_name: string | null;
   period_label: string;
   payor_name: string | null;
   executor_name: string | null;
