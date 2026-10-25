@@ -146,6 +146,7 @@ export function Budgets({ initialCreate = false }: { initialCreate?: boolean }) 
         <CreateLineModal
           organizations={creatableOrgs}
           categories={(categories.data || []).filter((c) => c.is_active)}
+          categoriesLoading={categories.loading}
           periods={periods.data || []}
           regions={regions.data || []}
           onClose={() => setCreating(false)}

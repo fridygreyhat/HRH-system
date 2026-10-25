@@ -114,7 +114,7 @@ export function BudgetHierarchy({
               {grouped(region.lines, (line) => String(line.category_id), (line) => line.category_name).map((category) => (
                 <details className="budget-level budget-category" key={`${region.label}-${category.lines[0]?.category_id}`} open>
                   <summary>
-                    <span>Category / activity</span><strong>{category.label}</strong>
+                    <span>Activity or payment type</span><strong>{category.label}</strong>
                     <SummaryTotals lines={category.lines} />
                   </summary>
                   {grouped(category.lines, (line) => String(line.period_id), (line) => line.period_label).map((period) => (
@@ -125,7 +125,7 @@ export function BudgetHierarchy({
                       <div className="table-wrap">
                         <table className={`${hasActions ? 'clickable ' : ''}budget-line-table`}>
                           <thead><tr>
-                            <th>Allocation</th><th>Organization</th><th>Region</th><th>Category</th><th>Period</th>
+                            <th>Allocation</th><th>Organization</th><th>Region</th><th>Activity or payment type</th><th>Period</th>
                             <th className="num">Estimate</th><th className="num">Exposure</th><th>Status</th>
                             <th className="num">Hard cap</th><th className="num">Committed</th><th className="num">Spent</th><th className="num">Remaining</th>
                             <th>Tracker</th><th>Source</th>{hasActions && <th>Actions</th>}

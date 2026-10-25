@@ -10,6 +10,7 @@ const periodName = (p: PayPeriod) => p.period_label || `${p.start_date} – ${p.
 export function CreateLineModal({
   organizations,
   categories,
+  categoriesLoading = false,
   periods,
   regions,
   onClose,
@@ -17,6 +18,7 @@ export function CreateLineModal({
 }: {
   organizations: Organization[];
   categories: ClaimCategory[];
+  categoriesLoading?: boolean;
   periods: PayPeriod[];
   regions: Named[];
   onClose: () => void;
@@ -37,6 +39,7 @@ export function CreateLineModal({
   const { busy, error, setError, run } = useAction();
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
   const selectedOrg = organizations.find((organization) => String(organization.id) === form.organization_id);
+  const selectedCategory = categories.find((category) => String(category.id) === form.category_id);
   const isCsoBudget = selectedOrg?.type === 'CSO';
   const existingLines = useApi<BudgetLine[]>('/budgets/lines');
   const mappedRegionIds = new Set((mappingData.data?.assignments || [])
@@ -73,12 +76,16 @@ export function CreateLineModal({
       setError('Choose a global pay period or one assigned to the selected region.');
       return;
     }
+    if (!selectedCategory) {
+      setError('Choose an activity or payment type before creating this budget.');
+      return;
+    }
     if (estimateInvalid) {
       setError('Estimated spend must be blank or between zero and the hard cap.');
       return;
     }
     if (isCsoBudget && (existingLines.loading || !existingLines.data || existingBucket)) {
-      setError(existingBucket ? 'A CSO budget already exists for this organization, region, category, and pay period.' : 'Existing CSO budget lines could not be checked. Retry before creating a line.');
+      setError(existingBucket ? 'A CSO budget already exists for this organization, region, activity or payment type, and pay period.' : 'Existing CSO budget lines could not be checked. Retry before creating a line.');
       return;
     }
     const line = await run(() =>
@@ -117,8 +124,8 @@ export function CreateLineModal({
               ))}
             </select>
           </Field>
-          <Field label="Claim category">
-            <select value={form.category_id} onChange={set('category_id')} required>
+          <Field label="Activity or payment type" hint="Choose what this budget pays for—for example payroll, services or community work.">
+            <select value={form.category_id} onChange={set('category_id')} required disabled={categoriesLoading || categories.length === 0}>
               <option value="">Select…</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -127,6 +134,17 @@ export function CreateLineModal({
               ))}
             </select>
           </Field>
+        </div>
+        <div className="notice notice-info" role="status">
+          {selectedCategory
+            ? <><strong>Selected type: {selectedCategory.name}.</strong> This is what the budget pays for. Approved payments must match this type, region and pay period.</>
+            : categoriesLoading
+              ? 'Loading configured activities and payment types…'
+              : categories.length === 0
+                ? 'No activities or payment types are configured yet. Ask a finance administrator to configure one before creating a budget.'
+                : 'Select the activity or payment type this budget will pay for. The approved payments must match it, along with the selected region and pay period.'}
+        </div>
+        <div className="grid-2">
           <Field label="Pay period" hint="Choose a global schedule or a regional schedule matching the selected region.">
             <select value={form.period_id} onChange={set('period_id')} required>
               <option value="">Select…</option>
@@ -149,6 +167,8 @@ export function CreateLineModal({
               ))}
             </select>
           </Field>
+        </div>
+        <div className="grid-2">
           <Field label="Hard cap">
             <input type="number" min={0} step="0.01" inputMode="decimal" value={form.allocated_amount} onChange={set('allocated_amount')} required />
           </Field>
@@ -162,12 +182,13 @@ export function CreateLineModal({
         <p className="muted small">FHI360 lines start as “Unsynced” until they are exported to or reconciled with the HQ tracker. Historical all-region lines remain visible but cannot be used for new CSO budgets.</p>
         {isCsoBudget && !mappingData.loading && allowedRegions.length === 0 && <Alert>No active regional assignment is configured for this organization. Add an assignment before creating a CSO budget.</Alert>}
         {periodRegionMismatch && <Alert>That regional pay period does not match the selected budget region.</Alert>}
+        {!categoriesLoading && categories.length === 0 && <Alert kind="warn">This budget cannot be created until an activity or payment type is configured.</Alert>}
         {estimateInvalid && <Alert kind="warn">Estimated spend must be between zero and the hard cap. Leave blank if no estimate has been approved.</Alert>}
-        {existingBucket && <Alert>A CSO budget already exists for this organization, region, category, and pay period. Change the bucket rather than creating a duplicate.</Alert>}
+        {existingBucket && <Alert>A CSO budget already exists for this organization, region, activity or payment type, and pay period. Change the budget combination rather than creating a duplicate.</Alert>}
         <Alert>{mappingData.error || (isCsoBudget ? existingLines.error : null) || error}</Alert>
         {isCsoBudget && existingLines.error && <button type="button" className="btn btn-secondary btn-sm" onClick={existingLines.reload}>Retry budget check</button>}
         <div className="row">
-            <button className="btn btn-primary" disabled={busy || periodRegionMismatch || estimateInvalid || !!existingBucket || (isCsoBudget && (mappingData.loading || existingLines.loading || !existingLines.data || !form.region_id || !mappedRegionIds.has(Number(form.region_id))))}>
+            <button className="btn btn-primary" disabled={busy || categoriesLoading || categories.length === 0 || !form.category_id || periodRegionMismatch || estimateInvalid || !!existingBucket || (isCsoBudget && (mappingData.loading || existingLines.loading || !existingLines.data || !form.region_id || !mappedRegionIds.has(Number(form.region_id))))}>
             {busy ? 'Saving…' : 'Create line'}
           </button>
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>

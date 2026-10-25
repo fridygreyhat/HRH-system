@@ -35,7 +35,7 @@ test('CSO portal presents scoped regional, category, and pay-period budget hiera
 
     expect(container.textContent).toContain('Kijiji Health CSO');
     expect(container.textContent).toContain('Mara');
-    expect(container.textContent).toContain('Category / activity');
+    expect(container.textContent).toContain('Activity or payment type');
     expect(container.textContent).toContain('Pay period');
     expect(container.textContent).not.toContain('FHI allocation');
     expect(container.textContent).not.toContain('Other CSO allocation');

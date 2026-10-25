@@ -89,7 +89,7 @@ test('duplicate CSO allocation bucket is blocked regardless of budget code', () 
     const category = Array.from(container.querySelectorAll('select')).find(select => Array.from(select.options).some(option => option.value === '5'));
     act(() => Simulate.change(period, { target: { value: '12' } }));
     act(() => Simulate.change(category, { target: { value: '5' } }));
-    expect(container.textContent).toContain('A CSO budget already exists for this organization, region, category, and pay period.');
+    expect(container.textContent).toContain('A CSO budget already exists for this organization, region, activity or payment type, and pay period.');
     expect(Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Create line').disabled).toBe(true);
     expect(api.post).not.toHaveBeenCalled();
   } finally { act(() => root.unmount()); container.remove(); }
@@ -133,26 +133,62 @@ test('estimate is optional and blank remains null while zero remains an explicit
   />));
   try {
     const inputs = container.querySelectorAll('input');
-    act(() => {
-      Simulate.change(inputs[0], { target: { value: 'B-4' } });
-      Simulate.change(inputs[1], { target: { value: 'Outreach' } });
-      Simulate.change(inputs[2], { target: { value: '100' } });
-    });
+    act(() => Simulate.change(inputs[0], { target: { value: 'B-4' } }));
+    act(() => Simulate.change(inputs[1], { target: { value: 'Outreach' } }));
+    act(() => Simulate.change(inputs[2], { target: { value: '100' } }));
     const selects = container.querySelectorAll('select');
-    act(() => {
-      Simulate.change(selects[0], { target: { value: '1' } });
-      Simulate.change(selects[1], { target: { value: '5' } });
-      Simulate.change(selects[2], { target: { value: '11' } });
-    });
+    expect(container.textContent).toContain('Select the activity or payment type this budget will pay for.');
+    expect(selects[1].required).toBe(true);
+    expect(selects[1].value).toBe('');
+    act(() => Simulate.change(selects[0], { target: { value: '1' } }));
+    act(() => Simulate.change(selects[1], { target: { value: '5' } }));
+    act(() => Simulate.change(selects[2], { target: { value: '11' } }));
+    expect(container.textContent).toContain('Selected type: Services.');
     expect(Array.from(inputs).some(input => input.value === '0')).toBe(false);
     const estimate = Array.from(inputs).find(input => input.type === 'number' && input.value === '');
     expect(estimate).toBeTruthy();
     await act(async () => { await Simulate.submit(container.querySelector('form')); });
-    expect(api.post).toHaveBeenCalledWith('/budgets/lines', expect.objectContaining({ estimated_amount: null }));
+    expect(api.post).toHaveBeenCalledWith('/budgets/lines', expect.objectContaining({ category_id: 5, estimated_amount: null }));
     act(() => Simulate.change(estimate, { target: { value: '0' } }));
     await act(async () => { await Simulate.submit(container.querySelector('form')); });
-    expect(api.post).toHaveBeenLastCalledWith('/budgets/lines', expect.objectContaining({ estimated_amount: 0 }));
+    expect(api.post).toHaveBeenLastCalledWith('/budgets/lines', expect.objectContaining({ category_id: 5, estimated_amount: 0 }));
   } finally { act(() => root.unmount()); container.remove(); }
+});
+
+test('activity or payment type selection is required, and empty configuration has clear help', async () => {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  const props = {
+    organizations: [{ id: 1, name: 'FHI360', code: null, type: 'FHI360', is_active: true }],
+    periods: [{ id: 11, start_date: '2026-01-01', end_date: '2026-01-31', period_label: 'Global Jan', region_id: null }],
+    regions: [],
+    onClose: jest.fn(),
+    onCreated: jest.fn(),
+  };
+  act(() => root.render(<CreateLineModal {...props} categories={[{ id: 5, name: 'Services', is_active: true }]} />));
+  try {
+    const categorySelect = Array.from(container.querySelectorAll('select')).find((select) => Array.from(select.options).some((option) => option.value === '5'));
+    expect(categorySelect.required).toBe(true);
+    expect(categorySelect.value).toBe('');
+    expect(Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Create line').disabled).toBe(true);
+    await act(async () => { await Simulate.submit(container.querySelector('form')); });
+    expect(api.post).not.toHaveBeenCalled();
+  } finally {
+    act(() => root.unmount());
+  }
+
+  const emptyRoot = createRoot(container);
+  act(() => emptyRoot.render(<CreateLineModal {...props} categories={[]} />));
+  try {
+    expect(container.textContent).toContain('No activities or payment types are configured yet.');
+    expect(container.textContent).toContain('cannot be created until an activity or payment type is configured');
+    expect(Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Create line').disabled).toBe(true);
+    expect(api.post).not.toHaveBeenCalled();
+  } finally {
+    act(() => emptyRoot.unmount());
+    container.remove();
+  }
 });
 
 test('estimate validation prevents values above hard cap', async () => {
