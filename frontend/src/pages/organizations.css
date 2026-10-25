@@ -1,0 +1,29 @@
+.org-page { --org-ink: var(--text); }
+.org-page .org-eyebrow { margin: 0 0 .25rem; color: var(--primary); font-size: .69rem; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+.org-page .page-header > div { max-width: 48rem; }
+.org-summary { display: grid; grid-template-columns: auto 1fr auto; gap: 1rem; align-items: center; padding: 1.25rem 1.5rem; border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border)); border-radius: var(--radius); background: linear-gradient(110deg, var(--primary-soft), var(--surface) 72%); }
+.org-summary-mark { display: grid; width: 3rem; height: 3rem; place-items: center; border-radius: 10px; background: var(--primary); color: var(--primary-text); font-size: .8rem; font-weight: 850; letter-spacing: .1em; }
+.org-summary strong { color: var(--org-ink); font-size: 1rem; }
+.org-summary p { margin: .25rem 0 0; color: var(--muted); font-size: .86rem; }
+.org-summary-count { text-align: right; }
+.org-summary-count span { display: block; color: var(--primary); font-size: 1.6rem; font-weight: 800; line-height: 1.1; }
+.org-summary-count small { color: var(--muted); }
+.org-layout { display: grid; grid-template-columns: minmax(16rem, .8fr) minmax(24rem, 1.4fr); gap: 1rem; align-items: start; }
+.org-panel { padding: 1.25rem; }
+.org-panel h2 { margin: 0; font-size: 1.15rem; }
+.org-directory { margin-top: 1rem; }
+.org-directory-row { display: flex; align-items: center; gap: .75rem; padding: .8rem .15rem; border-top: 1px solid var(--border); }
+.org-monogram { display: grid; width: 2.35rem; height: 2.35rem; flex: 0 0 auto; place-items: center; border-radius: 8px; background: var(--surface-2); color: var(--primary); font-size: .72rem; font-weight: 800; }
+.org-directory-copy { flex: 1; min-width: 0; }
+.org-directory-copy strong,.org-directory-copy small { display: block; }
+.org-directory-copy small { margin-top: .18rem; color: var(--muted); font-size: .76rem; }
+.org-lock { color: var(--muted); font-size: .72rem; font-weight: 750; }
+.org-assign-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: .7rem; align-items: end; margin: 1rem 0; padding: 1rem; border-radius: var(--radius-sm); background: var(--surface-2); }
+.org-assign-form .field { margin: 0; }
+.org-empty { padding: 1.4rem 1rem; color: var(--muted); text-align: center; }
+.org-empty strong { color: var(--text); }
+.org-empty p { margin: .4rem auto 0; max-width: 24rem; font-size: .84rem; }
+.org-empty-mapping { margin-top: .7rem; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); }
+.org-empty-symbol { margin: 0 auto .55rem; width: 2rem; height: 2rem; display: grid; place-items: center; border-radius: 50%; background: var(--surface-2); color: var(--primary); font-weight: 800; }
+.org-footnote { margin: .85rem 0 0; }
+@media (max-width: 860px) { .org-layout { grid-template-columns: 1fr; } .org-assign-form { grid-template-columns: 1fr; } .org-summary { grid-template-columns: auto 1fr; } .org-summary-count { grid-column: 2; text-align: left; } }

@@ -6,7 +6,7 @@ from fastapi.encoders import jsonable_encoder
 
 from ..core.roles import REGIONAL_FINANCE, RPM
 from ..models import ClaimCategory, ClaimComponent, Organization, PaymentClaim, PayPeriod, StaffAssignment, utcnow
-from . import budgets, claims
+from . import budgets, claims, cso_regions
 from .forms import entries_with_measures
 
 
@@ -52,10 +52,10 @@ def preview(db, log) -> dict:
     return {"lines": lines, "total": str(total), "currency": next(iter(currencies)) if len(currencies) == 1 else None, "exceptions": exceptions}
 
 
-def eligible_payors(db, log):
+def eligible_payors(db, log, *, lock=False):
     """The selector is explicit, but cannot override the assignment or channel rule."""
     if log.work_type == "SERVICES":
-        owners = db.query(Organization).filter(Organization.type == "FHI360").all()
+        owners = db.query(Organization).filter(Organization.type == "FHI360", Organization.is_active.is_(True)).all()
         if len(owners) != 1:
             raise HTTPException(422, "Exactly one FHI360 payor organization must be configured")
         return owners
@@ -63,6 +63,7 @@ def eligible_payors(db, log):
     owner = db.get(Organization, assignment.organization_id) if assignment and assignment.organization_id else None
     if not owner or owner.type != "CSO":
         raise HTTPException(422, "Payroll needs the provider's assigned CSO; it cannot be routed to FHI360")
+    cso_regions.require_assignment(db, owner.id, assignment.region_id, lock=lock)
     return [owner]
 
 
@@ -76,7 +77,7 @@ def _context(db, log, category_id):
     assignment = db.get(StaffAssignment, log.assignment_id)
     owner = eligible_payors(db, log)[0]
     route, channel = ("A", "FHI360") if log.work_type == "SERVICES" else ("B", "CSO")
-    line = budgets.find_line(db, category.id, log.period_id, owner.id, assignment.region_id)
+    line = budgets.find_line(db, category.id, log.period_id, owner.id, assignment.region_id, strict_region=log.work_type == "PAYROLL")
     if not line:
         raise HTTPException(422, f"No {channel}-owned budget line matches this category, period and region")
     return category, owner, line, route, channel
@@ -207,7 +208,7 @@ def route(db, current, log, channel, target_payor_id=None):
         raise HTTPException(409, "Regional Finance must review the amount before routing")
     if target_payor_id is None:
         raise HTTPException(422, "Select the destination payor explicitly before channeling")
-    if target_payor_id not in {owner.id for owner in eligible_payors(db, log)}:
+    if target_payor_id not in {owner.id for owner in eligible_payors(db, log, lock=True)}:
         raise HTTPException(422, f"The selected payor is not eligible: {log.work_type} must go to its assigned {expected} payor")
     category, owner, line, route_code, _ = _context(db, log, snapshot["category_id"])
     if owner.id != snapshot["payor_org_id"] or line.id != snapshot["budget_line_id"]:

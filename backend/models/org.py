@@ -1,7 +1,7 @@
 """Organizations and geography: payors/CSOs, region → district → ward → facility, clusters, community areas."""
-from sqlalchemy import Boolean, CheckConstraint, Column, ForeignKey, Integer, Numeric, String
+from sqlalchemy import Boolean, CheckConstraint, Column, ForeignKey, Integer, Numeric, String, UniqueConstraint
 
-from .base import Base, created_at
+from .base import Base, created_at, updated_at
 
 ORG_TYPES = ("FHI360", "CSO", "PAYOR", "PARTNER")
 
@@ -15,6 +15,18 @@ class Organization(Base):
     type = Column(String(20), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = created_at()
+
+
+class CSORegionAssignment(Base):
+    """Explicit payment authority, independent of provider assignments and historic budgets."""
+    __tablename__ = "cso_region_assignments"
+    __table_args__ = (UniqueConstraint("organization_id", "region_id"),)
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    region_id = Column(Integer, ForeignKey("regions.id"), nullable=False, index=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = created_at()
+    updated_at = updated_at()
 
 
 class Region(Base):

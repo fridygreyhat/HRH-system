@@ -28,19 +28,24 @@ def lock(db: Session, line_id: int) -> BudgetLine:
     return db.query(BudgetLine).filter(BudgetLine.id == line_id).with_for_update().one()
 
 
-def find_line(db: Session, category_id: int, period_id: int, organization_id: int, region_id: Optional[int]) -> Optional[BudgetLine]:
+def find_line(db: Session, category_id: int, period_id: int, organization_id: int, region_id: Optional[int], *, strict_region=False) -> Optional[BudgetLine]:
     """Most specific line for the category/period/owner: a region-specific line beats an all-region line."""
-    return (
+    query = (
         db.query(BudgetLine)
         .filter(
             BudgetLine.category_id == category_id,
             BudgetLine.period_id == period_id,
             BudgetLine.organization_id == organization_id,
-            or_(BudgetLine.region_id.is_(None), BudgetLine.region_id == region_id),
+            BudgetLine.region_id == region_id if strict_region else or_(BudgetLine.region_id.is_(None), BudgetLine.region_id == region_id),
         )
         .order_by(BudgetLine.region_id.is_(None))
-        .first()
     )
+    if strict_region:
+        rows = query.limit(2).all()
+        if len(rows) > 1:
+            raise HTTPException(422, "Multiple CSO budget lines match this region, category and pay period; resolve the ambiguous allocation before routing")
+        return rows[0] if rows else None
+    return query.first()
 
 
 def _ledger(db: Session, line: BudgetLine, kind: str, amount: Decimal, actor_id, reason=None, claim_id=None, payment_record_id=None):

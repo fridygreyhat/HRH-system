@@ -665,6 +665,22 @@ export interface Organization extends Named {
   is_active: boolean;
 }
 
+export interface OrganizationAssignment {
+  id: number;
+  organization_id: number;
+  region_id: number;
+  is_active: boolean;
+  organization_name: string;
+  region_name: string;
+}
+
+export interface OrganizationsResponse {
+  organizations: Organization[];
+  regions: Named[];
+  assignments: OrganizationAssignment[];
+  can_manage: boolean;
+}
+
 export interface AdminUser {
   id: number;
   username: string;

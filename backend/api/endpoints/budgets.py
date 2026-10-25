@@ -11,7 +11,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import true
+from sqlalchemy import or_, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -21,7 +21,8 @@ from ...core.security import CurrentUser, require_roles
 from ...core.serialize import to_dict
 from ...db.session import get_db
 from ...models import BudgetLine, BudgetSyncLog, BudgetTransaction, ClaimCategory, Organization, PayPeriod, Region, User, utcnow
-from ...services import budgets as bg
+from ...services import budgets as bg, cso_regions
+from ...services.v22_scope import regions_for
 
 router = APIRouter()
 READ_ROLES = (FHI360_FINANCE, CSO_FINANCE, RPM, OVERSIGHT)
@@ -29,15 +30,37 @@ TRACKER_COLUMNS = ["code", "name", "category", "period_start", "region", "alloca
 
 
 def _visibility(current: CurrentUser):
-    if current.has_any(FHI360_FINANCE, RPM, OVERSIGHT):
+    if current.has_any(FHI360_FINANCE, OVERSIGHT):
         return true()
-    return BudgetLine.organization_id.in_(current.scope_values("organization_id"))
+    conditions = []
+    if CSO_FINANCE in current.roles:
+        # Retain read-only historical allocations, including former/all-region budgets.
+        conditions.append(BudgetLine.organization_id.in_(current.scope_values("organization_id")))
+    if RPM in current.roles:
+        conditions.append(BudgetLine.region_id.in_(regions_for(current)))
+    return or_(*conditions) if conditions else BudgetLine.id == -1
 
 
 def _can_manage(current: CurrentUser, line_org: Organization) -> bool:
     if line_org.type == "FHI360":
         return FHI360_FINANCE in current.roles
-    return CSO_FINANCE in current.roles and line_org.id in current.scope_values("organization_id")
+    return line_org.type == "CSO" and CSO_FINANCE in current.roles and line_org.id in current.scope_values("organization_id")
+
+
+def _validate_dimensions(db, org, category_id, period_id, region_id):
+    if not org.is_active:
+        raise HTTPException(422, "The budget organization is inactive")
+    if not db.get(ClaimCategory, category_id):
+        raise HTTPException(422, "Unknown activity category")
+    period = db.get(PayPeriod, period_id)
+    if not period or (region_id is not None and not db.get(Region, region_id)):
+        raise HTTPException(422, "Unknown pay period or region")
+    if period.region_id is not None and period.region_id != region_id:
+        raise HTTPException(422, "The budget region must match the regional pay period")
+    if org.type == "CSO":
+        if region_id is None:
+            raise HTTPException(422, "CSO budgets require a specific assigned region; all-region budgets are historical only")
+        cso_regions.require_assignment(db, org.id, region_id, lock=True)
 
 
 def _fhi360_org(db: Session) -> Organization:
@@ -67,7 +90,7 @@ class LineIn(BaseModel):
     period_id: int
     region_id: Optional[int] = None
     allocated_amount: Decimal = Field(ge=0)
-    currency: str = "TZS"
+    currency: str = Field(default="TZS", pattern=r"^[A-Z]{3}$")
 
 
 class ReallocateIn(BaseModel):
@@ -92,11 +115,16 @@ def list_lines(period_id: Optional[int] = None, db: Session = Depends(get_db), c
 
 @router.post("/lines", status_code=201)
 def create_line(body: LineIn, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(FHI360_FINANCE, CSO_FINANCE))):
-    org = db.get(Organization, body.organization_id)
+    org = db.query(Organization).filter_by(id=body.organization_id).with_for_update().first()
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
     if not _can_manage(current, org):
         raise HTTPException(status_code=403, detail="You cannot manage this organization's budget")
+    _validate_dimensions(db, org, body.category_id, body.period_id, body.region_id)
+    if org.type == "CSO" and db.query(BudgetLine.id).filter_by(
+        organization_id=org.id, category_id=body.category_id, period_id=body.period_id, region_id=body.region_id,
+    ).first():
+        raise HTTPException(409, "This CSO already has a budget for the selected region, category and pay period")
     line = BudgetLine(
         **body.model_dump(),
         source="FHI360_TRACKER" if org.type == "FHI360" else "CSO",
@@ -131,11 +159,16 @@ def ledger(line_id: int, db: Session = Depends(get_db), current: CurrentUser = D
 @router.post("/reallocate")
 def reallocate(body: ReallocateIn, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(FHI360_FINANCE, CSO_FINANCE, RPM))):
     source = db.get(BudgetLine, body.from_line_id)
-    if not source:
+    target = db.get(BudgetLine, body.to_line_id)
+    if not source or not target:
         raise HTTPException(status_code=404, detail="Budget line not found")
-    org = db.get(Organization, source.organization_id)
-    if not (_can_manage(current, org) or (RPM in current.roles and source.region_id in current.scope_values("region_id"))):
-        raise HTTPException(status_code=403, detail="You are not authorized to reallocate this budget")
+    if source.organization_id != target.organization_id:
+        raise HTTPException(422, "Reallocation is only allowed within the same organization")
+    org = db.query(Organization).filter_by(id=source.organization_id).with_for_update().one()
+    for line in (source, target):
+        if not (_can_manage(current, org) or (RPM in current.roles and line.region_id in regions_for(current))):
+            raise HTTPException(status_code=403, detail="You are not authorized to reallocate both regional budgets")
+        _validate_dimensions(db, org, line.category_id, line.period_id, line.region_id)
     src, dst = bg.reallocate(db, body.from_line_id, body.to_line_id, body.amount, current.id, body.reason)
     for line in (src, dst):
         if line.source == "FHI360_TRACKER":

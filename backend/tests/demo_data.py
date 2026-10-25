@@ -56,6 +56,12 @@ def seed_test_data(db: Session) -> None:
     other_cso, _ = _get_or_create(db, Organization, name="DEMO CSO Njombe", defaults={"type": "CSO", "code": "DEMO-CSO-2"})
     region, _ = _get_or_create(db, Region, name="Iringa")
     other_region, _ = _get_or_create(db, Region, name="Njombe")
+    # Explicitly approved mappings for synthetic fixtures only, never inferred in the app.
+    from backend.models import CSORegionAssignment
+    db.add_all([
+        CSORegionAssignment(organization_id=cso.id, region_id=region.id),
+        CSORegionAssignment(organization_id=other_cso.id, region_id=other_region.id),
+    ])
     cluster, _ = _get_or_create(db, Cluster, name="Iringa Cluster 1", defaults={"region_id": region.id})
     # Real gazetteer names (seeded from backend/data/tz_locations.csv); ward names repeat, so look up inside the parent.
     district, _ = _get_or_create(db, District, name="Iringa Urban", region_id=region.id)

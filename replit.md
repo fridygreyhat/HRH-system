@@ -214,6 +214,23 @@ from the real bootstrap password.
 
 ## New-record financial workflow (v2.2)
 
+- CSOs require explicit administrator-managed regional payment authority. An
+  existing provider assignment or budget is not evidence of that authority:
+  do not infer or auto-create CSO-region mappings during migration or seeding
+  real accounts. Administrators configure active links in **CSO regions**;
+  deactivating a link blocks future routing and budget operations, without
+  deleting allocations, payments, claims, or audit history.
+- The user confirmed that Services remain payable by **FHI360** and Payroll by
+  the provider's **assigned CSO**. Regional mapping narrows CSO eligibility; it
+  does not permit selecting a different regional CSO or paying Services via CSO.
+- New CSO allocations and v2 payroll budget resolution use the exact
+  **CSO × Region × Activity category × Pay period**. Never fall back to an
+  all-region or another-region allocation. Historical global allocations and
+  legacy workflows remain readable and unchanged. Missing configuration is an
+  explicit error; insufficient configured funds produce `BUDGET_HOLD`.
+  Currency totals must remain separate, with remaining = allocated − committed
+  − spent. Duplicate regional category buckets are rejected rather than choosing
+  an arbitrary funding line.
 - The user explicitly chose **new records only**. Existing work logs, their derived
   financial record families, rates, approvals and payment history remain on the
   legacy workflow. Do not migrate them into v2.2 or recalculate their amounts.

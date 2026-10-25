@@ -14,6 +14,7 @@ import { Dashboard } from './pages/Dashboard';
 import { ChangePasswordForm, ForcedPasswordChange } from './pages/ChangePassword';
 import { Login } from './pages/Login';
 import { MyWorkLogs } from './pages/MyWorkLogs';
+import { Organizations } from './pages/Organizations';
 import { PrintWorkLog } from './pages/PrintWorkLog';
 import { PayPeriods } from './pages/PayPeriods';
 import { ReviewWorkLogs } from './pages/ReviewWorkLogs';
@@ -82,6 +83,15 @@ const PAGES: Page[] = [
     group: 'Registry',
     roles: ['CENTRAL_ADMIN', 'REGIONAL_ADMIN', 'CSO_FINANCE', 'SYSTEM_ADMIN', 'FHI360_FINANCE', 'OVERSIGHT'],
     render: () => <Staff />,
+  },
+  {
+    key: 'organizations',
+    label: 'Organizations / CSO regions',
+    description: 'Govern organization access to regional allocations',
+    icon: 'route',
+    group: 'Registry',
+    roles: ['CENTRAL_ADMIN', 'FHI360_FINANCE', 'CSO_FINANCE', 'RPM', 'OVERSIGHT', 'REGIONAL_FINANCE', 'SUPER_ADMIN'],
+    render: () => <Organizations />,
   },
   {
     key: 'admin',

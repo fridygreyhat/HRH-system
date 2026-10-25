@@ -150,10 +150,11 @@ def make_period(api: Api, db, amounts: dict | None = None) -> dict:
     end = date(year, month, calendar.monthrange(year, month)[1])
     p = api.post("/admin/pay-periods", "central1", {"start_date": str(start), "end_date": str(end), "period_label": f"TEST {start:%b %Y}", "status": "OPEN"})
     amounts = amounts or {}
-    from backend.models import ClaimCategory, Organization
+    from backend.models import ClaimCategory, CSORegionAssignment, Organization
 
     org = {o.name: o.id for o in db.query(Organization)}
     cat = {c.name: c.id for c in db.query(ClaimCategory)}
+    cso_regions = {a.organization_id: a.region_id for a in db.query(CSORegionAssignment).filter_by(is_active=True)}
     for code, org_name, cat_name, user, default in (
         ("DEMO-A-01", "FHI360", "DEMO – PnP activity (Route A)", "fhifin1", 5_000_000),
         ("DEMO-B-01", "DEMO CSO Iringa", "DEMO – Facility payroll (Route B)", "csofin1", 3_000_000),
@@ -161,7 +162,8 @@ def make_period(api: Api, db, amounts: dict | None = None) -> dict:
         ("DEMO-B-01", "DEMO CSO Njombe", "DEMO – Facility payroll (Route B)", "csofin3", 2_000_000),
     ):
         api.post("/budgets/lines", user, {"code": code, "name": code, "organization_id": org[org_name], "category_id": cat[cat_name],
-                                         "period_id": p["id"], "allocated_amount": amounts.get((code, org_name), default)})
+                                         "period_id": p["id"], "region_id": cso_regions.get(org[org_name]),
+                                         "allocated_amount": amounts.get((code, org_name), default)})
     return p
 
 

@@ -6,6 +6,7 @@ import { useAction, useApi } from '../hooks';
 import { Batch, BudgetLine, ClaimSummary } from '../types';
 import { ClaimDrawer } from '../components/claims/ClaimDrawer';
 import { BatchDrawer } from '../components/batches/BatchDrawer';
+import { BudgetHierarchy } from '../components/budgets/BudgetHierarchy';
 import { Alert, AsyncState, Empty, RouteBadge, Section, StatTile, StatusBadge } from '../components/ui';
 
 type SectionKey = 'all' | 'pending' | 'receipt' | 'routec' | 'recon' | 'budget';
@@ -199,6 +200,8 @@ export function CsoPortal() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const csoNames = (me?.organizations || []).filter((o) => o.type === 'CSO').map((o) => o.name);
+  const csoOrgIds = new Set((me?.organizations || []).filter((organization) => organization.type === 'CSO').map((organization) => organization.id));
+  const csoBudgetLines = (budgets.data || []).filter((line) => csoOrgIds.has(line.organization_id));
   const names = csoNames.length ? csoNames : (me?.organizations || []).map((o) => o.name);
 
   const refreshAll = () => {
@@ -412,49 +415,7 @@ export function CsoPortal() {
       {show('budget') && (
         <Section title="Budget">
           <AsyncState data={budgets.data} error={budgets.error} loading={budgets.loading} empty="No budget lines for your CSO.">
-            {(lines) => (
-              <div className="table-wrap">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Code</th>
-                      <th scope="col">Name</th>
-                      <th scope="col">Category</th>
-                      <th scope="col">Period</th>
-                      <th scope="col" className="num">
-                        Allocated
-                      </th>
-                      <th scope="col" className="num">
-                        Committed
-                      </th>
-                      <th scope="col" className="num">
-                        Spent
-                      </th>
-                      <th scope="col" className="num">
-                        Available
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lines.map((l) => (
-                      <tr key={l.id}>
-                        <td className="nowrap">{l.code}</td>
-                        <td>
-                          {l.name}
-                          {l.region_name && <div className="muted small">{l.region_name}</div>}
-                        </td>
-                        <td>{l.category_name}</td>
-                        <td className="nowrap">{l.period_label}</td>
-                        <td className="num nowrap">{money(l.allocated_amount, l.currency)}</td>
-                        <td className="num nowrap">{money(l.committed_amount, l.currency)}</td>
-                        <td className="num nowrap">{money(l.spent_amount, l.currency)}</td>
-                        <td className={`num nowrap${l.available_amount < 0 ? ' over-48' : ''}`}>{money(l.available_amount, l.currency)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            {() => <BudgetHierarchy lines={csoBudgetLines} emptyMessage="No budget allocations are currently assigned to your CSO." />}
           </AsyncState>
         </Section>
       )}

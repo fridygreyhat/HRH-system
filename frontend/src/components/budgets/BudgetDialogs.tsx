@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { api } from '../../api';
-import { useAction } from '../../hooks';
+import { useAction, useApi } from '../../hooks';
 import { money } from '../../format';
-import { BudgetLine, ClaimCategory, Named, Organization, PayPeriod } from '../../types';
+import { BudgetLine, ClaimCategory, Named, Organization, OrganizationsResponse, PayPeriod } from '../../types';
 import { Alert, Field, Modal } from '../ui';
 
 const periodName = (p: PayPeriod) => p.period_label || `${p.start_date} – ${p.end_date}`;
@@ -27,16 +27,53 @@ export function CreateLineModal({
     name: '',
     organization_id: organizations.length === 1 ? String(organizations[0].id) : '',
     category_id: '',
-    period_id: periods[0] ? String(periods[0].id) : '',
+    period_id: periods.find((period) => period.region_id == null) ? String(periods.find((period) => period.region_id == null)!.id) : '',
     region_id: '',
     allocated_amount: '',
     currency: 'TZS',
   });
-  const { busy, error, run } = useAction();
+  const mappingData = useApi<OrganizationsResponse>('/organizations');
+  const { busy, error, setError, run } = useAction();
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
+  const selectedOrg = organizations.find((organization) => String(organization.id) === form.organization_id);
+  const isCsoBudget = selectedOrg?.type === 'CSO';
+  const existingLines = useApi<BudgetLine[]>('/budgets/lines');
+  const mappedRegionIds = new Set((mappingData.data?.assignments || [])
+    .filter((assignment) => assignment.organization_id === Number(form.organization_id) && assignment.is_active)
+    .map((assignment) => assignment.region_id));
+  const accessibleRegionIds = new Set((mappingData.data?.regions || []).map((region) => region.id));
+  const allowedRegions = isCsoBudget
+    ? regions.filter((region) => mappedRegionIds.has(region.id) && accessibleRegionIds.has(region.id))
+    : regions;
+  const allowedPeriods = periods.filter((period) => period.region_id == null || (!!form.region_id && period.region_id === Number(form.region_id)));
+  const selectedPeriod = periods.find((period) => String(period.id) === form.period_id);
+  const periodRegionMismatch = !!selectedPeriod && selectedPeriod.region_id != null && selectedPeriod.region_id !== Number(form.region_id);
+  const existingBucket = isCsoBudget && form.organization_id && form.region_id && form.category_id && form.period_id
+    ? (existingLines.data || []).find((line) =>
+        line.organization_id === Number(form.organization_id) &&
+        line.region_id === Number(form.region_id) &&
+        line.category_id === Number(form.category_id) &&
+        line.period_id === Number(form.period_id))
+    : undefined;
+  const setOrganization = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    setForm({ ...form, organization_id: event.target.value, region_id: '', period_id: '' });
+  };
+  const setRegion = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const region_id = event.target.value;
+    const nextPeriods = periods.filter((period) => period.region_id == null || (!!region_id && period.region_id === Number(region_id)));
+    setForm({ ...form, region_id, period_id: nextPeriods[0] ? String(nextPeriods[0].id) : '' });
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (periodRegionMismatch) {
+      setError('Choose a global pay period or one assigned to the selected region.');
+      return;
+    }
+    if (isCsoBudget && (existingLines.loading || !existingLines.data || existingBucket)) {
+      setError(existingBucket ? 'A CSO budget already exists for this organization, region, category, and pay period.' : 'Existing CSO budget lines could not be checked. Retry before creating a line.');
+      return;
+    }
     const line = await run(() =>
       api.post<BudgetLine>('/budgets/lines', {
         code: form.code.trim(),
@@ -63,7 +100,7 @@ export function CreateLineModal({
             <input value={form.name} onChange={set('name')} required maxLength={255} />
           </Field>
           <Field label="Organization">
-            <select value={form.organization_id} onChange={set('organization_id')} required>
+            <select value={form.organization_id} onChange={setOrganization} required>
               <option value="">Select…</option>
               {organizations.map((o) => (
                 <option key={o.id} value={o.id}>
@@ -82,20 +119,22 @@ export function CreateLineModal({
               ))}
             </select>
           </Field>
-          <Field label="Pay period">
+          <Field label="Pay period" hint="Choose a global schedule or a regional schedule matching the selected region.">
             <select value={form.period_id} onChange={set('period_id')} required>
               <option value="">Select…</option>
-              {periods.map((p) => (
+              {allowedPeriods.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {periodName(p)}
+                  {periodName(p)}{p.region_id == null ? ' · Global' : p.region_name ? ` · ${p.region_name}` : ''}
                 </option>
               ))}
             </select>
           </Field>
-          <Field label="Region" hint="Leave as “All regions” for a line that covers every region.">
-            <select value={form.region_id} onChange={set('region_id')}>
-              <option value="">All regions</option>
-              {regions.map((r) => (
+          <Field label="Region" hint={isCsoBudget ? 'Choose an active CSO-region assignment. CSO budgets cannot cover all regions.' : 'Leave as “All regions” for a line that covers every region.'}>
+            <select value={form.region_id} onChange={setRegion} required={isCsoBudget}>
+              {isCsoBudget
+                ? <option value="">Choose an assigned region…</option>
+                : <option value="">All regions</option>}
+              {allowedRegions.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name}
                 </option>
@@ -109,10 +148,14 @@ export function CreateLineModal({
             <input value={form.currency} onChange={set('currency')} required maxLength={3} />
           </Field>
         </div>
-        <p className="muted small">FHI360 lines start as “Unsynced” until they are exported to or reconciled with the HQ tracker.</p>
-        <Alert>{error}</Alert>
+        <p className="muted small">FHI360 lines start as “Unsynced” until they are exported to or reconciled with the HQ tracker. Historical all-region lines remain visible but cannot be used for new CSO budgets.</p>
+        {isCsoBudget && !mappingData.loading && allowedRegions.length === 0 && <Alert>No active regional assignment is configured for this organization. Add an assignment before creating a CSO budget.</Alert>}
+        {periodRegionMismatch && <Alert>That regional pay period does not match the selected budget region.</Alert>}
+        {existingBucket && <Alert>A CSO budget already exists for this organization, region, category, and pay period. Change the bucket rather than creating a duplicate.</Alert>}
+        <Alert>{mappingData.error || (isCsoBudget ? existingLines.error : null) || error}</Alert>
+        {isCsoBudget && existingLines.error && <button type="button" className="btn btn-secondary btn-sm" onClick={existingLines.reload}>Retry budget check</button>}
         <div className="row">
-          <button className="btn btn-primary" disabled={busy}>
+          <button className="btn btn-primary" disabled={busy || periodRegionMismatch || !!existingBucket || (isCsoBudget && (mappingData.loading || existingLines.loading || !existingLines.data || !form.region_id || !mappedRegionIds.has(Number(form.region_id))))}>
             {busy ? 'Saving…' : 'Create line'}
           </button>
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
@@ -127,6 +170,7 @@ export function CreateLineModal({
 export function ReallocateModal({
   lines,
   sources,
+  fhiOrgIds,
   initialFrom,
   onClose,
   onDone,
@@ -135,6 +179,7 @@ export function ReallocateModal({
   lines: BudgetLine[];
   /** Lines the user may move money out of. */
   sources: BudgetLine[];
+  fhiOrgIds: Set<number>;
   initialFrom?: number;
   onClose: () => void;
   onDone: () => void;
@@ -143,11 +188,18 @@ export function ReallocateModal({
   const [toId, setToId] = useState('');
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
+  const mappingData = useApi<OrganizationsResponse>('/organizations');
   const { busy, error, run } = useAction();
   const source = sources.find((l) => String(l.id) === fromId) || null;
   const targets = useMemo(
-    () => (source ? lines.filter((l) => l.id !== source.id && l.organization_id === source.organization_id && l.currency === source.currency) : []),
-    [lines, source],
+    () => (source ? lines.filter((l) => {
+      if (l.id === source.id || l.organization_id !== source.organization_id || l.currency !== source.currency) return false;
+      if (fhiOrgIds.has(l.organization_id)) return true;
+      const organization = mappingData.data?.organizations.find((org) => org.id === l.organization_id);
+      if (organization?.type === 'FHI360') return true;
+      return l.region_id != null && !!mappingData.data?.assignments.some((assignment) => assignment.organization_id === l.organization_id && assignment.region_id === l.region_id && assignment.is_active);
+    }) : []),
+    [lines, source, mappingData.data, fhiOrgIds],
   );
   const tooMuch = !!source && Number(amount) > source.available_amount;
 
@@ -203,7 +255,7 @@ export function ReallocateModal({
         <Field label="Reason (required)">
           <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} required minLength={3} maxLength={1000} />
         </Field>
-        <Alert>{error}</Alert>
+        <Alert>{mappingData.error || error}</Alert>
         <div className="row">
           <button className="btn btn-primary" disabled={busy || tooMuch || !fromId || !toId || reason.trim().length < 3}>
             {busy ? 'Moving…' : 'Reallocate'}
