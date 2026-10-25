@@ -129,14 +129,21 @@ from the real bootstrap password.
   descriptions mentioning 8.5 hours/day or a Monday–Sunday 45-hour cap.
   Limits are summed across the provider's logs. The API serializes staff entry
   edits to prevent concurrent writes from bypassing those limits.
-- New backdated entries have a **48-hour** grace period measured from activity
+- New backdated entries have a **72-hour (three-day)** grace period measured from activity
   completion. Date-only CHW entries use the end of the local workday. Corrections
   to previously recorded dates remain available in editable/returned logs, with
   audit history, so the review-and-return workflow does not become impossible.
+  This applies to CHW, HCP and Data Clerk. Technical Officers can grant an audited
+  provider/date-specific unlock within their geographic and cadre scope, with a
+  mandatory reason and expiry (24 hours by default; configurable per grant from
+  1–168 hours), and revoke it. The unlock only bypasses the new-entry deadline:
+  it does not reopen closed periods, permit Sundays, bypass hour limits, or
+  change approval status. The system setting `backdate_grace_hours` controls
+  the normal deadline.
 - Reviewer reminders start **24 hours** after submission into a pending stage
   and repeat no more than once every **24 hours** while it remains unresolved.
   Each new review stage starts a new pending clock. The worker checks hourly.
-  This reminder policy is separate from the unchanged 48-hour backdating limit.
+  This reminder policy is separate from the 72-hour backdating limit.
 - Reviewer summaries aggregate visible provider logs by calendar month, even for
   weekly pay periods. Daily and monthly cascade inversions appear as warnings.
   Review confirmation is required in the UI before reviewer actions at the bottom

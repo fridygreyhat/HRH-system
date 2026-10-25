@@ -55,7 +55,7 @@ def client():
 
         session.query(User).filter(User.username == "admin").update({User.must_change_password: False})
         # The acceptance suite uses archived periods; keep that separate from
-        # the production 48-hour grace policy.
+        # the standard 72-hour grace policy.
         session.merge(SystemSetting(key="backdate_grace_hours", value=1000000))
         session.commit()
     from fastapi.testclient import TestClient

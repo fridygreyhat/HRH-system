@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from .api.endpoints import admin, auth, batches, budgets, claims, dashboard, demos, staff, worklogs, rates, finance
 from .core import config
 from .db.session import get_db
+from .api.endpoints import backdate_access
 
 logging.basicConfig(level=logging.INFO)
 
@@ -23,6 +24,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+app.include_router(backdate_access.router, prefix="/backdate-access", tags=["Backdated entry access"])
 app.include_router(demos.router, prefix="/demos", tags=["Read-only simulated demos"])
 app.include_router(worklogs.router, prefix="/worklogs", tags=["Work logs"])
 app.include_router(rates.router, prefix="/rates", tags=["Activity rates"])

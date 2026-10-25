@@ -45,6 +45,7 @@ from ...services import finance_gate
 from ...services.geo import LOCATION_EXCEPTIONS, location_status
 from ...services.otp import dev_code, issue_otp, verify_otp
 from ...services.scope import assignment_for_period, can_see_gps, worklog_visibility
+from ...services.backdate_access import active_access, provider_access
 
 router = APIRouter()
 
@@ -169,6 +170,7 @@ def _detail(db: Session, current: CurrentUser, log: WorkLog) -> dict:
         "financial_preview": finance_gate.preview(db, log) if log.workflow_version >= 2 else None,
         "assignment": assignment_out(db, db.get(StaffAssignment, log.assignment_id)),
         "period": to_dict(period),
+        "backdate_access": provider_access(db, log.staff_id),
         "entries": entries,
         "totals": totals(db, log),
         "review_summary": review_summary(db, log, current),
@@ -337,11 +339,16 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
     # backdated entry and remain possible after a review return.
     completion_time = body.end_time if not direct_hours and body.end_time else time.max
     completed_at = datetime.combine(entry_date, completion_time, tzinfo=TZ)
-    if not entry and completed_at < earliest_allowed:
-        raise HTTPException(status_code=422, detail=f"Work-log entries may only be backdated {backdate_hours} hours.")
     # Serialize edits by the staff member so concurrent submissions cannot
     # each pass the daily/weekly cap using the same remaining hours.
     db.query(Staff).filter(Staff.id == log.staff_id).with_for_update().one()
+    late_access = None
+    if not entry and completed_at < earliest_allowed:
+        if period.status != "OPEN":
+            raise HTTPException(status_code=409, detail="This reporting period is closed; a backdated permission cannot reopen it.")
+        late_access = active_access(db, log.staff_id, entry_date, log.assignment_id)
+        if not late_access:
+            raise HTTPException(status_code=422, detail=f"New timesheet entries are limited to {backdate_hours} hours after work completion. Ask your Technical Officer to unlock this missed date.")
     if cadre.code != "HCP" and len((body.evidence_text or "").strip()) < 3:
         raise HTTPException(status_code=422, detail="Evidence must contain at least 3 characters")
     if ID_PATTERN.search(body.evidence_text or "") or (body.comment and ID_PATTERN.search(body.comment)):
@@ -446,7 +453,9 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
         db.add(WorkLogMeasure(entry_id=entry.id, field_key=key, value=value))
     log.attested_at = None  # content changed: the provider must attest again on submission
     after = {"date": entry_date, "hours": hours, "measures": values, "evidence": entry.evidence_text}
-    wf.audit(db, current, log, "edit_entry", PROVIDER, log.status, details={"before": before, "after": after})
+    wf.audit(db, current, log, "edit_entry", PROVIDER, log.status,
+             details={"before": before, "after": after,
+                      **({"backdate_access_id": late_access.id} if late_access else {})})
     db.commit()
     return _detail(db, current, log)
 

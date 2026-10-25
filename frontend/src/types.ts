@@ -222,6 +222,10 @@ export interface Assignment {
 }
 
 export interface WorkLogDetail extends WorkLogSummary {
+  backdate_access?: {
+    grace_hours: number;
+    grants: { entry_date: string; expires_at: string }[];
+  };
   staff: { id: number; name: string; first_name: string; middle_name: string | null; last_name: string; salary_scale: string | null };
   cadre: Cadre;
   assignment: Assignment | null;

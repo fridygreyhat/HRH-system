@@ -61,6 +61,8 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
   const limits = log.review_summary.limits;
   const minimumHours = isSaturday ? Number(limits.saturday_min_hours) : 0.25;
   const maximumHours = Number(isSaturday ? limits.saturday_max_hours : limits.daily_hours);
+  const backdateAccess = log.backdate_access;
+  const dateGrant = backdateAccess?.grants.find((grant) => grant.entry_date === date);
   const allActivities = log.cadre.activities || [];
   const applicableActivities = allActivities.filter((activity) =>
     (!activity.effective_start_date || activity.effective_start_date <= date) &&
@@ -158,6 +160,13 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
           ? `Jumatatu–Ijumaa: hadi saa ${limits.daily_hours} kwa siku na ${limits.weekly_hours} kwa wiki. Kliniki za Jumamosi: saa ${limits.saturday_min_hours}–${limits.saturday_max_hours}, hazihesabiwi kwenye kikomo cha siku za kazi. Kazi ya Jumapili hairuhusiwi.`
           : `Monday–Friday: up to ${limits.daily_hours} hours per day and ${limits.weekly_hours} total. Saturday weekend clinics: ${limits.saturday_min_hours}–${limits.saturday_max_hours} hours, separate from the weekday limit. Sunday work is not allowed.`}
       </p>
+      {backdateAccess && (
+        <p className="notice notice-info" role="note">
+          {dateGrant
+            ? <>This date has approved backdated access until <strong>{new Date(dateGrant.expires_at).toLocaleString()}</strong>.</>
+            : <>New entries can normally be made up to {backdateAccess.grace_hours} hours after work completion. A Technical Officer can grant temporary access for a missed older date.</>}
+        </p>
+      )}
 
       {dayFlags.length > 0 && (
         <div className="alert alert-warn">
