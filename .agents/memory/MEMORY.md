@@ -3,3 +3,4 @@
 - [Budget lock freshness](budget-lock-freshness.md) — refresh cached ORM balances when acquiring row locks; locking alone does not guarantee fresh financial values.
 - [Activity types](activity-types.md) — user-facing activity types are Services and Payroll, not individual configured payment categories.
 - [Payment-detail access](payment-detail-access.md) — preserve the assigned-community mobile-money exception for CSO Finance, alongside payroll bank access.
+- [CTC review scope](ctc-review-scope.md) — CTC reviews facility cadres; do not confuse CTC verification with supplementary facility endorsement.
