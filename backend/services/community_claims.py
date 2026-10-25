@@ -218,7 +218,9 @@ def perform(db, current, claim, action, comment):
         check_authority(db, claim, lock=True)
         if action == "approve":
             staff = db.get(Staff, claim.staff_id)
-            if not staff.payment_account or not staff.payment_method:
+            from .provider_payment_details import recipient
+            destination = recipient(staff, claim)
+            if not destination["payment_account"] or not destination["payment_method"]:
                 raise HTTPException(422, "Configure the provider's bank or mobile-money payment details before approving")
             claim.approved_by, claim.approved_at = current.id, utcnow()
             claim.calculation_snapshot = {**claim.calculation_snapshot, "authorized_at": claim.approved_at.isoformat()}

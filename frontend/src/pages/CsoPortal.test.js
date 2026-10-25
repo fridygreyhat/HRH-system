@@ -6,14 +6,20 @@ import { money } from '../format';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let mockCommunityClaim = null;
+const mockBlob = jest.fn();
+const mockSaveBlob = jest.fn();
 
 jest.mock('../AuthContext', () => ({
   useAuth: () => ({ me: { id: 4, organizations: [{ id: 10, name: 'Kijiji Health CSO', type: 'CSO' }, { id: 90, name: 'FHI360', type: 'FHI360' }] } }),
 }));
-jest.mock('../api', () => ({ api: { post: jest.fn() } }));
+jest.mock('../api', () => ({ api: { post: jest.fn(), blob: (...args) => mockBlob(...args) }, qs: params => `?cso_id=${params.cso_id}&period_id=${params.period_id}`, saveBlob: (...args) => mockSaveBlob(...args) }));
 jest.mock('../hooks', () => ({
   useApi: path => ({
-    data: path === '/claims' ? (mockCommunityClaim ? [mockCommunityClaim] : []) : path === '/batches' ? [] : [
+    data: path === '/claims' ? (mockCommunityClaim ? [mockCommunityClaim] : []) : path === '/batches' ? [] : path === '/cso-finance/pay-periods' ? [
+      { id: 21, start_date: '2025-01-01', end_date: '2025-01-31', period_label: 'January 2025', status: 'OPEN' },
+    ] : path === '/cso-finance/organizations' ? [
+      { id: 10, name: 'Kijiji Health CSO' },
+    ] : [
       { id: 1, code: 'KH-01', name: 'Facility support', source: 'MANUAL', organization_id: 10, organization_name: 'Kijiji Health CSO', region_id: 7, region_name: 'Mara', category_id: 5, category_name: 'CHW PNP assistance', activity_type: 'SERVICES', period_id: 21, period_label: 'January', allocated_amount: 100, committed_amount: 20, spent_amount: 10, available_amount: 70, currency: 'TZS', sync_status: 'RECONCILED' },
       { id: 2, code: 'KH-02', name: 'Outreach', source: 'MANUAL', organization_id: 10, organization_name: 'Kijiji Health CSO', region_id: 7, region_name: 'Mara', category_id: 6, category_name: 'Community service item', activity_type: 'SERVICES', period_id: 22, period_label: 'February', allocated_amount: 50, committed_amount: 5, spent_amount: 15, available_amount: 30, currency: 'TZS', sync_status: 'RECONCILED' },
       { id: 3, code: 'FHI-01', name: 'FHI allocation', source: 'FHI360_TRACKER', organization_id: 90, organization_name: 'FHI360', region_id: 7, region_name: 'Mara', category_id: 5, category_name: 'Services', activity_type: 'SERVICES', period_id: 21, period_label: 'January', allocated_amount: 800, committed_amount: 0, spent_amount: 0, available_amount: 800, currency: 'TZS', sync_status: 'RECONCILED' },
@@ -83,6 +89,28 @@ test('CSO Community claims section shows incoming direct Route C work with exter
     expect(container.textContent).toContain('do not need a payroll export batch');
   } finally {
     mockCommunityClaim = null;
+    act(() => root.unmount());
+    container.remove();
+  }
+});
+
+test('CSO payroll export downloads a scoped GET CSV and explains it does not transfer funds', async () => {
+  mockBlob.mockResolvedValue({ blob: new Blob(['csv']), filename: 'payroll.csv' });
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => root.render(<CsoPortal />));
+  try {
+    const exportTab = Array.from(container.querySelectorAll('.subnav button')).find(button => button.textContent === 'Payroll export');
+    await act(async () => Simulate.click(exportTab));
+    expect(container.textContent).toContain('does not transfer money or change claim status');
+    expect(container.textContent).toContain('bank payment details only');
+    const periodSelect = container.querySelector('select');
+    expect(periodSelect.value).toBe('21');
+    await act(async () => Simulate.submit(container.querySelector('form'), { preventDefault() {} }));
+    expect(mockBlob).toHaveBeenCalledWith('/cso-finance/export-payroll?cso_id=10&period_id=21', 'GET', 'payroll-export.csv');
+    expect(mockSaveBlob).toHaveBeenCalledWith({ blob: expect.any(Blob), filename: 'payroll.csv' });
+  } finally {
     act(() => root.unmount());
     container.remove();
   }

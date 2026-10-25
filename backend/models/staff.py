@@ -64,6 +64,11 @@ class Staff(Base):
     payment_method = Column(String(30))  # MOBILE_WALLET, BANK
     payment_provider = Column(String(100))
     payment_account = Column(String(100))
+    bank_name = Column(String(100))
+    bank_account_number = Column(String(34))
+    bank_branch = Column(String(100))
+    mobile_money_number = Column(String(20))
+    payment_details_updated_at = Column(DateTime(timezone=True))
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = created_at()
     updated_at = updated_at()

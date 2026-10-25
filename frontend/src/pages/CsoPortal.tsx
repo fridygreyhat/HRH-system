@@ -1,15 +1,15 @@
-import React, { useState } from 'react';
-import { api } from '../api';
+import React, { useEffect, useState } from 'react';
+import { api, qs, saveBlob } from '../api';
 import { useAuth } from '../AuthContext';
 import { PAYMENT_STATUS_LABELS, ageSince, dateTime, label, money, num } from '../format';
 import { useAction, useApi } from '../hooks';
-import { Batch, BudgetLine, ClaimSummary } from '../types';
+import { Batch, BudgetLine, CsoFinanceOrganization, ClaimSummary, PayPeriod } from '../types';
 import { ClaimDrawer } from '../components/claims/ClaimDrawer';
 import { BatchDrawer } from '../components/batches/BatchDrawer';
 import { BudgetHierarchy } from '../components/budgets/BudgetHierarchy';
-import { Alert, AsyncState, Empty, RouteBadge, Section, StatTile, StatusBadge } from '../components/ui';
+import { Alert, AsyncState, Empty, Field, RouteBadge, Section, StatTile, StatusBadge } from '../components/ui';
 
-type SectionKey = 'all' | 'pending' | 'receipt' | 'routec' | 'recon' | 'budget';
+type SectionKey = 'all' | 'pending' | 'receipt' | 'routec' | 'recon' | 'budget' | 'export';
 
 const PENDING_STATUSES = ['PENDING', 'PARTIALLY_RECORDED', 'PROOF_REQUIRED', 'FAILED'];
 const NEXT_ACTION: Record<string, string> = {
@@ -193,11 +193,27 @@ export function CsoPortal() {
   const claims = useApi<ClaimSummary[]>('/claims');
   const batches = useApi<Batch[]>('/batches');
   const budgets = useApi<BudgetLine[]>('/budgets/lines');
+  const payPeriods = useApi<PayPeriod[]>('/cso-finance/pay-periods');
+  const organizations = useApi<CsoFinanceOrganization[]>('/cso-finance/organizations');
   const receive = useAction();
+  const payrollExport = useAction();
   const [section, setSection] = useState<SectionKey>('all');
   const [claimId, setClaimId] = useState<number | null>(null);
   const [batchId, setBatchId] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [selectedPeriodId, setSelectedPeriodId] = useState('');
+  const [selectedCsoId, setSelectedCsoId] = useState('');
+
+  useEffect(() => {
+    if (payPeriods.data?.length && !payPeriods.data.some((period) => String(period.id) === selectedPeriodId)) {
+      setSelectedPeriodId(String(payPeriods.data[0].id));
+    }
+  }, [payPeriods.data, selectedPeriodId]);
+  useEffect(() => {
+    if (organizations.data?.length && !organizations.data.some((organization) => String(organization.id) === selectedCsoId)) {
+      setSelectedCsoId(String(organizations.data[0].id));
+    }
+  }, [organizations.data, selectedCsoId]);
 
   const csoNames = (me?.organizations || []).filter((o) => o.type === 'CSO').map((o) => o.name);
   const csoOrgIds = new Set((me?.organizations || []).filter((organization) => organization.type === 'CSO').map((organization) => organization.id));
@@ -208,6 +224,8 @@ export function CsoPortal() {
     claims.reload();
     batches.reload();
     budgets.reload();
+    payPeriods.reload();
+    organizations.reload();
   };
 
   const all = claims.data || [];
@@ -240,6 +258,7 @@ export function CsoPortal() {
     { key: 'routec', label: `Community claims${claims.data ? ` (${routeCCount})` : ''}` },
     { key: 'recon', label: 'Reconciliation' },
     { key: 'budget', label: 'Budget' },
+    { key: 'export', label: 'Payroll export' },
   ];
   const show = (k: SectionKey) => section === 'all' || section === k;
 
@@ -250,8 +269,8 @@ export function CsoPortal() {
           <h1>CSO payments{names.length ? ` — ${names.join(', ')}` : ''}</h1>
           <p className="muted">Claims your CSO pays: record payments, upload proof, and keep community claims moving.</p>
         </div>
-        <button type="button" className="btn btn-secondary" onClick={refreshAll} disabled={claims.loading || batches.loading || budgets.loading}>
-          {claims.loading || batches.loading || budgets.loading ? 'Refreshing…' : 'Refresh'}
+        <button type="button" className="btn btn-secondary" onClick={refreshAll} disabled={claims.loading || batches.loading || budgets.loading || payPeriods.loading || organizations.loading}>
+          {claims.loading || batches.loading || budgets.loading || payPeriods.loading || organizations.loading ? 'Refreshing…' : 'Refresh'}
         </button>
       </div>
 
@@ -418,6 +437,66 @@ export function CsoPortal() {
           <AsyncState data={budgets.data} error={budgets.error} loading={budgets.loading} empty="No budget lines for your CSO.">
             {() => <BudgetHierarchy lines={csoBudgetLines} emptyMessage="No budget allocations are currently assigned to your CSO." />}
           </AsyncState>
+        </Section>
+      )}
+
+      {show('export') && (
+        <Section title="CSO payroll export">
+          <p className="muted">
+            Download a CSV of validated, routed payroll claims that are still unpaid. This creates a file only: it does not transfer money or change claim status.
+          </p>
+          <p className="notice notice-info small">
+            Payroll export includes bank payment details only. Claims without complete bank details block the export; they are never silently omitted. Mobile-money service claims are not included.
+          </p>
+          {(organizations.error || payPeriods.error) && (
+            <div className="stack">
+              <Alert>{organizations.error || payPeriods.error}</Alert>
+              <div className="row">
+                {organizations.error && <button type="button" className="btn btn-secondary btn-sm" onClick={organizations.reload} disabled={organizations.loading}>Retry CSO list</button>}
+                {payPeriods.error && <button type="button" className="btn btn-secondary btn-sm" onClick={payPeriods.reload} disabled={payPeriods.loading}>Retry pay periods</button>}
+              </div>
+            </div>
+          )}
+          {!organizations.error && !payPeriods.error && (
+            <form
+              className="stack"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                if (!selectedCsoId || !selectedPeriodId) return;
+                const file = await payrollExport.run(() =>
+                  api.blob(`/cso-finance/export-payroll${qs({ cso_id: Number(selectedCsoId), period_id: Number(selectedPeriodId) })}`, 'GET', 'payroll-export.csv'),
+                );
+                if (file) saveBlob(file);
+              }}
+            >
+              <div className="grid-2">
+                {organizations.data && organizations.data.length > 1 && (
+                  <Field label="Assigned CSO">
+                    <select value={selectedCsoId} onChange={(event) => setSelectedCsoId(event.target.value)} required>
+                      {organizations.data.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}
+                    </select>
+                  </Field>
+                )}
+                <Field label="Pay period">
+                  <select value={selectedPeriodId} onChange={(event) => setSelectedPeriodId(event.target.value)} required disabled={payPeriods.loading || !payPeriods.data?.length}>
+                    {(payPeriods.data || []).map((period) => (
+                      <option key={period.id} value={period.id}>
+                        {period.period_label || `${period.start_date} – ${period.end_date}`}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+              {payPeriods.data?.length === 0 && <Empty>No pay periods are available for payroll export.</Empty>}
+              {organizations.data?.length === 0 && <Empty>No assigned CSOs are available for payroll export.</Empty>}
+              <Alert>{payrollExport.error}</Alert>
+              <div>
+                <button type="submit" className="btn btn-primary" disabled={payrollExport.busy || !selectedCsoId || !selectedPeriodId || !payPeriods.data?.length || !organizations.data?.length}>
+                  {payrollExport.busy ? 'Preparing CSV…' : 'Download payroll CSV'}
+                </button>
+              </div>
+            </form>
+          )}
         </Section>
       )}
 

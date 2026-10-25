@@ -17,6 +17,7 @@ import { Login } from './pages/Login';
 import { MyWorkLogs } from './pages/MyWorkLogs';
 import { Organizations } from './pages/Organizations';
 import { PrintWorkLog } from './pages/PrintWorkLog';
+import { ProviderPaymentDetails } from './pages/ProviderPaymentDetails';
 import { PayPeriods } from './pages/PayPeriods';
 import { ReviewWorkLogs } from './pages/ReviewWorkLogs';
 import { RoutingQueue } from './pages/RoutingQueue';
@@ -50,6 +51,7 @@ const PAGES: Page[] = [
     render: () => <Dashboard />,
   },
   { key: 'my-logs', label: 'My work logs', description: 'Record your daily work and confirm verified logs', icon: 'calendar', group: 'Work', roles: ['PROVIDER'], render: () => <MyWorkLogs /> },
+  { key: 'payment-details', label: 'Payment details', description: 'Manage your payroll bank account and service mobile wallet', icon: 'wallet', group: 'Work', roles: ['PROVIDER'], render: () => <ProviderPaymentDetails /> },
   { key: 'backdate-access', label: 'Backdated entry access', description: 'Grant time-limited access to reopen a date-specific work log', icon: 'calendar', group: 'Work', roles: ['TECHNICAL_OFFICER', 'SUPER_ADMIN'], render: () => <BackdateAccess /> },
   { key: 'rates', label: 'Rates', description: 'Scoped activity rates and immutable revisions', icon: 'receipt', group: 'Finance', roles: ['TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'OVERSIGHT', 'SUPER_ADMIN'], render: () => <Rates /> },
   { key: 'pay-periods', label: 'Pay periods', description: 'Set regional work and pay schedules', icon: 'calendar', group: 'Finance', roles: ['TECHNICAL_OFFICER', 'CENTRAL_ADMIN', 'FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <PayPeriods /> },

@@ -9,6 +9,7 @@ from ...core.serialize import to_dict
 from ...db.session import get_db
 from ...models import Organization, PaymentClaim, PayrollBatch, User
 from ...services import batches as bt
+from ...services.provider_payment_details import redacted_batch_lines
 
 router = APIRouter()
 
@@ -41,7 +42,7 @@ def _out(db: Session, batch: PayrollBatch, current: CurrentUser, lines: bool = F
     if lines:
         out["lines"] = [
             {k: v for k, v in line.items() if k not in ("payment_account", "phone") or current.has_any(FHI360_FINANCE, CSO_FINANCE)}
-            for line in batch.export_snapshot.get("lines", [])
+            for line in redacted_batch_lines(current, batch, batch.export_snapshot.get("lines", []))
         ]
         out["claims"] = [{"id": c.id, "status": c.status, "payment_status": c.payment_status} for c in claims]
     return out
@@ -68,12 +69,13 @@ def get_batch(batch_id: int, db: Session = Depends(get_db), current: CurrentUser
 @router.get("/{batch_id}/export.{fmt}")
 def download(batch_id: int, fmt: str, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(FHI360_FINANCE, CSO_FINANCE))):
     batch = _get(db, current, batch_id)
+    lines = redacted_batch_lines(current, batch, batch.export_snapshot.get("lines", []))
     system_audit.record(db, current, "payroll_batch", batch.id, f"download_{fmt}")
     db.commit()
     if fmt == "csv":
-        content, media = batch.export_csv.encode(), "text/csv"
+        content, media = bt._csv(lines).encode(), "text/csv"
     elif fmt == "xlsx":
-        content, media = bt.to_xlsx(batch), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        content, media = bt.to_xlsx(batch, lines), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     else:
         raise HTTPException(status_code=404, detail="Format must be csv or xlsx")
     return Response(content, media_type=media, headers={"Content-Disposition": f'attachment; filename="{batch.reference}.{fmt}"'})

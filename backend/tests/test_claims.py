@@ -261,9 +261,12 @@ def test_sensitive_fields_are_restricted(api, db):
     staff = db.query(Staff).filter(Staff.verified_phone == "+255710000103").one()
     assert "payment_account" not in api.get(f"/staff/{staff.id}", "rpm1")
     assert "•" in api.get(f"/staff/{staff.id}", "rpm1")["verified_phone"]
-    assert api.get(f"/staff/{staff.id}", "fhifin1")["payment_account"]
-    viewed = db.execute(text("select count(*) from audit_events where action = 'view_payment_details' and entity_id = :i"), {"i": str(staff.id)}).scalar()
-    assert viewed >= 1
+    # Finance no longer has blanket access to the generic payout account:
+    # only the permitted channel for assigned work may be returned.
+    finance_view = api.get(f"/staff/{staff.id}", "fhifin1")
+    assert "bank_account_number" not in finance_view and "bank_name" not in finance_view
+    if finance_view.get("payment_account"):
+        assert finance_view["payment_method"] == "MOBILE_WALLET"
     me = api.get("/auth/me", "hcp1")
     assert "payment_account" not in me["staff"]
     outbox = api.get("/admin/sms-outbox", "oversight1")

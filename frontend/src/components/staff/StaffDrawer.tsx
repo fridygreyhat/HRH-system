@@ -33,7 +33,10 @@ export function StaffDrawer({ staffId, cadres, onClose, onChanged }: { staffId: 
     <Drawer title={data ? data.legal_name : 'Staff member'} onClose={onClose} wide>
       <AsyncState data={data} error={error} loading={loading}>
         {(s) => {
-          const showPayment = 'payment_method' in s || 'payment_provider' in s || 'payment_account' in s;
+          const hasBankProfile = 'bank_name' in s || 'bank_account_number' in s || 'bank_branch' in s;
+          const hasMobileProfile = 'mobile_money_number' in s;
+          const hasExplicitProfile = hasBankProfile || hasMobileProfile;
+          const showLegacyPayment = !hasExplicitProfile && ('payment_method' in s || 'payment_provider' in s || 'payment_account' in s);
           const cadre = cadres.find((c) => c.id === s.cadre_id);
           return (
             <div className="stack-lg">
@@ -83,16 +86,36 @@ export function StaffDrawer({ staffId, cadres, onClose, onChanged }: { staffId: 
                   ]}
                 />
               </Section>
-              {showPayment && (
+              {(hasExplicitProfile || showLegacyPayment) && (
                 <Section title="Payment details">
-                  <Facts
-                    items={[
-                      ['Method', s.payment_method ? humanize(s.payment_method) : null],
-                      ['Provider', s.payment_provider],
-                      ['Account', s.payment_account],
-                    ]}
-                  />
-                  <p className="muted small">Viewing payment details is recorded in the audit log.</p>
+                  {hasBankProfile && (
+                    <>
+                      <h4>Payroll · bank account</h4>
+                      <Facts
+                        items={[
+                          ...('bank_name' in s ? [['Bank', s.bank_name] as [string, React.ReactNode]] : []),
+                          ...('bank_account_number' in s ? [['Account number', s.bank_account_number] as [string, React.ReactNode]] : []),
+                          ...('bank_branch' in s ? [['Branch', s.bank_branch] as [string, React.ReactNode]] : []),
+                        ]}
+                      />
+                    </>
+                  )}
+                  {hasMobileProfile && (
+                    <>
+                      <h4>Services · mobile money</h4>
+                      <Facts items={[['Mobile money number', s.mobile_money_number]]} />
+                    </>
+                  )}
+                  {showLegacyPayment && (
+                    <Facts
+                      items={[
+                        ['Method', s.payment_method ? humanize(s.payment_method) : null],
+                        ['Provider', s.payment_provider],
+                        ['Account', s.payment_account],
+                      ]}
+                    />
+                  )}
+                  <p className="muted small">Only payment channels permitted for your role and assignment scope are shown. Viewing these details is recorded in the audit log.</p>
                 </Section>
               )}
               <Section title="Assignment history">

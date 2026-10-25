@@ -88,6 +88,7 @@ def _summary(db: Session, claim: PaymentClaim) -> dict:
 
 
 def _detail(db: Session, current: CurrentUser, claim: PaymentClaim) -> dict:
+    from ...services import provider_payment_details as pd
     line = db.get(BudgetLine, claim.budget_line_id) if claim.budget_line_id else None
     audit_rows = (
         db.query(ClaimAudit, User.full_name)
@@ -108,8 +109,7 @@ def _detail(db: Session, current: CurrentUser, claim: PaymentClaim) -> dict:
         "audit": [{**to_dict(a), "actor_name": name} for a, name in audit_rows],
         "available_actions": cl.available_actions(db, current, claim),
         "payment_actions": pay.payment_actions(db, current, claim),
-        "payment_recipient": {"name": recipient.legal_name, "payment_method": recipient.payment_method,
-                              "payment_provider": recipient.payment_provider, "payment_account": recipient.payment_account} if recipient else None,
+        "payment_recipient": pd.recipient(recipient, claim) if recipient else None,
     }
 
 

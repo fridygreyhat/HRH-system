@@ -86,6 +86,19 @@ export interface PayPeriod {
   can_manage?: boolean;
 }
 
+export interface ProviderPaymentDetails {
+  staff_id: number;
+  bank_name: string | null;
+  bank_account_number: string | null;
+  bank_branch: string | null;
+  mobile_money_number: string | null;
+}
+
+export interface CsoFinanceOrganization {
+  id: number;
+  name: string;
+}
+
 export interface Section {
   code: string;
   name: string;
@@ -415,7 +428,7 @@ export interface ClaimDetail extends ClaimSummary {
   audit: ClaimAudit[];
   available_actions: string[];
   payment_actions: string[];
-  payment_recipient?: { name: string; payment_method: string | null; payment_provider: string | null; payment_account: string | null } | null;
+  payment_recipient?: { name: string; payment_method: string | null; payment_provider: string | null; payment_account: string | null; bank_branch?: string | null } | null;
 }
 
 export interface CommunityClaimOptions {
@@ -653,6 +666,12 @@ export interface StaffDetail {
   payment_method?: string | null;
   payment_provider?: string | null;
   payment_account?: string | null;
+  /** Present only when the requesting role may view payroll bank details. */
+  bank_name?: string | null;
+  bank_account_number?: string | null;
+  bank_branch?: string | null;
+  /** Present only when the requesting role may view mobile-money details. */
+  mobile_money_number?: string | null;
   assignments: Assignment[];
   username: string | null;
 }

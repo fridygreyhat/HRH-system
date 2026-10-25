@@ -233,20 +233,36 @@ def create_staff(body: StaffCreate, db: Session = Depends(get_db), current: Curr
 
 @router.get("/{staff_id}")
 def get_staff(staff_id: int, db: Session = Depends(get_db), current: CurrentUser = Depends(get_current_user)):
+    from ...services import provider_payment_details as pd
     staff = _get(db, current, staff_id)
     assignments = db.query(StaffAssignment).filter(StaffAssignment.staff_id == staff.id).order_by(StaffAssignment.start_date.desc()).all()
-    in_org = any(a.organization_id in current.scope_values("organization_id") for a in assignments)
-    admin_in_scope = CENTRAL_ADMIN in current.roles or (REGIONAL_ADMIN in current.roles and any(a.region_id in current.scope_values("region_id") for a in assignments))
-    sees_payment = current.staff_id == staff.id or FHI360_FINANCE in current.roles or (CSO_FINANCE in current.roles and in_org) or admin_in_scope
+    admin_in_scope = CENTRAL_ADMIN in current.roles or (
+        REGIONAL_ADMIN in current.roles and any(a.region_id in current.scope_values("region_id") for a in assignments)
+    )
+    visible = pd.visible_details(db, current, staff)
+    sees_payment = len(visible) > 1 or admin_in_scope
+    own_profile = current.staff_id == staff.id
+    legacy_allowed = own_profile or admin_in_scope or (
+        staff.payment_method == "BANK" and "bank_account_number" in visible
+    ) or (staff.payment_method == "MOBILE_WALLET" and "mobile_money_number" in visible)
+    legacy_values = {key: getattr(staff, key) for key in pd.LEGACY_FIELDS}
+    if legacy_allowed:
+        effective = pd.details(staff)
+        legacy_values["payment_account"] = (effective["bank_account_number"] if staff.payment_method == "BANK"
+                                            else effective["mobile_money_number"])
+        if staff.payment_method == "BANK":
+            legacy_values["payment_provider"] = effective["bank_name"]
     out = {
-        **to_dict(staff, exclude=() if sees_payment else ("payment_method", "payment_provider", "payment_account")),
+        **to_dict(staff, exclude=(*pd.FIELDS, *pd.LEGACY_FIELDS, "payment_details_updated_at")),
+        **{key: value for key, value in visible.items() if key != "staff_id"},
+        **(legacy_values if legacy_allowed else {}),
         "legal_name": staff.legal_name,
         "cadre": db.get(Cadre, staff.cadre_id).code,
         "verified_phone": staff.verified_phone if _sees_contact(current) or current.staff_id == staff.id else mask_phone(staff.verified_phone),
         "assignments": [{**assignment_out(db, a), "end_reason": a.end_reason, "is_primary": a.is_primary} for a in assignments],
         "username": db.get(User, staff.user_id).username if staff.user_id else None,
     }
-    if sees_payment and current.staff_id != staff.id and staff.payment_account:
+    if sees_payment and not own_profile:
         system_audit.record(db, current, "staff", staff.id, "view_payment_details")
         db.commit()
     return out

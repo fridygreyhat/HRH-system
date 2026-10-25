@@ -11,7 +11,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import and_, or_, true, exists, select
+from sqlalchemy import and_, or_, true, exists, select, case, cast, Integer
 from sqlalchemy.orm import Session
 
 from ..core import audit as system_audit
@@ -49,10 +49,15 @@ CSV_COLUMNS = [
 
 
 def finance_claim_condition(current: CurrentUser):
+    direct_community = and_(PaymentClaim.workflow_version >= 2, PaymentClaim.work_type == "COMMUNITY",
+                            PaymentClaim.route_code == "C", PaymentClaim.work_log_id.is_(None))
+    cadre = case(
+        (direct_community, cast(PaymentClaim.calculation_snapshot["cadre_id"].astext, Integer)),
+        else_=select(WorkLog.cadre_id).where(WorkLog.id == PaymentClaim.work_log_id).scalar_subquery(),
+    )
     return or_(
         PaymentClaim.workflow_version == 1,
-        record_condition(current, PaymentClaim.assignment_id,
-                         select(WorkLog.cadre_id).where(WorkLog.id == PaymentClaim.work_log_id).scalar_subquery()),
+        record_condition(current, PaymentClaim.assignment_id, cadre),
     )
 
 
@@ -142,7 +147,9 @@ def create_batches(db: Session, current: CurrentUser, route_code: str) -> list[P
 
 
 def _line(db: Session, batch: PayrollBatch, claim: PaymentClaim) -> dict:
+    from .provider_payment_details import recipient
     staff = db.get(Staff, claim.staff_id)
+    destination = recipient(staff, claim)
     assignment = db.get(StaffAssignment, claim.assignment_id) if claim.assignment_id else None
     facility = db.get(Facility, assignment.facility_id) if assignment and assignment.facility_id else None
     components = db.query(ClaimComponent).filter(ClaimComponent.claim_id == claim.id).all()
@@ -163,9 +170,9 @@ def _line(db: Session, batch: PayrollBatch, claim: PaymentClaim) -> dict:
         "route": claim.route_code,
         "payor": org(claim.payor_org_id),
         "executor": org(claim.executor_org_id),
-        "payment_method": staff.payment_method or "",
-        "payment_provider": staff.payment_provider or "",
-        "payment_account": staff.payment_account or "",
+        "payment_method": destination["payment_method"] or "",
+        "payment_provider": destination["payment_provider"] or "",
+        "payment_account": destination["payment_account"] or "",
         "components": "; ".join(f"{c.component_name}: {c.units} x {c.rate} = {c.amount}" for c in components),
         "amount": str(claim.amount),
         "currency": claim.currency,
@@ -180,7 +187,7 @@ def _csv(lines: list[dict]) -> str:
     return buffer.getvalue()
 
 
-def to_xlsx(batch: PayrollBatch) -> bytes:
+def to_xlsx(batch: PayrollBatch, lines=None) -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Font
 
@@ -190,7 +197,7 @@ def to_xlsx(batch: PayrollBatch) -> bytes:
     ws.append(CSV_COLUMNS)
     for cell in ws[1]:
         cell.font = Font(bold=True)
-    for line in batch.export_snapshot["lines"]:
+    for line in lines if lines is not None else batch.export_snapshot["lines"]:
         row = [line.get(c, "") for c in CSV_COLUMNS]
         row[CSV_COLUMNS.index("amount")] = float(line["amount"])
         ws.append(row)

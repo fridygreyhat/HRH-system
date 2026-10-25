@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from .api.endpoints import admin, auth, batches, budgets, claims, dashboard, demos, staff, worklogs, rates, finance
 from .core import config
 from .db.session import get_db
-from .api.endpoints import backdate_access, organizations, community_claims
+from .api.endpoints import backdate_access, organizations, community_claims, provider_payment_details, cso_finance
 
 logging.basicConfig(level=logging.INFO)
 
@@ -35,6 +35,8 @@ app.include_router(batches.router, prefix="/batches", tags=["Payroll batches"])
 app.include_router(budgets.router, prefix="/budgets", tags=["Budgets"])
 app.add_api_route("/budget/allocate", budgets.create_line, methods=["POST"], status_code=201, tags=["Central Budget Management"])
 app.include_router(organizations.router, prefix="/organizations", tags=["Organizations and CSO regions"])
+app.include_router(provider_payment_details.router, prefix="/provider-details", tags=["Provider payment details"])
+app.include_router(cso_finance.router, prefix="/cso-finance", tags=["CSO Finance"])
 app.include_router(staff.router, prefix="/staff", tags=["Staff registry"])
 app.include_router(admin.router, prefix="/admin", tags=["Administration"])
 app.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])

@@ -316,6 +316,7 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
                 ['Payment method', claim.payment_recipient.payment_method],
                 ['Provider', claim.payment_recipient.payment_provider],
                 ['Account', claim.payment_recipient.payment_account],
+                ...(claim.payment_recipient.bank_branch ? [['Bank branch', claim.payment_recipient.bank_branch] as [string, React.ReactNode]] : []),
               ]} />
             </Section>
           )}
