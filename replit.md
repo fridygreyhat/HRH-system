@@ -41,7 +41,22 @@ Follow the README's first-time setup sequence to configure the organization and 
 The bootstrap secret is only used to create the account. Changing it later does
 not reset the password of an existing account.
 
-## Health Care Provider activity forms
+## CHW daily timesheets and services
+
+The user approved five colour-coded groups for the uploaded CHW daily sheet:
+HIV testing/linkage (6), TB screening (2), appointment follow-up (3), HVL/DBS
+follow-up (2), and HIV self-testing (1). All 14 indicators are filled together
+on the daily PAYROLL timesheet. The uploaded copy had no coloured activity
+groups; the user explicitly approved these five named groups instead.
+
+CHW SERVICES initially includes Special and Weekend Clinics only, with
+Expected Client Attendees and Clients attended and served. Regional Technical
+Officers can add scoped service activities through the existing Rates setup.
+No rates or budgets are invented. CHW evidence, daily-comment and period-comment
+inputs are removed; older text and immutable entry snapshots remain intact.
+Data Clerk comment/evidence behavior is unchanged.
+
+## Provider location and Health Care Provider forms
 
 All CHW, HCP and Data Clerk daily saves (including edits) require a newly
 captured browser location with latitude, longitude and accuracy. Existing

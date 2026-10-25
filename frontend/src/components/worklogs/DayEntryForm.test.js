@@ -62,3 +62,32 @@ test('missing geolocation or invalid accuracy never produces a valid fix', async
   } });
   expect(await captureLocation()).toBeNull();
 });
+
+test('CHW daily timesheet shows all five colour groups and no evidence/comment inputs', () => {
+  const groups = [
+    ['hiv', 'HIV testing and linkage', 'teal', 6],
+    ['tb', 'TB screening', 'amber', 2],
+    ['appointments', 'Appointment follow-up', 'blue', 3],
+    ['laboratory', 'HVL / DBS follow-up', 'violet', 2],
+    ['self_testing', 'HIV self-testing', 'rose', 1],
+  ].map(([key, label_en, color, count]) => ({
+    key, label_en, label_sw: label_en, color,
+    fields: Array.from({ length: count }, (_, index) => `${key}_${index}`),
+  }));
+  const keys = groups.flatMap(group => group.fields);
+  const log = logFor('CHW');
+  log.work_type = 'PAYROLL';
+  log.cadre.fields = keys.map(key => ({ key, label_en: key, field_type: 'INTEGER' }));
+  log.cadre.activities = [{
+    key: 'chw_daily_timesheet', label_en: 'Daily CHW timesheet',
+    fields: keys, required_fields: keys, item_type: 'PAYROLL', hours_input: true, groups,
+  }];
+  act(() => root.render(<DayEntryForm log={log} date="2026-10-23" flags={[]} captureOnEntry={true}
+    onSaved={jest.fn()} onClose={jest.fn()} />));
+  expect(container.querySelectorAll('fieldset')).toHaveLength(5);
+  groups.forEach(group => expect(container.textContent).toContain(group.label_en));
+  expect(container.querySelectorAll('input[type="number"]')).toHaveLength(15);
+  expect(container.querySelectorAll('textarea')).toHaveLength(0);
+  expect(container.textContent).not.toContain('evidenceWarning');
+  expect(button('saveDay').disabled).toBe(true);
+});

@@ -180,9 +180,11 @@ def test_queue_scope_type_and_cascade_definitions(api, db, period, v22):
 
 
 def test_unpriced_work_blocks_finance_and_manual_claim_bypass(api, db, period, v22):
-    from .conftest import ENTRY
     log = api.post("/worklogs", "chw1", {"period_id": period["id"], "work_type": "SERVICES"})
-    log = api.put(f"/worklogs/{log['id']}/entries/{period['start_date']}", "chw1", ENTRY["CHW"](None))
+    log = api.put(f"/worklogs/{log['id']}/entries/{period['start_date']}", "chw1", {
+        "activity_key": "chw_weekend_clinic", "hours_worked": 2,
+        "measures": {"chw_special_clinic_expected": 5, "chw_special_clinic_served": 4},
+    })
     log = to_rpm(api, log)
     assert log["financial_preview"]["exceptions"]
     api.post(f"/worklogs/{log['id']}/actions/authorize", "rpm1", {

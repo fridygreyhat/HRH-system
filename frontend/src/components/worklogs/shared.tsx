@@ -65,13 +65,13 @@ const isFlagged = (flags: ReturnFlag[], date: string, field?: string) => flags.s
 /** Daily entries: a table on wide screens, cards on phones. Flagged dates/fields are highlighted. */
 export function EntriesView({ log, lang, flags = [] }: { log: WorkLogDetail; lang: Lang; flags?: ReturnFlag[] }) {
   const { cadre, entries } = log;
-  const isHcp = cadre.code === 'HCP';
-  const showEvidence = !isHcp || entries.some((entry) => Boolean(entry.evidence_text?.trim() || entry.comment?.trim()));
+  const suppressEmptyEvidence = cadre.code === 'HCP' || cadre.code === 'CHW';
+  const showEvidence = !suppressEmptyEvidence || entries.some((entry) => Boolean(entry.evidence_text?.trim() || entry.comment?.trim()));
   const startEnd = cadre.hours_mode !== 'DIRECT';
   const activityFor = (key: string | null) => cadre.activities?.find((activity) => activity.key === key);
   const fieldsFor = (key: string | null) => {
     const activity = activityFor(key);
-    return activity ? cadre.fields.filter((field) => activity.fields.includes(field.key)) : cadre.fields;
+    return activity ? activity.fields.flatMap((fieldKey) => cadre.fields.filter((field) => field.key === fieldKey)) : cadre.fields;
   };
   if (!entries.length) return <p className="muted">No daily entries.</p>;
   return (
@@ -102,15 +102,33 @@ export function EntriesView({ log, lang, flags = [] }: { log: WorkLogDetail; lan
                 <td className={`num${isFlagged(flags, e.entry_date, 'hours') ? ' flagged' : ''}`}>{num(e.hours_worked)}</td>
                 <td>
                   <strong>{activityFor(e.activity_key)?.[lang === 'sw' ? 'label_sw' : 'label_en'] || '—'}</strong>
-                  <ul className="small" style={{ margin: '0.25rem 0 0', paddingLeft: '1rem' }}>
-                    {fieldsFor(e.activity_key)
-                      .filter((field) => e.measures[field.key] !== undefined)
-                      .map((field) => (
-                        <li key={field.key} className={isFlagged(flags, e.entry_date, field.key) ? 'flagged' : undefined}>
-                          {lang === 'sw' ? field.label_sw : field.label_en}: {measureValue(field, e.measures[field.key], lang)}
-                        </li>
-                      ))}
-                  </ul>
+                   {(() => {
+                     const activity = activityFor(e.activity_key);
+                     const visible = fieldsFor(e.activity_key).filter((field) => e.measures[field.key] !== undefined);
+                     const groups = activity?.groups?.map((group) => ({
+                       group,
+                       fields: visible.filter((field) => group.fields.includes(field.key)),
+                     })).filter(({ fields }) => fields.length) || [];
+                     const groupedKeys = new Set(groups.flatMap(({ fields }) => fields.map((field) => field.key)));
+                     const ungrouped = visible.filter((field) => !groupedKeys.has(field.key));
+                     return (
+                       <ul className="small entry-indicators" style={{ margin: '0.25rem 0 0', paddingLeft: '1rem' }}>
+                         {groups.flatMap(({ group, fields }) => [
+                           <li key={`group-${group.key}`} className="entry-indicator-group">{lang === 'sw' ? group.label_sw : group.label_en}</li>,
+                           ...fields.map((field) => (
+                             <li key={field.key} className={isFlagged(flags, e.entry_date, field.key) ? 'flagged' : undefined}>
+                               {lang === 'sw' ? field.label_sw : field.label_en}: {measureValue(field, e.measures[field.key], lang)}
+                             </li>
+                           )),
+                         ])}
+                         {ungrouped.map((field) => (
+                           <li key={field.key} className={isFlagged(flags, e.entry_date, field.key) ? 'flagged' : undefined}>
+                             {lang === 'sw' ? field.label_sw : field.label_en}: {measureValue(field, e.measures[field.key], lang)}
+                           </li>
+                         ))}
+                       </ul>
+                     );
+                   })()}
                 </td>
                 {showEvidence && <td className={isFlagged(flags, e.entry_date, 'evidence') ? 'flagged' : undefined}>
                   {e.evidence_text?.trim() && e.evidence_text}
@@ -151,7 +169,7 @@ export function EntriesView({ log, lang, flags = [] }: { log: WorkLogDetail; lan
                 </React.Fragment>
               ))}
             </dl>
-            {(!isHcp || e.evidence_text?.trim()) && <div className={isFlagged(flags, e.entry_date, 'evidence') ? 'flagged-field small' : 'small'}>{e.evidence_text}</div>}
+            {(!suppressEmptyEvidence || e.evidence_text?.trim()) && e.evidence_text?.trim() && <div className={isFlagged(flags, e.entry_date, 'evidence') ? 'flagged-field small' : 'small'}>{e.evidence_text}</div>}
             {e.comment?.trim() && <div className="muted small">{e.comment}</div>}
           </article>
         ))}

@@ -54,8 +54,8 @@ def test_hcp_daily_and_outreach_same_date_preserve_history(api, db, period, monk
 
 def test_other_cadres_still_require_evidence(api, period):
     from .conftest import ENTRY
-    log = api.post("/worklogs", "chw1", {"period_id": period["id"]})
-    payload = ENTRY["CHW"](None)
+    log = api.post("/worklogs", "clerk1", {"period_id": period["id"]})
+    payload = ENTRY["DATA_CLERK"](None)
     payload.pop("evidence_text", None)
-    api.call("PUT", f"/worklogs/{log['id']}/entries/{period['start_date']}", "chw1",
+    api.call("PUT", f"/worklogs/{log['id']}/entries/{period['start_date']}", "clerk1",
              json=payload, expect=422)

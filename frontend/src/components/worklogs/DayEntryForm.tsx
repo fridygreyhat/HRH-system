@@ -6,6 +6,7 @@ import { useAction } from '../../hooks';
 import { ReturnFlag, WorkLogDetail, WorkLogEntry } from '../../types';
 import { Alert, Field } from '../ui';
 import { FieldLabel, flagFieldLabel } from './shared';
+import { GroupedIndicators } from './GroupedIndicators';
 
 export interface GpsFix {
   gps_lat: number;
@@ -70,7 +71,10 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
   const maximumHours = Number(isSaturday ? limits.saturday_max_hours : limits.daily_hours);
   const backdateAccess = log.backdate_access;
   const dateGrant = backdateAccess?.grants.find((grant) => grant.entry_date === date);
-  const allActivities = log.cadre.activities || [];
+  const cadreActivities = log.cadre.activities || [];
+  const allActivities = log.cadre.code === 'CHW' && (log.work_type === 'SERVICES' || log.work_type === 'PAYROLL')
+    ? cadreActivities.filter((activity) => !activity.item_type || activity.item_type === log.work_type)
+    : cadreActivities;
   const applicableActivities = allActivities.filter((activity) =>
     (!activity.effective_start_date || activity.effective_start_date <= date) &&
     (!activity.effective_end_date || date < activity.effective_end_date),
@@ -79,17 +83,18 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
     ? [...applicableActivities, ...allActivities.filter((activity) => activity.key === entry.activity_key)]
     : applicableActivities;
   const isHcp = log.cadre.code === 'HCP';
-  const [activityKey, setActivityKey] = useState(entry?.activity_key || (isHcp ? '' : applicableActivities[0]?.key || allActivities[0]?.key || ''));
+  const isChw = log.cadre.code === 'CHW';
+  const hidesEvidence = isHcp || isChw;
+  const defaultChwActivity = applicableActivities.find((activity) => activity.key === 'chw_daily_timesheet');
+  const [activityKey, setActivityKey] = useState(entry?.activity_key || (isHcp ? '' : (isChw ? defaultChwActivity : undefined)?.key || applicableActivities[0]?.key || allActivities[0]?.key || ''));
   const selectedActivity = activities.find((activity) => activity.key === activityKey);
   const activityType = selectedActivity?.item_type || log.work_type;
   const requiresLocation = Boolean(selectedActivity?.requires_location || activityKey === 'secondary_facility');
   const direct = log.cadre.hours_mode === 'DIRECT' || Boolean(selectedActivity?.hours_input);
-  const visibleFields = !isHcp && (selectedActivity?.item_type === 'PAYROLL' || log.work_type === 'PAYROLL')
+  const visibleFields = !isHcp && !isChw && (selectedActivity?.item_type === 'PAYROLL' || log.work_type === 'PAYROLL')
     ? []
     : selectedActivity
-      ? (isHcp
-        ? selectedActivity.fields.flatMap((key) => log.cadre.fields.filter((field) => field.key === key))
-        : log.cadre.fields.filter((field) => selectedActivity.fields.includes(field.key)))
+      ? selectedActivity.fields.flatMap((key) => log.cadre.fields.filter((field) => field.key === key))
       : isHcp ? [] : log.cadre.fields;
   const [hours, setHours] = useState(entry ? String(Number(entry.hours_worked)) : '');
   const [activityLocation, setActivityLocation] = useState(entry?.activity_location || '');
@@ -106,7 +111,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
 
   const flaggedFields = new Set(flags.filter((f) => f.entry_date === date).map((f) => f.field));
   const dayFlags = flags.filter((f) => f.entry_date === date);
-  const idWarning = ID_LIKE.test(evidence) || ID_LIKE.test(comment);
+  const idWarning = !hidesEvidence && (ID_LIKE.test(evidence) || ID_LIKE.test(comment));
 
   const getLocation = async () => {
     setGpsState('busy');
@@ -130,7 +135,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
     const payload: Record<string, unknown> = {
       activity_key: activityKey,
       ...(requiresLocation ? { activity_location: activityLocation.trim() } : {}),
-      ...(!isHcp ? { evidence_text: evidence.trim(), comment: comment.trim() || null } : {}),
+      ...(!hidesEvidence ? { evidence_text: evidence.trim(), comment: comment.trim() || null } : {}),
       measures: Object.fromEntries(
         visibleFields
           .filter((f) => measures[f.key] !== undefined && measures[f.key] !== '')
@@ -237,44 +242,21 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
         </div>
       )}
 
-      <div className="measure-grid">
-        {visibleFields.map((f) =>
-          f.field_type === 'BOOLEAN' ? (
-            <div key={f.key} className={`field${flaggedFields.has(f.key) ? ' flagged-field' : ''}`} role="group" aria-label={f.label_en}>
-              <span className="field-label">
-                <FieldLabel field={f} lang={lang} />
-              </span>
-              <div className="yesno">
-                {[true, false].map((v) => (
-                  <button
-                    key={String(v)}
-                    type="button"
-                    aria-pressed={measures[f.key] === v}
-                    onClick={() => setMeasures({ ...measures, [f.key]: measures[f.key] === v ? undefined : v })}
-                  >
-                    {v ? t('yes') : t('no')}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <Field key={f.key} label={<FieldLabel field={f} lang={lang} />} className={flaggedFields.has(f.key) ? 'flagged-field' : undefined}>
-              <input
-                type="number"
-                inputMode="numeric"
-                min="0"
-                max="10000"
-                step="1"
-                required={selectedActivity?.required_fields?.includes(f.key)}
-                value={String(measures[f.key] ?? '')}
-                onChange={(e) => setMeasures({ ...measures, [f.key]: e.target.value })}
-              />
-            </Field>
-          ),
-        )}
-      </div>
+      {visibleFields.length > 0 && (
+        <GroupedIndicators
+          fields={visibleFields}
+          groups={selectedActivity?.groups}
+          requiredFields={selectedActivity?.required_fields || []}
+          flaggedFields={flaggedFields}
+          measures={measures}
+          lang={lang}
+          yesLabel={t('yes')}
+          noLabel={t('no')}
+          onChange={(key, value) => setMeasures({ ...measures, [key]: value })}
+        />
+      )}
 
-      {!isHcp && (
+      {!hidesEvidence && (
         <>
           <p className="notice" role="note">{t('evidenceWarning')}</p>
           <Field label={t('evidence')} className={flaggedFields.has('evidence') ? 'flagged-field' : undefined}>
@@ -312,7 +294,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
 
       <Alert>{validationError || save.error || remove.error}</Alert>
       <div className="row">
-        <button className="btn btn-primary" disabled={busy || isSunday || (requiresGps && (!gps || gpsState !== 'ok')) || (!isHcp && evidence.trim().length < 3)}>
+        <button className="btn btn-primary" disabled={busy || isSunday || (requiresGps && (!gps || gpsState !== 'ok')) || (!hidesEvidence && evidence.trim().length < 3)}>
           {save.busy ? t('saving') : t('saveDay')}
         </button>
         {entry && (

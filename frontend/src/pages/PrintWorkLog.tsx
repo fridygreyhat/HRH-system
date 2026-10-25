@@ -168,7 +168,7 @@ export function PrintWorkLog({ logId }: { logId: number }) {
           </tbody>
         </table>
         <div className="paper-comments">
-          <b>MAONI / Comments:</b> {log.period_comment || ''}
+          {(log.period_comment || !['CHW', 'HCP'].includes(log.cadre.code)) && <><b>MAONI / Comments:</b> {log.period_comment || ''}</>}
           {comments.map((e) => (
             <div key={e.id}>
               {dateOnly(e.entry_date)}: {e.comment}

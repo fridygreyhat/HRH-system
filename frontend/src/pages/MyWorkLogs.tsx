@@ -12,6 +12,7 @@ import { resolveWorkLogStart } from './workLogStart';
 export function MyWorkLogs() {
   const { me, t } = useAuth();
   const isHcp = me?.cadre?.code === 'HCP';
+  const isChw = me?.cadre?.code === 'CHW';
   const logs = useApi<WorkLogSummary[]>('/worklogs?mine=true');
   const periods = useApi<PayPeriod[]>('/admin/pay-periods');
   const [openId, setOpenId] = useState<number | null>(null);
@@ -59,6 +60,8 @@ export function MyWorkLogs() {
     : 'Record your daily facility timesheet for the selected work date.';
   const typeEyebrow = workType === 'SERVICES' ? 'SERVICE RECORD' : 'DAILY TIMESHEET';
   const cascadePreviewCount = workType === 'SERVICES' ? 6 : 3;
+  const chwService = me?.cadre?.activities?.find((activity) => activity.key === 'chw_weekend_clinic');
+  const chwPayroll = me?.cadre?.activities?.find((activity) => activity.key === 'chw_daily_timesheet');
 
   return (
     <div className="stack-lg">
@@ -117,6 +120,21 @@ export function MyWorkLogs() {
               <div className="worklog-cascade-preview">
                 <span className="worklog-cascade-count">{cascadePreviewCount}</span>
                 <span>{workType === 'SERVICES' ? 'service cascades' : 'daily facility cascades'} in this record</span>
+              </div>
+            )}
+            {isChw && (
+              <div className="worklog-cascade-preview" aria-label="CHW activity overview">
+                {workType === 'SERVICES' ? (
+                  <>
+                    <span className="worklog-cascade-count">{chwService?.fields.length ?? 1}</span>
+                    <span>Special and Weekend Clinics</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="worklog-cascade-count">{chwPayroll?.fields.length ?? 14}</span>
+                    <span>indicators · {chwPayroll?.groups?.length ?? 5} groups</span>
+                  </>
+                )}
               </div>
             )}
           </div>

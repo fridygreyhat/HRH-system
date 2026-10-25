@@ -15,6 +15,13 @@ export interface CadreActivity {
   label_sw: string;
   fields: string[];
   required_fields: string[];
+  groups?: {
+    key: string;
+    label_en: string;
+    label_sw: string;
+    color: string;
+    fields: string[];
+  }[];
   form_mode?: 'CASCADE' | 'SINGLE';
   hours_input?: boolean;
   item_type?: 'SERVICES' | 'PAYROLL';

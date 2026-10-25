@@ -428,6 +428,16 @@ td.flagged, .flagged-field { outline: 2px solid var(--warn-fg); outline-offset: 
 .yesno button + button { border-left: 1px solid var(--border); }
 .yesno button[aria-pressed='true'] { background: var(--primary); color: var(--primary-text); font-weight: 600; }
 .measure-grid { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.indicator-groups { display: grid; gap: 0.75rem; }
+.indicator-group { --group-accent: #137b76; --group-tint: #e7f4f2; border: 1px solid color-mix(in srgb, var(--group-accent) 34%, var(--border)); border-left: 4px solid var(--group-accent); border-radius: 10px; padding: 0.75rem; background: color-mix(in srgb, var(--group-tint) 56%, var(--surface)); }
+.indicator-group legend { padding: 0 0.45rem; color: var(--group-accent); font-weight: 700; }
+.indicator-group-teal { --group-accent: #137b76; --group-tint: #dff1ef; }
+.indicator-group-amber { --group-accent: #93600c; --group-tint: #f7eedb; }
+.indicator-group-blue { --group-accent: #315f9c; --group-tint: #e5edf8; }
+.indicator-group-violet { --group-accent: #694b91; --group-tint: #eee8f6; }
+.indicator-group-rose { --group-accent: #a34f66; --group-tint: #f6e8ed; }
+.entry-indicator-group { list-style: none; margin-left: -1rem; padding: 0.2rem 0; color: var(--primary); font-weight: 700; }
+.indicator-ungrouped { padding: 0.25rem; }
 .totals-list { display: grid; gap: 0.35rem; margin: 0; }
 .totals-list div { display: flex; justify-content: space-between; gap: 1rem; border-bottom: 1px dashed var(--border); padding-bottom: 0.25rem; }
 .totals-list dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
