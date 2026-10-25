@@ -88,7 +88,11 @@ class Api:
             self.tokens[user] = r.json()["access_token"]
         return self.tokens[user]
 
-    def call(self, method: str, path: str, user: str, json=None, expect: int | None = None, **kwargs):
+    def call(self, method: str, path: str, user: str, json=None, expect: int | None = None, capture_location=True, **kwargs):
+        # Normal flows include a successful browser location capture.
+        # Location validation tests explicitly opt out to test missing data.
+        if capture_location and method == "PUT" and "/entries/" in path and isinstance(json, dict):
+            json = {"gps_lat": -7.77, "gps_lon": 35.69, "gps_accuracy_m": 20, **json}
         r = self.client.request(method, path, headers={"Authorization": f"Bearer {self.token(user)}"}, json=json, **kwargs)
         if expect is None:
             assert r.status_code < 300, f"{method} {path} as {user} -> {r.status_code} {r.text}"
@@ -136,7 +140,7 @@ def legacy_workflow_default(monkeypatch):
 def make_period(api: Api, db, amounts: dict | None = None) -> dict:
     n = next(_months)
     # Always use past periods, without letting suite growth push ordinary fixtures
-    # before the seed staff's 2020 assignment start.
+    # before the synthetic staff's 2000 assignment start.
     year, month = date.today().year - 1 - n // 12, 12 - n % 12
     start = date(year, month, 1)
     # Ordinary test entries start on a Monday; weekend rules are tested explicitly.

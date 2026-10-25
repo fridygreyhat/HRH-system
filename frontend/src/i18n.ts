@@ -44,7 +44,7 @@ const DICT = {
   notSet: { en: 'Not set', sw: 'Haijajazwa' },
   captureGps: { en: 'Capture my location', sw: 'Chukua mahali nilipo' },
   gpsCaptured: { en: 'Location captured', sw: 'Mahali pamechukuliwa' },
-  gpsFailed: { en: 'Location could not be captured. You can still save; the reviewer will see it.', sw: 'Mahali hapakupatikana. Bado unaweza kuhifadhi; mhakiki ataona.' },
+  gpsFailed: { en: 'Location could not be captured. Check your browser location permission and device location settings, then try again.', sw: 'Mahali hapakupatikana. Angalia ruhusa ya eneo kwenye kivinjari na mipangilio ya eneo ya kifaa, kisha jaribu tena.' },
   gpsRequired: {
     en: 'Your location is needed to submit. Allow location (GPS) for this site, then submit again.',
     sw: 'Mahali ulipo panahitajika ili kuwasilisha. Ruhusu GPS kwa tovuti hii, kisha wasilisha tena.',

@@ -69,7 +69,9 @@ def seed_test_data(db: Session) -> None:
     area, _ = _get_or_create(db, CommunityArea, name="DEMO Gangilonga Community", defaults={"district_id": district.id, "ward_id": ward.id})
     chw, clerk, hcp = (db.query(Cadre).filter(Cadre.code == c).one() for c in ("CHW", "DATA_CLERK", "HCP"))
 
-    start = date(2020, 1, 1)
+    # Synthetic acceptance periods run backward by month across the entire suite.
+    # Keep fixture-only placements/rates old enough for parameterized suite growth.
+    start = date(2000, 1, 1)
     providers = [
         ("chw1", "Neema", "J.", "Mollel", "+255710000101", chw, None, {"region_id": region.id, "district_id": district.id, "ward_id": ward.id, "facility_id": facility.id, "community_area_id": area.id, "organization_id": cso.id}),
         ("clerk1", "Baraka", None, "Mushi", "+255710000102", clerk, "Data Clerk", {"region_id": region.id, "district_id": district.id, "ward_id": ward.id, "facility_id": facility.id, "section": "CTC", "organization_id": cso.id}),

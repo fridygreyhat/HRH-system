@@ -161,7 +161,9 @@ def test_gps_is_evidence_for_review_not_an_automatic_rejection(api, period, db):
     try:
         clerk = api.post("/worklogs", "clerk1", {"period_id": period["id"]})
         clerk = api.put(f"/worklogs/{clerk['id']}/entries/{period['start_date']}", "clerk1", {**ENTRY["DATA_CLERK"](None), **far})
-        assert clerk["entries"][0]["location_status"] == "NOT_CAPTURED" and clerk["entries"][0].get("gps_lat") is None
+        # The mandatory provider capture cannot be disabled by optional event settings.
+        assert clerk["entries"][0]["location_status"] == "OUTSIDE_GEOFENCE"
+        assert clerk["entries"][0]["gps_lat"] == far["gps_lat"]
     finally:
         api.put("/admin/settings/gps_capture_events", "admin", {"value": ["ENTRY", "SUBMIT"], "reason": "test: restore"})
 

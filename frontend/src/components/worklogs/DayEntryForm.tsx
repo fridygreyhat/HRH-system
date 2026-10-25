@@ -21,9 +21,14 @@ export function captureLocation(): Promise<GpsFix | null> {
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ gps_lat: pos.coords.latitude, gps_lon: pos.coords.longitude, gps_accuracy_m: Math.round(pos.coords.accuracy) }),
+      (pos) => {
+        const { latitude, longitude, accuracy } = pos.coords;
+        const valid = [latitude, longitude, accuracy].every(Number.isFinite) &&
+          latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180 && accuracy >= 0;
+        resolve(valid ? { gps_lat: latitude, gps_lon: longitude, gps_accuracy_m: Math.round(accuracy) } : null);
+      },
       () => resolve(null),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     );
   });
 }
@@ -55,6 +60,8 @@ interface Props {
 /** One day's entry: hours (or start/end), one input per cadre field, evidence and optional GPS. */
 export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved, onClose }: Props) {
   const { t, lang } = useAuth();
+  const requiresGps = ['CHW', 'HCP', 'DATA_CLERK'].includes(log.cadre.code);
+  const captureGps = requiresGps || captureOnEntry;
   const dayOfWeek = new Date(`${date}T12:00:00Z`).getUTCDay();
   const isSaturday = dayOfWeek === 6;
   const isSunday = dayOfWeek === 0;
@@ -110,6 +117,10 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (requiresGps && (!gps || gpsState !== 'ok')) {
+      setValidationError(lang === 'sw' ? 'Nasa mahali ulipo kabla ya kuhifadhi siku hii.' : 'Capture your current location before saving this day.');
+      return;
+    }
     const missing = (selectedActivity?.required_fields || []).filter((key) => measures[key] === undefined || measures[key] === '');
     if (missing.length) {
       setValidationError(lang === 'sw' ? 'Jaza viashiria vyote vinavyohitajika. Weka sifuri au chagua Ndiyo/Hapana.' : 'Complete all required activity indicators. Enter zero for none and choose Yes or No for each checklist item.');
@@ -131,7 +142,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
       payload.start_time = start;
       payload.end_time = end;
     }
-    if (captureOnEntry && gps) Object.assign(payload, gps);
+    if (captureGps && gps) Object.assign(payload, gps);
     const result = await save.run(() => api.put<WorkLogDetail>(`/worklogs/${log.id}/entries/${date}`, payload));
     if (result) onSaved(result);
   };
@@ -276,7 +287,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
         </>
       )}
 
-      {captureOnEntry && (
+      {captureGps && (
         <div className={`stack${flaggedFields.has('location') ? ' flagged-field' : ''}`}>
           <div className="row">
             <button type="button" className="btn btn-secondary" onClick={getLocation} disabled={gpsState === 'busy'}>
@@ -289,13 +300,19 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
             )}
           </div>
           {gpsState === 'failed' && <Alert kind="warn">{t('gpsFailed')}</Alert>}
-          <span className="field-hint">{t('gpsHint')}</span>
+          <span className="field-hint">
+            {requiresGps
+              ? (lang === 'sw'
+                ? 'Lazima unase mahali ulipo kabla ya kuhifadhi au kusahihisha siku hii. Ruhusu kivinjari kufikia mahali ulipo. Hii ni eneo la wakati wa kuingiza taarifa, si uthibitisho wa eneo la kazi ya siku iliyopita.'
+                : 'Capture location before saving or updating this day. Allow location access in your browser. This records your location at entry time, not proof of where past work took place.')
+              : t('gpsHint')}
+          </span>
         </div>
       )}
 
       <Alert>{validationError || save.error || remove.error}</Alert>
       <div className="row">
-        <button className="btn btn-primary" disabled={busy || isSunday || (!isHcp && evidence.trim().length < 3)}>
+        <button className="btn btn-primary" disabled={busy || isSunday || (requiresGps && (!gps || gpsState !== 'ok')) || (!isHcp && evidence.trim().length < 3)}>
           {save.busy ? t('saving') : t('saveDay')}
         </button>
         {entry && (

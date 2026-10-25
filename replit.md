@@ -43,6 +43,14 @@ not reset the password of an existing account.
 
 ## Health Care Provider activity forms
 
+All CHW, HCP and Data Clerk daily saves (including edits) require a newly
+captured browser location with latitude, longitude and accuracy. Existing
+coordinates do not enable Save when reopening a day. This requirement is
+enforced by the API even if optional ENTRY capture settings are disabled.
+Location is captured at data-entry time, including for backdated entries; it
+must not be presented as proof of historical attendance. Existing geofence
+review flags and coordinate visibility restrictions remain unchanged.
+
 For new v2 HCP entries, Part A of the provider outreach sheet is SERVICES
 (Index, SNS-RNR, TB contact tracing, special/weekend clinics, community TB active
 case finding and quarterly inmate screening). Part B is the daily PAYROLL

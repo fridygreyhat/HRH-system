@@ -76,7 +76,7 @@ class EntryIn(BaseModel):
     measures: dict[str, Union[bool, int, float]] = {}
     gps_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     gps_lon: Optional[float] = Field(default=None, ge=-180, le=180)
-    gps_accuracy_m: Optional[float] = Field(default=None, ge=0)
+    gps_accuracy_m: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
 
 
 class ActionIn(BaseModel):
@@ -325,6 +325,9 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
     log = _editable_log(db, current, log_id)
     period = db.get(PayPeriod, log.period_id)
     cadre = db.get(Cadre, log.cadre_id)
+    requires_entry_gps = cadre.code in {"CHW", "HCP", "DATA_CLERK"}
+    if requires_entry_gps and any(value is None for value in (body.gps_lat, body.gps_lon, body.gps_accuracy_m)):
+        raise HTTPException(status_code=422, detail="Capture your current location before saving this day. Latitude, longitude and location accuracy are required.")
     if not (period.start_date <= entry_date <= period.end_date):
         raise HTTPException(status_code=422, detail=f"{entry_date} is outside the period {period.start_date} – {period.end_date}")
     if entry_date > local_today():
@@ -420,7 +423,7 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
     if entry_date.weekday() < 5 and weekly_total > limits["weekly_hours"]:
         raise HTTPException(status_code=422, detail=f"Weekday hours may not exceed {limits['weekly_hours']} from Monday through Friday; Saturday clinics are separate (this entry would total {weekly_total}).")
 
-    capture = "ENTRY" in get_setting(db, "gps_capture_events")
+    capture = requires_entry_gps or "ENTRY" in get_setting(db, "gps_capture_events")
     lat, lon = (body.gps_lat, body.gps_lon) if capture else (None, None)
     assignment = db.get(StaffAssignment, log.assignment_id)
     facility = db.get(Facility, assignment.facility_id) if assignment.facility_id else None
