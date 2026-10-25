@@ -262,6 +262,21 @@ def create_worklog(body: WorkLogCreate, db: Session = Depends(get_db), current: 
     assignment = assignment_for_period(db, staff.id, period)
     if not assignment:
         raise HTTPException(status_code=422, detail="You have no assignment covering this period. Contact your administrator.")
+    if period.region_id is None and db.query(PayPeriod.id).filter(
+        PayPeriod.region_id == assignment.region_id,
+        PayPeriod.start_date <= period.end_date, PayPeriod.end_date >= period.start_date,
+    ).first():
+        raise HTTPException(409, "Your region has its own pay-period schedule for these dates; choose that schedule instead")
+    overlapping_log = db.query(WorkLog.id).join(PayPeriod, PayPeriod.id == WorkLog.period_id).join(
+        WorkLogEntry, WorkLogEntry.work_log_id == WorkLog.id,
+    ).filter(
+        WorkLog.staff_id == staff.id, WorkLog.work_type.in_([kind, "LEGACY"]),
+        PayPeriod.start_date <= period.end_date, PayPeriod.end_date >= period.start_date,
+        WorkLogEntry.entry_date >= period.start_date, WorkLogEntry.entry_date <= period.end_date,
+        WorkLog.status != wf.CANCELLED,
+    ).first()
+    if overlapping_log:
+        raise HTTPException(409, "You already have work recorded for these dates; open your existing record instead")
 
     log = WorkLog(
         staff_id=staff.id,

@@ -244,7 +244,7 @@ function PayoutEstimate({ logId, version }: { logId: number; version: string }) 
   );
 }
 
-/** Provider work-log editor: header, day-by-day entries, totals, submission, OTP confirmation. */
+/** Provider work-log editor: header, day-by-day entries, totals and submission. */
 export function WorkLogEditor({ logId, initialDate, onBack }: { logId: number; initialDate?: string; onBack: () => void }) {
   const { me, t, lang } = useAuth();
   const { data: log, error, loading, setData, reload } = useApi<WorkLogDetail>(`/worklogs/${logId}`);
@@ -303,7 +303,7 @@ export function WorkLogEditor({ logId, initialDate, onBack }: { logId: number; i
         </div>
       )}
 
-      {log.awaiting_my_otp && <OtpPanel log={log} onChanged={setData} />}
+      {me?.client_settings.provider_otp_required !== false && log.awaiting_my_otp && <OtpPanel log={log} onChanged={setData} />}
 
       <PayoutEstimate logId={log.id} version={log.updated_at} />
 

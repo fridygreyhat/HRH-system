@@ -140,20 +140,6 @@ export const TABLES: TableSpec[] = [
     ],
   },
   {
-    key: 'pay-periods',
-    title: 'Pay periods',
-    singular: 'pay period',
-    path: '/admin/pay-periods',
-    writeRoles: ['CENTRAL_ADMIN', 'FHI360_FINANCE'],
-    validate: (p) => (String(p.end_date) < String(p.start_date) ? 'The end date is before the start date.' : null),
-    fields: [
-      { key: 'period_label', label: 'Label', type: 'text', maxLength: 100, hint: 'e.g. October 2026' },
-      { key: 'start_date', label: 'Start date', type: 'date', required: true },
-      { key: 'end_date', label: 'End date', type: 'date', required: true },
-      { key: 'status', label: 'Status', type: 'select', required: true, options: opts('OPEN', 'CLOSED'), defaultValue: 'OPEN', badge: true },
-    ],
-  },
-  {
     key: 'funding-sources',
     title: 'Funding sources',
     singular: 'funding source',

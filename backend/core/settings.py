@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 from ..models import SystemSetting
 
 DEFAULTS: dict[str, Any] = {
-    # Off only while no SMS gateway can deliver codes: CTC verification then goes straight to technical review.
-    "provider_otp_required": True,
+    # Provider SMS confirmation is disabled by request; CTC goes to technical review.
+    "provider_otp_required": False,
     "otp_length": 4,
     "otp_ttl_minutes": 10,
     "otp_max_attempts": 5,

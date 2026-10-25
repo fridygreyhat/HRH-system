@@ -8,7 +8,11 @@ export function resolveWorkLogStart(
   workDate: string,
 ): { period?: PayPeriod; existing?: WorkLogSummary; error?: string } {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate)) return { error: 'Choose a work date to continue.' };
-  const containing = periods.filter((p) => p.start_date <= workDate && workDate <= p.end_date);
+  const inRange = periods.filter((p) => p.start_date <= workDate && workDate <= p.end_date);
+  // A regional schedule is authoritative for its dates—even when closed. Never fall back to
+  // a global OPEN period just because the matching regional period is closed.
+  const regional = inRange.filter((p) => p.region_id != null);
+  const containing = regional.length ? regional : inRange.filter((p) => p.region_id == null);
   const matches = logs.filter((log) => containing.some((p) => p.id === log.period_id) &&
     (log.work_type === workType || log.work_type === 'LEGACY'));
   if (matches.length === 1) {

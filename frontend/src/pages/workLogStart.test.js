@@ -37,3 +37,19 @@ test('ambiguous schedules or existing records require an explicit resolution', (
   const logs = [1, 2].map((id) => ({ id, period_id: id, work_type: 'SERVICES' }));
   expect(resolveWorkLogStart([period, second], logs, 'SERVICES', day).error).toBeTruthy();
 });
+
+test('regional schedule takes priority over a matching global schedule', () => {
+  const regional = { ...period, id: 7, region_id: 3 };
+  expect(resolveWorkLogStart([period, regional], [], 'SERVICES', day)).toEqual({ period: regional });
+});
+
+test('closed regional schedule never falls back to the open global schedule', () => {
+  const regional = { ...period, id: 7, region_id: 3, status: 'CLOSED' };
+  expect(resolveWorkLogStart([period, regional], [], 'SERVICES', day).error).toBeTruthy();
+});
+
+test('existing regional work continues without reopening unrelated global work', () => {
+  const regional = { ...period, id: 7, region_id: 3 };
+  const existing = { id: 9, period_id: 7, work_type: 'PAYROLL' };
+  expect(resolveWorkLogStart([period, regional], [existing], 'PAYROLL', day)).toEqual({ period: regional, existing });
+});

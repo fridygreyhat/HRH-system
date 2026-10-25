@@ -57,6 +57,8 @@ def client():
         # The acceptance suite uses archived periods; keep that separate from
         # the standard 72-hour grace policy.
         session.merge(SystemSetting(key="backdate_grace_hours", value=1000000))
+        # Legacy OTP-specific regression cases opt in; the app default is now off.
+        session.merge(SystemSetting(key="provider_otp_required", value=True))
         session.commit()
     from fastapi.testclient import TestClient
 

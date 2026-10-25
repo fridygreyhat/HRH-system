@@ -8,11 +8,13 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    Index,
     Numeric,
     String,
     Text,
     Time,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -22,11 +24,14 @@ from .base import Base, created_at, updated_at, utcnow
 class PayPeriod(Base):
     __tablename__ = "pay_periods"
     __table_args__ = (
-        UniqueConstraint("start_date", "end_date"),
+        UniqueConstraint("start_date", "end_date", "region_id", name="uq_pay_periods_dates_region"),
+        Index("uq_pay_periods_global_dates", "start_date", "end_date", unique=True,
+              postgresql_where=text("region_id IS NULL")),
         CheckConstraint("end_date >= start_date", name="dates"),
         CheckConstraint("status IN ('OPEN', 'CLOSED')", name="status"),
     )
     id = Column(Integer, primary_key=True)
+    region_id = Column(Integer, ForeignKey("regions.id"), nullable=True, index=True)
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
     period_label = Column(String(100))

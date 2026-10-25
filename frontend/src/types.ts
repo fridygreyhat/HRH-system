@@ -81,6 +81,9 @@ export interface PayPeriod {
   end_date: string;
   period_label: string | null;
   status: string;
+  region_id?: number | null;
+  region_name?: string | null;
+  can_manage?: boolean;
 }
 
 export interface Section {

@@ -171,7 +171,10 @@ def staff_visibility(current: CurrentUser):
 
 
 def assignment_for_period(db: Session, staff_id: int, period: PayPeriod) -> Optional[StaffAssignment]:
-    return _overlapping(db, staff_id, period.start_date, period.end_date)
+    assignment = _overlapping(db, staff_id, period.start_date, period.end_date)
+    if assignment and period.region_id is not None and assignment.region_id != period.region_id:
+        return None
+    return assignment
 
 
 def current_assignment(db: Session, staff_id: int, on: date) -> Optional[StaffAssignment]:

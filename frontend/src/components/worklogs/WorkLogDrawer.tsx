@@ -23,8 +23,8 @@ import { Alert, AuditTimeline, DevCodeNotice, Drawer, Facts, Field, Modal, Reaso
 import { EntriesView, FLAG_GENERAL_FIELDS, FlagsList, TotalsPanel } from './shared';
 
 const ACTION_HELP: Record<string, string> = {
-  verify: 'Confirms the work occurred. The current content is frozen as a new version and the provider receives an SMS code to confirm it.',
-  endorse: 'Technical endorsement of the provider-confirmed version.',
+  verify: 'Confirms the work occurred and freezes the current content as a new version.',
+  endorse: 'Technical endorsement of the verified version.',
   authorize: 'Final program and budget authorization. Approval is not payment.',
   return: 'Send back to the provider for correction. Resubmission restarts the whole review chain.',
   return_to_reviewer: 'Send back to the previous review stage.',

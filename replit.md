@@ -58,7 +58,22 @@ Officers can add scoped service activities through the existing Rates setup.
 No rates or budgets are invented. CHW evidence, daily-comment and period-comment
 inputs are removed; older text and immutable entry snapshots remain intact.
 
-## Data Clerk daily timesheets and services
+## Provider confirmation and regional pay periods
+
+Provider SMS confirmation is removed by user request. CTC verification goes
+directly to Technical Review for CHW, HCP and Data Clerk. Preserve historical
+SMS audit records; do not represent a bypass as a provider confirmation.
+Existing SMS-waiting logs must advance with a system audit, not get stranded.
+Other notifications are not disabled by this request.
+
+Technical Officers can create and manage pay periods only in their assigned
+regions. Existing global schedules remain global and read-only for Technical;
+Central Admin and FHI360 Finance retain global management. Regional periods
+take precedence for new entry dates, including closed periods, so a global
+open schedule cannot bypass a regional closure. Do not change a used period's
+dates or regional ownership; historical financial records must remain intact.
+
+## Data Clerk forms
 
 Use the supplied Data Clerk roles document for roles 1–18: 18 numeric
 indicators and four Yes/No checks. Both CARE_NEW and transferred-in

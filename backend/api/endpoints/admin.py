@@ -127,7 +127,8 @@ _crud("wards", Ward, (CENTRAL_ADMIN,), Ward.name)
 _crud("facilities", Facility, (CENTRAL_ADMIN,), Facility.name)
 _crud("community-areas", CommunityArea, (CENTRAL_ADMIN,), CommunityArea.name)
 _crud("sections", Section, (CENTRAL_ADMIN,), Section.code, pk="code")
-_crud("pay-periods", PayPeriod, (CENTRAL_ADMIN, FHI360_FINANCE), PayPeriod.start_date.desc())
+from .pay_periods import router as pay_periods_router
+router.include_router(pay_periods_router)
 _crud("funding-sources", FundingSource, (FHI360_FINANCE,), FundingSource.name)
 _crud("claim-categories", ClaimCategory, (FHI360_FINANCE,), ClaimCategory.name)
 

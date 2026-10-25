@@ -15,6 +15,7 @@ import { ChangePasswordForm, ForcedPasswordChange } from './pages/ChangePassword
 import { Login } from './pages/Login';
 import { MyWorkLogs } from './pages/MyWorkLogs';
 import { PrintWorkLog } from './pages/PrintWorkLog';
+import { PayPeriods } from './pages/PayPeriods';
 import { ReviewWorkLogs } from './pages/ReviewWorkLogs';
 import { RoutingQueue } from './pages/RoutingQueue';
 import { Rates } from './pages/Rates';
@@ -49,6 +50,7 @@ const PAGES: Page[] = [
   { key: 'my-logs', label: 'My work logs', description: 'Record your daily work and confirm verified logs', icon: 'calendar', group: 'Work', roles: ['PROVIDER'], render: () => <MyWorkLogs /> },
   { key: 'backdate-access', label: 'Backdated entry access', description: 'Grant time-limited access to reopen a date-specific work log', icon: 'calendar', group: 'Work', roles: ['TECHNICAL_OFFICER', 'SUPER_ADMIN'], render: () => <BackdateAccess /> },
   { key: 'rates', label: 'Rates', description: 'Scoped activity rates and immutable revisions', icon: 'receipt', group: 'Finance', roles: ['TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'OVERSIGHT', 'SUPER_ADMIN'], render: () => <Rates /> },
+  { key: 'pay-periods', label: 'Pay periods', description: 'Set regional work and pay schedules', icon: 'calendar', group: 'Finance', roles: ['TECHNICAL_OFFICER', 'CENTRAL_ADMIN', 'FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <PayPeriods /> },
   { key: 'routing-queue', label: 'Routing queue', description: 'Verify the assignment, then choose the organization that should pay', icon: 'route', group: 'Finance', roles: ['REGIONAL_FINANCE', 'SUPER_ADMIN'], render: () => <RoutingQueue /> },
   { key: 'review-cadres', label: 'Review assignments', description: 'Manage reviewer cadre and geographic scope', icon: 'users', group: 'System', roles: ['TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'SUPER_ADMIN'], render: () => <ReviewCadres /> },
   {
