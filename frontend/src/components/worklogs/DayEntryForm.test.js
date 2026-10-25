@@ -177,6 +177,12 @@ const renderClerk = (kind = 'PAYROLL', missingKey) => {
     fields: fields.map(field => field.key), required_fields: required, item_type: kind,
     hours_input: false, groups,
   };
+  if (kind === 'SERVICES') {
+    activity.fields = [];
+    activity.required_fields = [];
+    activity.groups = [];
+    Object.keys(values).forEach(key => delete values[key]);
+  }
   const log = logFor('DATA_CLERK');
   log.work_type = kind;
   log.cadre.fields = fields;
@@ -192,8 +198,8 @@ const renderClerk = (kind = 'PAYROLL', missingKey) => {
 const clerkGroup = () => Array.from(container.querySelectorAll('select'))
   .find(select => Array.from(select.options).some(option => option.textContent === 'CTC-2 and treatment data'));
 
-test.each(['PAYROLL', 'SERVICES'])('Data Clerk %s shows indicators and saves without evidence/comments', async kind => {
-  const required = renderClerk(kind);
+test('Data Clerk PAYROLL shows indicators and saves without evidence/comments', async () => {
+  const required = renderClerk('PAYROLL');
   expect(clerkGroup().options).toHaveLength(5);
   expect(container.querySelectorAll('input[type="number"]')).toHaveLength(9);
   expect(container.querySelectorAll('textarea')).toHaveLength(0);
@@ -205,6 +211,24 @@ test.each(['PAYROLL', 'SERVICES'])('Data Clerk %s shows indicators and saves wit
   expect(payload.measures.reporting_0).toBe(false);
   expect(payload).not.toHaveProperty('evidence_text');
   expect(payload).not.toHaveProperty('comment');
+});
+
+test('Data Clerk Services shows only Weekend Clinics, without daily activity groups', async () => {
+  renderClerk('SERVICES');
+  const choices = container.querySelectorAll('select');
+  expect(choices).toHaveLength(1);
+  expect(Array.from(choices[0].options).map(option => option.textContent)).toEqual(['Weekend Clinics']);
+  expect(container.querySelectorAll('fieldset')).toHaveLength(0);
+  expect(container.querySelectorAll('input[type="number"]')).toHaveLength(0);
+  expect(container.textContent).not.toContain('CTC-2 and treatment data');
+  expect(container.querySelectorAll('input[type="time"]')).toHaveLength(2);
+  expect(container.querySelectorAll('textarea')).toHaveLength(0);
+  await captureGps();
+  await submitDay();
+  expect(api.put).toHaveBeenCalledTimes(1);
+  expect(api.put.mock.calls[0][1]).toMatchObject({
+    activity_key: 'data_clerk_weekend_clinic', start_time: '08:00', end_time: '09:00', measures: {},
+  });
 });
 
 test('Data Clerk missing hidden Yes/No check opens reporting; optional notes do not block saving', async () => {

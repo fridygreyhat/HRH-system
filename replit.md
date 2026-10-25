@@ -67,9 +67,11 @@ Daily Payroll and secondary-facility support use these fields; secondary
 support also requires the facility name. Weekly eligible-list sharing and
 HVL/EID result-sharing are available but optional on a daily entry.
 
-The user requested Weekend Clinics as the only initial Data Clerk service;
-it uses the same Data Clerk data-entry indicators. Regional Technical can add
-scoped services later. Do not invent rates or budgets. Remove daily evidence
+The user repeated that Weekend Clinics must be the only initial Data Clerk
+service. Do not show the daily data-entry groups under Services: the initial
+clinic records work hours and mandatory location only. Daily data-entry
+indicators belong under Payroll. Regional Technical can add scoped services
+later. Do not invent rates or budgets. Remove daily evidence
 and comment inputs, preserving older saved text and entry snapshots.
 Data Clerk period-comment inputs are also removed. Do not erase previously
 saved period comments when saving other header details.

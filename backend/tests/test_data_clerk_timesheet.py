@@ -72,7 +72,9 @@ def test_only_weekend_clinic_service_and_separate_payroll_record(api, period, ne
     activity = service["cadre"]["activities"][0]
     assert activity["key"] == "data_clerk_weekend_clinic"
     assert activity["label_en"] == "Weekend Clinics"
-    assert len(activity["required_fields"]) == 22
+    assert activity["fields"] == []
+    assert activity["required_fields"] == []
+    assert activity["groups"] == []
     saturday = date.fromisoformat(period["start_date"]) + timedelta(days=5)
     payload = payload_for(service, activity["key"])
     path = f"/worklogs/{service['id']}/entries/{saturday}"
@@ -98,6 +100,9 @@ def test_regional_technical_can_add_later_clerk_services_and_template_rates(api,
     })
     log = api.post("/worklogs", "clerk1", {"period_id": period["id"], "work_type": "SERVICES"})
     assert added["key"] in {a["key"] for a in log["cadre"]["activities"]}
+    saved = api.put(f"/worklogs/{log['id']}/entries/{period['start_date']}", "clerk1",
+                    payload_for(log, added["key"]))
+    assert saved["entries"][0]["activity_key"] == added["key"]
     template = api.post("/rates", "tofficer1", {
         **common, "item_type": "PAYROLL", "template_key": "data_clerk_secondary_facility",
         # Payroll input mode is SINGLE; the selected template supplies its fields.

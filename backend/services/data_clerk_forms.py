@@ -40,7 +40,7 @@ def clerk_metadata(item):
         groups=[{**deepcopy(group), "fields": [key for key in group["fields"] if key in keys]}
                 for group in DATA_CLERK_GROUPS if keys.intersection(group["fields"])],
         required_fields=[key for key in DATA_CLERK_REQUIRED if key in keys],
-        cascade_pairs=deepcopy(DATA_CLERK_CASCADES),
+        cascade_pairs=[deepcopy(pair) for pair in DATA_CLERK_CASCADES if pair[0] in keys and pair[1] in keys],
         requires_location=(item.get("source_key") or item["key"]) == "data_clerk_secondary_facility",
     )
     return item
@@ -59,10 +59,11 @@ def data_clerk_builtins(fields, cadre_id):
         ("data_clerk_secondary_facility", "Data entry at a secondary facility", "Uingizaji wa takwimu katika kituo kingine", "PAYROLL"),
         ("data_clerk_weekend_clinic", "Weekend Clinics", "Kliniki za mwisho wa wiki", "SERVICES"),
     ]:
+        activity_keys = keys if kind == "PAYROLL" else []
         result.append(clerk_metadata({
             "key": key, "label_en": en, "label_sw": sw, "item_type": kind, "cadre_id": cadre_id,
-            "fields": list(keys), "field_definitions": [deepcopy(fields[field]) for field in keys],
-            "form_mode": "CASCADE", "hours_input": False, "unit_type": "PER_HOUR",
+            "fields": list(activity_keys), "field_definitions": [deepcopy(fields[field]) for field in activity_keys],
+            "form_mode": "CASCADE" if activity_keys else "SINGLE", "hours_input": False, "unit_type": "PER_HOUR",
             "rate_value": None, "currency": "TZS", "billable_field": None,
         }))
     return result

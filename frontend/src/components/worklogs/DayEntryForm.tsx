@@ -220,13 +220,17 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
               : activityType === 'SERVICES' ? (lang === 'sw' ? 'Huduma' : 'Service')
                 : (lang === 'sw' ? 'Aina ya shughuli ya HCP' : 'HCP activity type')
             : isDataClerk
-              ? (lang === 'sw' ? 'Shughuli ya siku' : 'Daily, secondary facility, or clinic activity')
+              ? activityType === 'SERVICES' ? (lang === 'sw' ? 'Huduma' : 'Service')
+                : (lang === 'sw' ? 'Shughuli ya daftari la siku' : 'Daily timesheet activity')
             : lang === 'sw' ? 'Aina ya shughuli' : 'Activity'}
           hint={isHcp
             ? (lang === 'sw'
               ? 'Malipo (PAYROLL) ni daftari la kila siku la kituo; Huduma (SERVICES) hurekodi huduma kando.'
               : 'PAYROLL is the daily facility timesheet; SERVICES records services separately.')
-            : lang === 'sw' ? 'Chagua shughuli ili kuonyesha viashiria vyake.' : 'Select an activity to show its specific indicators.'}
+            : isDataClerk && activityType === 'SERVICES'
+              ? (lang === 'sw' ? 'Kliniki za mwisho wa wiki pekee kwa sasa. Huduma nyingine zitaongezwa na Afisa wa Ufundi wa Mkoa.'
+                : 'Weekend Clinics only for now. Your Regional Technical Officer can add other services.')
+              : lang === 'sw' ? 'Chagua shughuli ili kuonyesha viashiria vyake.' : 'Select an activity to show its specific indicators.'}
         >
           <select required value={activityKey} onChange={(e) => setActivityKey(e.target.value)}>
             {isHcp && <option value="">— {lang === 'sw' ? 'Chagua shughuli' : 'Select an activity'} —</option>}
@@ -238,7 +242,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
                     : activity.key === 'data_clerk_secondary_facility'
                       ? (lang === 'sw' ? 'Kituo kingine' : 'Secondary facility')
                       : activity.key === 'data_clerk_weekend_clinic'
-                        ? (lang === 'sw' ? 'Kliniki ya wikendi' : 'Weekend clinic')
+                        ? (lang === 'sw' ? 'Kliniki za mwisho wa wiki' : 'Weekend Clinics')
                         : (lang === 'sw' ? activity.label_sw : activity.label_en)
                   : (lang === 'sw' ? activity.label_sw : activity.label_en)}
               </option>
