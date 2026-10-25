@@ -217,6 +217,7 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
   const { hasRole } = useAuth();
   const isRpmWithoutFinanceRole = hasRole('RPM') && !hasRole('REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE');
   const { data: claim, error, loading, setData } = useApi<ClaimDetail>(`/claims/${claimId}`);
+  const canSeeBudgetDetails = hasRole('FHI360_FINANCE', 'CSO_FINANCE', 'RPM', 'OVERSIGHT');
   const [dialog, setDialog] = useState<Dialog>(null);
   const [tab, setTab] = useState<'overview' | 'trace'>('overview');
   const [notice, setNotice] = useState<string | null>(null);
@@ -245,6 +246,11 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
   const paid = claim && (claim.payment_status === 'PAID' || claim.payment_status === 'RECONCILED');
   const financeReviewPending = claim?.status === 'PENDING_FINANCE_REVIEW';
   const paymentActions = claim && !isRpmWithoutFinanceRole && !financeReviewPending ? claim.payment_actions : [];
+  const budget = claim && canSeeBudgetDetails && claim.budget_line && claim.budget_line.id === claim.budget_line_id
+    ? claim.budget_line
+    : undefined;
+  const exposure = budget ? Number(budget.committed_amount || 0) + Number(budget.spent_amount || 0) : 0;
+  const estimateReached = !!budget && budget.estimated_amount != null && exposure > 0 && exposure >= budget.estimated_amount;
 
   return (
     <Drawer title={`Claim #${claimId}`} onClose={onClose} wide>
@@ -293,6 +299,11 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
             </div>
           )}
           <Alert kind="success">{notice}</Alert>
+          {estimateReached && budget && (
+            <Alert kind="warn">
+              Soft estimate reached for {budget.code}: {money(exposure, claim.currency)} exposure of {money(budget.estimated_amount!, claim.currency)} estimated. This is a planning warning only; it does not change claim actions or the hard-cap approval rule.
+            </Alert>
+          )}
           {financeReviewPending && (
             <p className="notice notice-info">
               This claim was created from the RPM-approved work log’s saved activity rates. It is awaiting Regional Finance review and category selection. The amount is not routed, budget-committed or payable; finance will review this same claim before routing.

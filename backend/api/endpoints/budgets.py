@@ -10,7 +10,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import or_, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -26,7 +26,7 @@ from ...services.v22_scope import regions_for
 
 router = APIRouter()
 READ_ROLES = (FHI360_FINANCE, CSO_FINANCE, RPM, OVERSIGHT)
-TRACKER_COLUMNS = ["code", "name", "category", "period_start", "region", "allocated_amount", "external_ref"]
+TRACKER_COLUMNS = ["code", "name", "category", "period_start", "region", "allocated_amount", "external_ref", "estimated_amount (optional)"]
 
 
 def _visibility(current: CurrentUser):
@@ -44,7 +44,8 @@ def _visibility(current: CurrentUser):
 def _can_manage(current: CurrentUser, line_org: Organization) -> bool:
     if line_org.type == "FHI360":
         return FHI360_FINANCE in current.roles
-    return line_org.type == "CSO" and CSO_FINANCE in current.roles and line_org.id in current.scope_values("organization_id")
+    return line_org.type == "CSO" and (FHI360_FINANCE in current.roles or
+        (CSO_FINANCE in current.roles and line_org.id in current.scope_values("organization_id")))
 
 
 def _validate_dimensions(db, org, category_id, period_id, region_id):
@@ -79,6 +80,7 @@ def _out(db: Session, line: BudgetLine) -> dict:
         "period_label": period.period_label or str(period.start_date),
         "region_name": db.get(Region, line.region_id).name if line.region_id else "All regions",
         "available_amount": bg.available(line),
+        **bg.planning_status(line),
     }
 
 
@@ -89,8 +91,35 @@ class LineIn(BaseModel):
     category_id: int
     period_id: int
     region_id: Optional[int] = None
-    allocated_amount: Decimal = Field(ge=0)
+    allocated_amount: Decimal = Field(ge=0, max_digits=15, decimal_places=2)
+    estimated_amount: Optional[Decimal] = Field(default=None, ge=0, max_digits=15, decimal_places=2)
     currency: str = Field(default="TZS", pattern=r"^[A-Z]{3}$")
+
+    @model_validator(mode="after")
+    def estimate_within_cap(self):
+        if self.estimated_amount is not None and self.estimated_amount > self.allocated_amount:
+            raise ValueError("Estimated spend cannot exceed the hard cap")
+        return self
+
+
+class AllocationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    allocated_amount: Decimal = Field(ge=0, max_digits=15, decimal_places=2)
+    estimated_amount: Optional[Decimal] = Field(ge=0, max_digits=15, decimal_places=2)
+    reason: str = Field(min_length=3, max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def meaningful_reason(cls, value):
+        if len(value.strip()) < 3:
+            raise ValueError("Give a reason with at least three non-space characters")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def estimate_within_cap(self):
+        if self.estimated_amount is not None and self.estimated_amount > self.allocated_amount:
+            raise ValueError("Estimated spend cannot exceed the hard cap")
+        return self
 
 
 class ReallocateIn(BaseModel):
@@ -138,6 +167,33 @@ def create_line(body: LineIn, db: Session = Depends(get_db), current: CurrentUse
         raise HTTPException(status_code=409, detail="A budget line with this code already exists for the organization, period and region")
     db.add(BudgetTransaction(budget_line_id=line.id, kind="ALLOCATE", amount=body.allocated_amount, actor_id=current.id, reason="Initial allocation"))
     system_audit.record(db, current, "budget_line", line.id, "create", after=body.model_dump())
+    db.commit()
+    return _out(db, line)
+
+
+@router.put("/lines/{line_id}/allocation")
+def update_allocation(line_id: int, body: AllocationIn, db: Session = Depends(get_db),
+                      current: CurrentUser = Depends(require_roles(FHI360_FINANCE, CSO_FINANCE))):
+    line = db.query(BudgetLine).filter(BudgetLine.id == line_id, _visibility(current)).first()
+    if not line:
+        raise HTTPException(404, "Budget line not found")
+    org = db.query(Organization).filter_by(id=line.organization_id).with_for_update().one()
+    if not _can_manage(current, org):
+        raise HTTPException(403, "You cannot manage this organization's budget")
+    _validate_dimensions(db, org, line.category_id, line.period_id, line.region_id)
+    line = bg.lock(db, line.id)
+    if body.allocated_amount < line.committed_amount + line.spent_amount:
+        raise HTTPException(422, "The hard cap cannot be below committed plus spent funds")
+    before = to_dict(line)
+    delta = body.allocated_amount - line.allocated_amount
+    line.allocated_amount, line.estimated_amount = body.allocated_amount, body.estimated_amount
+    if line.source == "FHI360_TRACKER":
+        line.sync_status = "UNSYNCED"
+    if delta:
+        db.add(BudgetTransaction(budget_line_id=line.id, kind="ALLOCATE", amount=delta,
+                                actor_id=current.id, reason=body.reason))
+    system_audit.record(db, current, "budget_line", line.id, "update_allocation",
+                        before=before, after=to_dict(line), reason=body.reason)
     db.commit()
     return _out(db, line)
 
@@ -203,20 +259,28 @@ async def tracker_import(file: UploadFile = File(...), db: Session = Depends(get
                 line = db.query(BudgetLine).filter(
                     BudgetLine.code == row["code"].strip(), BudgetLine.organization_id == org.id, BudgetLine.period_id == period.id,
                     BudgetLine.region_id == region.id if region else BudgetLine.region_id.is_(None),
-                ).with_for_update().first()
+                ).with_for_update().populate_existing().first()
                 if line is None:
                     line = BudgetLine(code=row["code"].strip(), name=row["name"].strip(), source="FHI360_TRACKER", organization_id=org.id,
                                       category_id=category.id, period_id=period.id, region_id=region.id if region else None, allocated_amount=0)
                     db.add(line)
                     db.flush()
+                estimate_text = (row.get("estimated_amount") or "").strip()
+                estimate = (Decimal(estimate_text) if estimate_text else None) if "estimated_amount" in row else line.estimated_amount
+                validated = AllocationIn(allocated_amount=amount, estimated_amount=estimate, reason="Tracker import")
+                amount = validated.allocated_amount
                 if amount < line.committed_amount + line.spent_amount:
                     raise ValueError(f"Allocation {amount} is below committed + spent ({line.committed_amount + line.spent_amount})")
                 delta = amount - line.allocated_amount
+                before = to_dict(line)
                 line.allocated_amount = amount
+                line.estimated_amount = validated.estimated_amount
                 line.external_ref = (row.get("external_ref") or "").strip() or line.external_ref
                 line.sync_status, line.last_synced_at = "IMPORTED", utcnow()
                 if delta:
                     db.add(BudgetTransaction(budget_line_id=line.id, kind="IMPORT_ADJUST", amount=delta, actor_id=current.id, reason=f"Tracker import {file.filename}"))
+                system_audit.record(db, current, "budget_line", line.id, "tracker_import", before=before,
+                                    after=to_dict(line), reason=f"Tracker import {file.filename}")
                 log.success_count += 1
         except (ValueError, KeyError, InvalidOperation) as e:
             errors.append({"line": line_no, "error": str(e)})
@@ -240,11 +304,12 @@ def tracker_export(period_id: Optional[int] = None, db: Session = Depends(get_db
     lines = query.order_by(BudgetLine.code).with_for_update().all()
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["code", "name", "period_start", "region", "external_ref", "allocated_amount", "committed_amount", "spent_amount", "currency"])
+    writer.writerow(["code", "name", "period_start", "region", "external_ref", "allocated_amount", "committed_amount", "spent_amount", "currency", "estimated_amount"])
     for line in lines:
         period = db.get(PayPeriod, line.period_id)
         writer.writerow([line.code, line.name, period.start_date, db.get(Region, line.region_id).name if line.region_id else "", line.external_ref or "",
-                         line.allocated_amount, line.committed_amount, line.spent_amount, line.currency])
+                         line.allocated_amount, line.committed_amount, line.spent_amount, line.currency,
+                         line.estimated_amount if line.estimated_amount is not None else ""])
         line.sync_status, line.last_synced_at = "EXPORTED", utcnow()
     db.add(BudgetSyncLog(sync_type="EXPORT", filename="tracker-export.csv", records_processed=len(lines), success_count=len(lines),
                          sync_status="SUCCESS", performed_by=current.id, completed_at=utcnow()))

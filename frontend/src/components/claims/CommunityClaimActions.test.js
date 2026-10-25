@@ -42,6 +42,43 @@ test('community verifier sees only server-authorized verify and send-back action
   }
 });
 
+test('estimate warning uses budget committed plus spent and does not alter claim actions', () => {
+  mockRole = 'FHI360_FINANCE';
+  mockClaim.budget_line = { id: 3, code: 'CSO-3', name: 'Outreach', estimated_amount: 100, committed_amount: 65, spent_amount: 40, allocated_amount: 200 };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  act(() => root.render(<ClaimDrawer claimId={43} onClose={() => {}} />));
+  try {
+    expect(container.textContent).toContain('Soft estimate reached for CSO-3');
+    expect(container.textContent).toContain('TZS');
+    expect(container.textContent).toContain('Verify community service');
+    expect(container.textContent).toContain('Send back for validation');
+  } finally {
+    mockClaim.budget_line = null;
+    mockRole = 'COMMUNITY_VERIFIER';
+    act(() => root.unmount());
+    container.remove();
+  }
+});
+
+test('claim viewers without budget visibility do not see embedded estimate details', () => {
+  mockRole = 'PROVIDER';
+  mockClaim.budget_line = { id: 3, code: 'CSO-3', name: 'Outreach', estimated_amount: 0, committed_amount: 4, spent_amount: 1, allocated_amount: 10 };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  act(() => root.render(<ClaimDrawer claimId={43} onClose={() => {}} />));
+  try {
+    expect(container.textContent).not.toContain('Soft estimate reached');
+  } finally {
+    mockClaim.budget_line = null;
+    mockRole = 'COMMUNITY_VERIFIER';
+    act(() => root.unmount());
+    container.remove();
+  }
+});
+
 test('provider sees server-authorized submit and cancellation actions for a direct claim', async () => {
   mockRole = 'PROVIDER';
   api.post.mockResolvedValue(mockClaim);

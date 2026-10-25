@@ -10,6 +10,9 @@ export interface BudgetCurrencyTotals {
   committed: number;
   spent: number;
   available: number;
+  estimated: number;
+  estimatesSet: number;
+  estimatesNotSet: number;
 }
 
 export function remaining(line: BudgetLine): number {
@@ -19,14 +22,27 @@ export function remaining(line: BudgetLine): number {
 export function totalsByCurrency(lines: BudgetLine[]): BudgetCurrencyTotals[] {
   const map = new Map<string, BudgetCurrencyTotals>();
   lines.forEach((line) => {
-    const total = map.get(line.currency) || { currency: line.currency, allocated: 0, committed: 0, spent: 0, available: 0 };
+    const total = map.get(line.currency) || { currency: line.currency, allocated: 0, committed: 0, spent: 0, available: 0, estimated: 0, estimatesSet: 0, estimatesNotSet: 0 };
     total.allocated += line.allocated_amount;
     total.committed += line.committed_amount;
     total.spent += line.spent_amount;
     total.available += remaining(line);
+    if (line.estimated_amount == null) total.estimatesNotSet += 1;
+    else {
+      total.estimated += line.estimated_amount;
+      total.estimatesSet += 1;
+    }
     map.set(line.currency, total);
   });
   return Array.from(map.values());
+}
+
+export function budgetStatus(line: BudgetLine): string {
+  if (line.budget_status) return line.budget_status;
+  const exposure = Number(line.committed_amount || 0) + Number(line.spent_amount || 0);
+  if (exposure >= Number(line.allocated_amount) && exposure > 0) return 'HARD_CAP_REACHED';
+  if (line.estimated_amount != null && exposure >= line.estimated_amount && exposure > 0) return 'ESTIMATE_REACHED';
+  return line.estimated_amount == null ? 'NOT_SET' : 'WITHIN_ESTIMATE';
 }
 
 export function grouped(lines: BudgetLine[], keyOf: (line: BudgetLine) => string, labelOf: (line: BudgetLine) => string) {
@@ -47,10 +63,12 @@ function SummaryTotals({ lines }: { lines: BudgetLine[] }) {
       {totals.map((total) => (
         <div className="budget-summary-currency" key={total.currency}>
           <strong>{total.currency}</strong>
-          <span><small>Allocated</small>{money(total.allocated, total.currency)}</span>
+          <span><small>Hard cap</small>{money(total.allocated, total.currency)}</span>
           <span><small>Committed</small>{money(total.committed, total.currency)}</span>
           <span><small>Spent</small>{money(total.spent, total.currency)}</span>
           <span><small>Remaining</small>{money(total.available, total.currency)}</span>
+          <span><small>Estimates set · {total.estimatesSet}</small>{total.estimatesSet ? money(total.estimated, total.currency) : 'Not set'}</span>
+          {total.estimatesNotSet > 0 && <span><small>Not set · {total.estimatesNotSet} lines</small>—</span>}
         </div>
       ))}
     </div>
@@ -108,7 +126,8 @@ export function BudgetHierarchy({
                         <table className={`${hasActions ? 'clickable ' : ''}budget-line-table`}>
                           <thead><tr>
                             <th>Allocation</th><th>Organization</th><th>Region</th><th>Category</th><th>Period</th>
-                            <th className="num">Allocated</th><th className="num">Committed</th><th className="num">Spent</th><th className="num">Remaining</th>
+                            <th className="num">Estimate</th><th className="num">Exposure</th><th>Status</th>
+                            <th className="num">Hard cap</th><th className="num">Committed</th><th className="num">Spent</th><th className="num">Remaining</th>
                             <th>Tracker</th><th>Source</th>{hasActions && <th>Actions</th>}
                           </tr></thead>
                           <tbody>
@@ -123,6 +142,9 @@ export function BudgetHierarchy({
                                 <td>{line.organization_name}</td>
                                 <td>{line.region_id == null && !isFhiLine(line) ? <span className="badge badge-warn">{regionLabel(line)}</span> : regionLabel(line)}</td>
                                 <td>{line.category_name}</td><td className="nowrap">{line.period_label}</td>
+                                <td className="num">{line.estimated_amount == null ? <span className="muted">Not set</span> : money(line.estimated_amount, line.currency)}</td>
+                                <td className="num">{money(line.exposure_amount ?? (line.committed_amount + line.spent_amount), line.currency)}</td>
+                                <td><span className={`badge ${budgetStatus(line) === 'HARD_CAP_REACHED' ? 'badge-danger' : budgetStatus(line) === 'ESTIMATE_REACHED' ? 'badge-warn' : 'badge-info'}`}>{budgetStatus(line).replaceAll('_', ' ')}</span></td>
                                 <td className="num">{money(line.allocated_amount, line.currency)}</td>
                                 <td className="num">{money(line.committed_amount, line.currency)}</td>
                                 <td className="num">{money(line.spent_amount, line.currency)}</td>

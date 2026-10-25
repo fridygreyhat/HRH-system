@@ -156,10 +156,20 @@ def test_dual_role_verifier_cannot_approve_the_claim_they_verified(api, db, comm
     for grant in db.query(UserReviewCadre).filter_by(user_id=base.id):
         db.add(UserReviewCadre(user_id=user.id, cadre_id=grant.cadre_id))
     db.commit()
-    claim = verified(api, community, name)
-    response = api.post(f"/claims/{claim['id']}/actions/approve", name, expect=403)
-    assert "independent" in response["detail"]
-    api.post(f"/claims/{claim['id']}/actions/approve", "csofin1")
+    try:
+        claim = verified(api, community, name)
+        response = api.post(f"/claims/{claim['id']}/actions/approve", name, expect=403)
+        assert "independent" in response["detail"]
+        api.post(f"/claims/{claim['id']}/actions/approve", "csofin1")
+    finally:
+        # Session-scoped fixtures retain users. Do not add a second real reviewer
+        # to subsequent notification/reminder scenarios.
+        db.rollback()
+        db.query(UserRole).filter_by(user_id=user.id).delete()
+        db.query(UserReviewCadre).filter_by(user_id=user.id).delete()
+        db.query(UserScope).filter_by(user_id=user.id).delete()
+        user.is_active = False
+        db.commit()
 
 
 def test_empty_regional_budget_holds_then_releases_one_commitment(api, db, community):

@@ -13,6 +13,7 @@ class BudgetLine(Base):
         CheckConstraint("sync_status IN ('NOT_APPLICABLE', 'UNSYNCED', 'IMPORTED', 'EXPORTED', 'RECONCILED', 'ERROR')", name="sync_status"),
         CheckConstraint("committed_amount >= 0 AND spent_amount >= 0", name="non_negative"),
         CheckConstraint("committed_amount + spent_amount <= allocated_amount", name="within_allocation"),
+        CheckConstraint("estimated_amount IS NULL OR (estimated_amount >= 0 AND estimated_amount <= allocated_amount)", name="estimate_within_cap"),
     )
     id = Column(Integer, primary_key=True)
     code = Column(String(100), nullable=False)  # FHI360 tracker activity/budget-line identifier
@@ -23,6 +24,7 @@ class BudgetLine(Base):
     period_id = Column(Integer, ForeignKey("pay_periods.id"), nullable=False)
     region_id = Column(Integer, ForeignKey("regions.id"))  # NULL = all regions
     allocated_amount = Column(Numeric(15, 2), nullable=False, default=0)
+    estimated_amount = Column(Numeric(15, 2), nullable=True)
     committed_amount = Column(Numeric(15, 2), nullable=False, default=0)
     spent_amount = Column(Numeric(15, 2), nullable=False, default=0)
     currency = Column(String(10), nullable=False, default="TZS")

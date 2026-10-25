@@ -42,7 +42,7 @@ test('CSO portal presents scoped regional, category, and pay-period budget hiera
     expect(container.querySelectorAll('.budget-period')).toHaveLength(2);
 
     const regionSummary = container.querySelector('.budget-region > summary');
-    expect(regionSummary.textContent).toContain('Allocated');
+    expect(regionSummary.textContent).toContain('Hard cap');
     expect(regionSummary.textContent).toContain('Committed');
     expect(regionSummary.textContent).toContain('Spent');
     expect(regionSummary.textContent).toContain('Remaining');

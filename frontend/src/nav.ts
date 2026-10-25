@@ -7,12 +7,22 @@ export interface HashRoute {
 }
 
 function parse(): HashRoute {
-  const [page = '', id = null] = window.location.hash.replace(/^#\/?/, '').split('/');
+  const entry = window.location.hash.replace(/^#\/?/, '') ||
+    (window.location.pathname.replace(/\/$/, '') === '/budget/allocate' ? 'budget/allocate' : '');
+  const [page = '', id = null] = entry.split('/');
   return { page, id: id || null };
 }
 
 export function navigate(page: string, id?: string | number): void {
   window.location.hash = id === undefined ? `/${page}` : `/${page}/${id}`;
+}
+
+export function isBudgetAllocationEntry(route: HashRoute): boolean {
+  return route.page === 'budget' && route.id === 'allocate';
+}
+
+export function canOpenBudgetAllocation(roles: string[]): boolean {
+  return roles.includes('FHI360_FINANCE') || roles.includes('CSO_FINANCE');
 }
 
 export function useHashRoute(): HashRoute {

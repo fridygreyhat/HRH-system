@@ -16,7 +16,7 @@
 .budget-period-title { display: flex; gap: .6rem; align-items: baseline; padding: .65rem .8rem; }
 .budget-line-table { min-width: 850px; }
 .budget-summary-totals { display: grid; gap: .35rem; min-width: 0; margin-left: auto; }
-.budget-summary-currency { display: grid; grid-template-columns: auto repeat(4, minmax(5.5rem, auto)); gap: .7rem; align-items: baseline; color: var(--text); font-size: .72rem; font-variant-numeric: tabular-nums; }
+.budget-summary-currency { display: grid; grid-template-columns: auto repeat(6, minmax(5.5rem, auto)); gap: .7rem; align-items: baseline; color: var(--text); font-size: .72rem; font-variant-numeric: tabular-nums; }
 .budget-summary-currency > strong { color: var(--primary); }
 .budget-summary-currency span { white-space: nowrap; }
 .budget-summary-currency small { display: block; color: var(--muted); font-size: .61rem; font-weight: 700; }

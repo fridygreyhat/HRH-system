@@ -29,6 +29,7 @@ export function CreateLineModal({
     category_id: '',
     period_id: periods.find((period) => period.region_id == null) ? String(periods.find((period) => period.region_id == null)!.id) : '',
     region_id: '',
+    estimated_amount: '',
     allocated_amount: '',
     currency: 'TZS',
   });
@@ -48,6 +49,8 @@ export function CreateLineModal({
   const allowedPeriods = periods.filter((period) => period.region_id == null || (!!form.region_id && period.region_id === Number(form.region_id)));
   const selectedPeriod = periods.find((period) => String(period.id) === form.period_id);
   const periodRegionMismatch = !!selectedPeriod && selectedPeriod.region_id != null && selectedPeriod.region_id !== Number(form.region_id);
+  const estimateValue = form.estimated_amount.trim() === '' ? null : Number(form.estimated_amount);
+  const estimateInvalid = estimateValue !== null && (!Number.isFinite(estimateValue) || estimateValue < 0 || estimateValue > Number(form.allocated_amount));
   const existingBucket = isCsoBudget && form.organization_id && form.region_id && form.category_id && form.period_id
     ? (existingLines.data || []).find((line) =>
         line.organization_id === Number(form.organization_id) &&
@@ -70,6 +73,10 @@ export function CreateLineModal({
       setError('Choose a global pay period or one assigned to the selected region.');
       return;
     }
+    if (estimateInvalid) {
+      setError('Estimated spend must be blank or between zero and the hard cap.');
+      return;
+    }
     if (isCsoBudget && (existingLines.loading || !existingLines.data || existingBucket)) {
       setError(existingBucket ? 'A CSO budget already exists for this organization, region, category, and pay period.' : 'Existing CSO budget lines could not be checked. Retry before creating a line.');
       return;
@@ -82,6 +89,7 @@ export function CreateLineModal({
         category_id: Number(form.category_id),
         period_id: Number(form.period_id),
         region_id: form.region_id ? Number(form.region_id) : null,
+        estimated_amount: estimateValue,
         allocated_amount: Number(form.allocated_amount),
         currency: form.currency.trim().toUpperCase() || 'TZS',
       }),
@@ -141,8 +149,11 @@ export function CreateLineModal({
               ))}
             </select>
           </Field>
-          <Field label="Allocated amount">
+          <Field label="Hard cap">
             <input type="number" min={0} step="0.01" inputMode="decimal" value={form.allocated_amount} onChange={set('allocated_amount')} required />
+          </Field>
+          <Field label="Estimated spend (optional)" hint="Leave blank for Not set. Zero is a recorded estimate of zero.">
+            <input type="number" min={0} step="0.01" inputMode="decimal" value={form.estimated_amount} onChange={set('estimated_amount')} />
           </Field>
           <Field label="Currency">
             <input value={form.currency} onChange={set('currency')} required maxLength={3} />
@@ -151,16 +162,81 @@ export function CreateLineModal({
         <p className="muted small">FHI360 lines start as “Unsynced” until they are exported to or reconciled with the HQ tracker. Historical all-region lines remain visible but cannot be used for new CSO budgets.</p>
         {isCsoBudget && !mappingData.loading && allowedRegions.length === 0 && <Alert>No active regional assignment is configured for this organization. Add an assignment before creating a CSO budget.</Alert>}
         {periodRegionMismatch && <Alert>That regional pay period does not match the selected budget region.</Alert>}
+        {estimateInvalid && <Alert kind="warn">Estimated spend must be between zero and the hard cap. Leave blank if no estimate has been approved.</Alert>}
         {existingBucket && <Alert>A CSO budget already exists for this organization, region, category, and pay period. Change the bucket rather than creating a duplicate.</Alert>}
         <Alert>{mappingData.error || (isCsoBudget ? existingLines.error : null) || error}</Alert>
         {isCsoBudget && existingLines.error && <button type="button" className="btn btn-secondary btn-sm" onClick={existingLines.reload}>Retry budget check</button>}
         <div className="row">
-          <button className="btn btn-primary" disabled={busy || periodRegionMismatch || !!existingBucket || (isCsoBudget && (mappingData.loading || existingLines.loading || !existingLines.data || !form.region_id || !mappedRegionIds.has(Number(form.region_id))))}>
+            <button className="btn btn-primary" disabled={busy || periodRegionMismatch || estimateInvalid || !!existingBucket || (isCsoBudget && (mappingData.loading || existingLines.loading || !existingLines.data || !form.region_id || !mappedRegionIds.has(Number(form.region_id))))}>
             {busy ? 'Saving…' : 'Create line'}
           </button>
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
             Cancel
           </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+export function EditAllocationModal({
+  line,
+  onClose,
+  onDone,
+}: {
+  line: BudgetLine;
+  onClose: () => void;
+  onDone: (line: BudgetLine) => void;
+}) {
+  const [estimated, setEstimated] = useState(line.estimated_amount == null ? '' : String(line.estimated_amount));
+  const [hardCap, setHardCap] = useState(String(line.allocated_amount));
+  const [reason, setReason] = useState('');
+  const { busy, error, setError, run } = useAction();
+  const capValue = Number(hardCap);
+  const estimateValue = estimated.trim() === '' ? null : Number(estimated);
+  const invalidCap = !Number.isFinite(capValue) || capValue < 0;
+  const invalidEstimate = estimateValue !== null && (!Number.isFinite(estimateValue) || estimateValue < 0 || estimateValue > capValue);
+  const exposure = Number(line.committed_amount || 0) + Number(line.spent_amount || 0);
+  const capBelowExposure = !invalidCap && capValue < exposure;
+  const capBelowEstimate = estimateValue !== null && Number.isFinite(estimateValue) && !invalidCap && capValue < estimateValue;
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (invalidCap || invalidEstimate || capBelowExposure || capBelowEstimate || reason.trim().length < 3) {
+      if (capBelowEstimate) setError('Adjust the estimate first: the hard cap cannot be lower than the estimate.');
+      return;
+    }
+    const updated = await run(() => api.put<BudgetLine>(`/budgets/lines/${line.id}/allocation`, {
+      estimated_amount: estimateValue,
+      allocated_amount: capValue,
+      reason: reason.trim(),
+    }));
+    if (updated) onDone(updated);
+  };
+  return (
+    <Modal title={`Update allocation · ${line.code}`} onClose={onClose}>
+      <form className="stack" onSubmit={submit}>
+        <p className="notice notice-info">The hard cap is the strict approval limit. The estimate is a soft planning warning; neither field changes committed claims or spend.</p>
+        <div className="grid-2">
+          <Field label={`Estimated spend (${line.currency})`} hint="Blank means Not set. Enter 0 only when zero is the actual estimate.">
+            <input type="number" min={0} step="0.01" inputMode="decimal" value={estimated} onChange={(event) => setEstimated(event.target.value)} />
+          </Field>
+          <Field label={`Hard cap (${line.currency})`}>
+            <input type="number" min={0} step="0.01" inputMode="decimal" value={hardCap} onChange={(event) => setHardCap(event.target.value)} required />
+          </Field>
+        </div>
+        <p className="muted small">Current exposure: {money(exposure, line.currency)} (committed + spent). An estimate reached warning does not block approval; the hard cap remains the strict limit.</p>
+        {capBelowExposure && <Alert kind="warn">The hard cap cannot be below current exposure of {money(exposure, line.currency)}.</Alert>}
+        {capBelowEstimate && <Alert kind="warn">Adjust the estimate first: the hard cap cannot be lower than the estimate.</Alert>}
+        {invalidEstimate && <Alert kind="warn">Estimated spend must be blank or between zero and the hard cap.</Alert>}
+        <Field label="Reason for change (required)">
+          <textarea rows={3} value={reason} onChange={(event) => setReason(event.target.value)} required minLength={3} maxLength={1000} />
+        </Field>
+        <Alert>{error}</Alert>
+        <div className="row">
+          <button className="btn btn-primary" disabled={busy || invalidCap || invalidEstimate || capBelowExposure || capBelowEstimate || reason.trim().length < 3}>
+            {busy ? 'Saving…' : 'Save allocation'}
+          </button>
+          <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
         </div>
       </form>
     </Modal>

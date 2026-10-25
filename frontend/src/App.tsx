@@ -3,7 +3,7 @@ import { useAuth } from './AuthContext';
 import { BrandMark, Icon } from './components/Icon';
 import { roleLabel } from './format';
 import { useApi } from './hooks';
-import { navigate, useHashRoute } from './nav';
+import { canOpenBudgetAllocation, isBudgetAllocationEntry, navigate, useHashRoute } from './nav';
 import { Admin } from './pages/Admin';
 import { Batches } from './pages/Batches';
 import { BackdateAccess } from './pages/BackdateAccess';
@@ -160,7 +160,9 @@ function App() {
   const [passwordOpen, setPasswordOpen] = useState(false);
   const pages = PAGES.filter((p) => hasRole(...p.roles));
   const defaultPage = pages[0];
-  const current = pages.find((p) => p.key === route.page) || defaultPage;
+  const budgetAllocateEntry = isBudgetAllocationEntry(route);
+  const mayCreateBudget = canOpenBudgetAllocation(me?.roles || []);
+  const current = pages.find((p) => p.key === (budgetAllocateEntry ? 'budgets' : route.page)) || defaultPage;
   const isReviewer = hasRole(...REVIEWERS);
   // A super admin holds every role; naming them all would crowd the top bar.
   const roleSummary = me ? (me.roles.includes('SUPER_ADMIN') ? roleLabel('SUPER_ADMIN') : me.roles.map(roleLabel).join(', ')) : '';
@@ -269,7 +271,11 @@ function App() {
         </header>
         <main className="content">
           {current ? (
-            <React.Fragment key={current.key}>{current.render()}</React.Fragment>
+            <React.Fragment key={current.key}>
+              {budgetAllocateEntry && current.key === 'budgets'
+                ? <Budgets initialCreate={mayCreateBudget} />
+                : current.render()}
+            </React.Fragment>
           ) : (
             <p className="empty">Your account has no roles with pages yet. Ask an administrator.</p>
           )}

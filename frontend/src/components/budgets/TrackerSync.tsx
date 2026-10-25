@@ -5,7 +5,7 @@ import { dateTime, humanize, num } from '../../format';
 import { BudgetSyncLog } from '../../types';
 import { Alert, AsyncState, Field, Section, StatusBadge } from '../ui';
 
-export const TRACKER_COLUMNS = ['code', 'name', 'category', 'period_start', 'region', 'allocated_amount', 'external_ref'];
+export const TRACKER_COLUMNS = ['code', 'name', 'category', 'period_start', 'region', 'estimated_amount', 'allocated_amount', 'external_ref'];
 const REQUIRED = new Set(['code', 'name', 'category', 'period_start', 'allocated_amount']);
 
 export function RowErrors({ errors }: { errors: { line: number; error: string }[] }) {
@@ -84,7 +84,7 @@ export function TrackerPanel({ periodId, onChanged }: { periodId: string; onChan
                 {REQUIRED.has(c) ? '*' : ''}
               </React.Fragment>
             ))}
-            . * required. <code>category</code> and <code>region</code> use the exact names in the system; <code>period_start</code> is YYYY-MM-DD.
+            . <code>estimated_amount</code> is optional; blank preserves an unknown historical estimate. * required. <code>category</code> and <code>region</code> use the exact names in the system; <code>period_start</code> is YYYY-MM-DD.
           </p>
           <pre className="json small">{TRACKER_COLUMNS.join(',')}</pre>
           <Field label="Tracker CSV file">

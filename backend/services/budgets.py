@@ -25,7 +25,16 @@ def available(line: BudgetLine) -> Decimal:
 
 
 def lock(db: Session, line_id: int) -> BudgetLine:
-    return db.query(BudgetLine).filter(BudgetLine.id == line_id).with_for_update().one()
+    return db.query(BudgetLine).filter(BudgetLine.id == line_id).with_for_update().populate_existing().one()
+
+
+def planning_status(line: BudgetLine) -> dict:
+    exposure = line.committed_amount + line.spent_amount
+    warning = line.estimated_amount is not None and exposure > 0 and exposure >= line.estimated_amount
+    status = ("HARD_CAP_REACHED" if available(line) <= 0 else
+              "NOT_SET" if line.estimated_amount is None else
+              "ESTIMATE_REACHED" if warning else "WITHIN_ESTIMATE")
+    return {"exposure_amount": exposure, "estimate_warning": warning, "budget_status": status}
 
 
 def find_line(db: Session, category_id: int, period_id: int, organization_id: int, region_id: Optional[int], *, strict_region=False) -> Optional[BudgetLine]:
@@ -96,6 +105,8 @@ def reallocate(db: Session, from_id: int, to_id: int, amount: Decimal, actor_id:
         raise HTTPException(status_code=422, detail="Reallocation is only allowed between lines of the same organization and currency")
     if available(source) < amount:
         raise HTTPException(status_code=422, detail=f"Only {available(source)} is uncommitted on {source.code}")
+    if source.estimated_amount is not None and source.allocated_amount - amount < source.estimated_amount:
+        raise HTTPException(422, "The reduced hard cap would be below the estimate; update the source estimate first")
     source.allocated_amount -= amount
     target.allocated_amount += amount
     _ledger(db, source, "REALLOCATE_OUT", amount, actor_id, reason)

@@ -214,6 +214,21 @@ from the real bootstrap password.
 
 ## New-record financial workflow (v2.2)
 
+- Budget projections and payment ceilings are separate. `estimated_amount` is
+  nullable (unknown, not zero) and warns when committed + spent exposure reaches
+  it; `allocated_amount` remains the enforceable hard cap. Historical estimates
+  stay NULL. Exact-cap commitments are allowed, but any further amount is held.
+  Moving committed funds to spent must never count them twice.
+- The user approved **both Central Finance (FHI360 Finance) and the assigned CSO
+  Finance team** managing CSO estimates and caps. This does not authorize Central
+  Finance to pay CSO claims or bypass active CSO-region authority. RPM/oversight
+  remain unable to edit estimates/caps. Changes require an audit reason; a cap
+  cannot be below committed + spent or its estimate. Estimates themselves never
+  block claim approval. Revise a projection before reallocating its cap below it.
+- The existing budget module owns dual-track allocations; the singular
+  `/budget/allocate` API is an alias, not a second source of budget balances.
+  Tracker files may contain an optional estimate; old files without that column
+  must preserve the current projection. There is still no live HQ tracker sync.
 - The user approved a separate **direct community claim** exception:
   Provider draft/submission → assigned Community Verifier **or** scoped
   Technical Officer → independent assigned-CSO Finance approval → external

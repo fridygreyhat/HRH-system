@@ -1,4 +1,4 @@
-import { BudgetLine, Me } from '../../types';
+import { BudgetLine, Me, Organization } from '../../types';
 
 /** Organization ids the user holds a scope for (CSO finance budget ownership). */
 export function scopedOrgIds(me: Me | null): Set<number> {
@@ -31,4 +31,38 @@ export function canReallocateFrom(me: Me | null, line: BudgetLine, fhiOrgIds: Se
     return true;
   }
   return roles.includes('RPM') && line.region_id !== null && scopedRegionIds(me).has(line.region_id);
+}
+
+/** Only finance roles can manage hard caps and estimates; RPM/oversight remain read-only. */
+export function canManageBudgetLine(
+  me: Me | null,
+  line: BudgetLine,
+  activeOrganizations: Organization[],
+  activeAssignments: { organization_id: number; region_id: number; is_active: boolean }[] = [],
+): boolean {
+  if (!me) return false;
+  const organization = activeOrganizations.find((org) => org.id === line.organization_id && org.is_active);
+  if (!organization) return false;
+  if (organization.type === 'FHI360') return me.roles.includes('FHI360_FINANCE');
+  return organization.type === 'CSO' && line.region_id != null &&
+    activeAssignments.some((assignment) => assignment.organization_id === organization.id && assignment.region_id === line.region_id && assignment.is_active) && (
+    me.roles.includes('FHI360_FINANCE') ||
+    (me.roles.includes('CSO_FINANCE') && scopedOrgIds(me).has(organization.id))
+  );
+}
+
+/** Organizations a finance user may create budgets for, limited to active entities. */
+export function creatableBudgetOrganizations(
+  me: Me | null,
+  organizations: Organization[],
+): Organization[] {
+  if (!me) return [];
+  const centralFinance = me.roles.includes('FHI360_FINANCE');
+  const csoFinance = me.roles.includes('CSO_FINANCE');
+  const mine = scopedOrgIds(me);
+  return organizations.filter((organization) =>
+    organization.is_active &&
+    ((centralFinance && (organization.type === 'FHI360' || organization.type === 'CSO')) ||
+      (csoFinance && organization.type === 'CSO' && mine.has(organization.id))),
+  );
 }

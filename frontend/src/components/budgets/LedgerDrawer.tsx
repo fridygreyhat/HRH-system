@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { useApi } from '../../hooks';
 import { dateTime, humanize, money } from '../../format';
 import { BudgetLine, BudgetTransaction } from '../../types';
-import { AsyncState, Drawer, Facts, StatusBadge } from '../ui';
+import { Alert, AsyncState, Drawer, Facts, StatusBadge } from '../ui';
 
 interface Ledger {
   line: BudgetLine;
@@ -53,7 +53,10 @@ export function LedgerDrawer({
                 ['Period', line.period_label],
                 ['Region', line.region_name],
                 ['Source', humanize(line.source)],
-                ['Allocated', money(line.allocated_amount, line.currency)],
+                ['Hard cap', money(line.allocated_amount, line.currency)],
+                ['Estimated spend', line.estimated_amount == null ? 'Not set' : money(line.estimated_amount, line.currency)],
+                ['Budget status', line.budget_status?.replaceAll('_', ' ') || '—'],
+                ['Exposure', money(line.exposure_amount ?? (line.committed_amount + line.spent_amount), line.currency)],
                 ['Committed', money(line.committed_amount, line.currency)],
                 ['Spent', money(line.spent_amount, line.currency)],
                 ['Available', <strong key="a">{money(line.available_amount, line.currency)}</strong>],
@@ -62,6 +65,10 @@ export function LedgerDrawer({
                 ['Last synced', line.last_synced_at ? dateTime(line.last_synced_at) : null],
               ]}
             />
+            {line.budget_status === 'HARD_CAP_REACHED' && <Alert kind="warn">Hard cap reached. Additional over-cap claims remain held; a claim exactly at the cap is still permitted.</Alert>}
+            {(line.estimate_warning || line.budget_status === 'ESTIMATE_REACHED') && line.budget_status !== 'HARD_CAP_REACHED' && (
+              <Alert kind="warn">Estimated spend reached. This is a soft warning, not an approval gate.</Alert>
+            )}
             <div className="row">{actions(line)}</div>
             <section className="stack">
               <h3>Ledger</h3>

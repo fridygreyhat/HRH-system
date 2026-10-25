@@ -400,7 +400,15 @@ export interface ClaimDetail extends ClaimSummary {
     amount: number;
     authorized_at: string;
   } | null;
-  budget_line: { id: number; code: string; name: string } | null;
+  budget_line: {
+    id: number;
+    code: string;
+    name: string;
+    estimated_amount?: number | null;
+    committed_amount?: number;
+    spent_amount?: number;
+    allocated_amount?: number;
+  } | null;
   components: ClaimComponent[];
   payments: PaymentRecord[];
   proofs: PaymentProof[];
@@ -566,6 +574,11 @@ export interface BudgetLine {
   category_id: number;
   period_id: number;
   region_id: number | null;
+  /** Null means no historical estimate was recorded; do not treat it as zero. */
+  estimated_amount: number | null;
+  exposure_amount: number;
+  estimate_warning: boolean;
+  budget_status: 'NOT_SET' | 'WITHIN_ESTIMATE' | 'ESTIMATE_REACHED' | 'HARD_CAP_REACHED';
   allocated_amount: number;
   committed_amount: number;
   spent_amount: number;

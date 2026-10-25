@@ -5,17 +5,17 @@ import { useApi } from '../hooks';
 import { money } from '../format';
 import { BudgetLine, ClaimCategory, Named, Organization, OrganizationsResponse, PayPeriod } from '../types';
 import { Alert, AsyncState, Field, Tabs } from '../components/ui';
-import { CreateLineModal, ReallocateModal, ReconcileModal } from '../components/budgets/BudgetDialogs';
+import { CreateLineModal, EditAllocationModal, ReallocateModal, ReconcileModal } from '../components/budgets/BudgetDialogs';
 import { LedgerDrawer } from '../components/budgets/LedgerDrawer';
 import { SyncLogs, TrackerPanel } from '../components/budgets/TrackerSync';
-import { canReallocateFrom, scopedOrgIds } from '../components/budgets/budgetAccess';
+import { canManageBudgetLine, canReallocateFrom, creatableBudgetOrganizations } from '../components/budgets/budgetAccess';
 import { BudgetHierarchy, grouped, remaining, totalsByCurrency } from '../components/budgets/BudgetHierarchy';
 
 export { grouped, remaining, totalsByCurrency };
 
 type View = 'lines' | 'sync';
 
-export function Budgets() {
+export function Budgets({ initialCreate = false }: { initialCreate?: boolean }) {
   const { me, hasRole } = useAuth();
   const isFhiFinance = hasRole('FHI360_FINANCE');
   const isCsoFinance = hasRole('CSO_FINANCE');
@@ -27,9 +27,10 @@ export function Budgets() {
   const [periodId, setPeriodId] = useState('');
   const [view, setView] = useState<View>('lines');
   const [openLine, setOpenLine] = useState<number | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(initialCreate);
   const [reallocFrom, setReallocFrom] = useState<number | 'any' | null>(null);
   const [reconciling, setReconciling] = useState<BudgetLine | null>(null);
+  const [editing, setEditing] = useState<BudgetLine | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -42,10 +43,10 @@ export function Budgets() {
   const regions = useApi<Named[]>(canCreate ? '/admin/regions' : null);
 
   const fhiOrgIds = useMemo(() => new Set([...(organizations.data || []), ...(organizationScope.data?.organizations || [])].filter((o) => o.type === 'FHI360').map((o) => o.id)), [organizations.data, organizationScope.data]);
-  const creatableOrgs = useMemo(() => {
-    const mine = scopedOrgIds(me);
-    return (organizations.data || []).filter((o) => o.is_active && ((isFhiFinance && o.type === 'FHI360') || (isCsoFinance && o.type === 'CSO' && mine.has(o.id))));
-  }, [organizations.data, me, isFhiFinance, isCsoFinance]);
+  const creatableOrgs = useMemo(
+    () => creatableBudgetOrganizations(me, organizations.data || []),
+    [organizations.data, me],
+  );
 
   // Reallocation targets may lie outside the period filter, so use the unfiltered list when one is loaded.
   const everyLine = (periodId ? allLines.data : lines.data) || [];
@@ -61,13 +62,18 @@ export function Budgets() {
 
   const lineActions = (line: BudgetLine) => (
     <>
+      {canManageBudgetLine(me, line, organizations.data || [], organizationScope.data?.assignments || []) && (
+        <button type="button" className="btn btn-secondary btn-sm" onClick={(event) => { event.stopPropagation(); setEditing(line); }}>
+          Edit estimate / cap
+        </button>
+      )}
       {canReallocate && canReallocateFrom(me, line, fhiOrgIds) && (fhiOrgIds.has(line.organization_id) || line.region_id != null) && (
-        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setReallocFrom(line.id)}>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={(event) => { event.stopPropagation(); setReallocFrom(line.id); }}>
           Reallocate from this line
         </button>
       )}
       {isFhiFinance && line.source === 'FHI360_TRACKER' && (
-        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setReconciling(line)}>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={(event) => { event.stopPropagation(); setReconciling(line); }}>
           Reconcile with tracker
         </button>
       )}
@@ -93,7 +99,7 @@ export function Budgets() {
       </div>
 
       <div className="notice" role="note">
-        Remaining is allocated less committed and spent; committed funds are not counted twice. Currency totals stay separate. There is no live connection to the FHI360 HQ budget tracker; FHI360 lines are synchronised by file import/export.
+        Estimates are soft planning thresholds; reaching one warns but does not stop approval. The hard cap is the strict limit. Exposure is committed plus spent, currency totals stay separate, and historic lines with no estimate remain “Not set.” There is no live connection to the FHI360 HQ budget tracker; FHI360 lines are synchronised by file import/export.
       </div>
 
       <Alert kind="success">{notice}</Alert>
@@ -126,7 +132,7 @@ export function Budgets() {
 
       {view === 'lines' && (
         <AsyncState data={lines.data} error={lines.error} loading={lines.loading} empty="No budget lines for this selection.">
-          {(rows) => <BudgetHierarchy lines={rows} fhiOrganizationIds={fhiOrgIds} onOpenLine={(line) => setOpenLine(line.id)} />}
+          {(rows) => <BudgetHierarchy lines={rows} fhiOrganizationIds={fhiOrgIds} onOpenLine={(line) => setOpenLine(line.id)} renderActions={lineActions} />}
         </AsyncState>
       )}
 
@@ -146,6 +152,17 @@ export function Budgets() {
           onCreated={(line) => {
             setCreating(false);
             setNotice(`Budget line ${line.code} created with ${money(line.allocated_amount, line.currency)}.`);
+            refresh();
+          }}
+        />
+      )}
+      {editing && (
+        <EditAllocationModal
+          line={editing}
+          onClose={() => setEditing(null)}
+          onDone={(line) => {
+            setEditing(null);
+            setNotice(`${line.code} allocation updated. ${line.budget_status === 'ESTIMATE_REACHED' ? 'Estimate warning is active.' : ''}`);
             refresh();
           }}
         />
