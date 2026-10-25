@@ -43,7 +43,10 @@ not reset the password of an existing account.
 
 ## Simulated workflow walkthrough
 
-Every signed-in account can open **Demo walkthrough** (`#demos`). This is an
+The Demo walkthrough has been removed from the app navigation and page routing
+at the user's request. Old `#demos` links fall back to the account's normal home
+page. The underlying synthetic fixtures remain available for development tests.
+These fixtures are an
 immutable replay of actual API transitions executed against synthetic data in a
 throwaway PostgreSQL test database, not a separate set of live financial records.
 It includes all three cadres in both regions, Services and Payroll, return and
