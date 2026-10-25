@@ -31,6 +31,9 @@ RECONCILER_ROLE = {"A": FHI360_FINANCE, "B": FHI360_FINANCE, "C": CSO_FINANCE}
 
 
 def executor_check(current: CurrentUser, claim: PaymentClaim) -> Optional[str]:
+    from .community_claims import is_direct
+    if is_direct(claim) and current.staff_id == claim.staff_id:
+        return "You cannot record payment for your own community claim"
     role = cl.ROUTE_EXECUTOR_ROLE.get(claim.route_code or "")
     if not role or role not in current.roles:
         return f"Payments on Route {claim.route_code} are recorded by {role}"
@@ -46,7 +49,9 @@ def payable_check(db: Session, claim: PaymentClaim) -> Optional[str]:
         return "This claim is already paid"
     if claim.workflow_version >= 2:
         if claim.status not in {cl.READY, cl.EXPORTED}:
-            return "Regional Finance must validate and route the claim before a payment can be recorded"
+            from .community_claims import is_direct
+            return ("Community verification and independent CSO approval are required before payment"
+                    if is_direct(claim) else "Regional Finance must validate and route the claim before a payment can be recorded")
         return None
     if claim.route_code == "B":
         batch = db.get(PayrollBatch, claim.batch_id) if claim.batch_id else None
@@ -82,9 +87,14 @@ def payment_actions(db: Session, current: CurrentUser, claim: PaymentClaim) -> l
 
 
 def record_payment(db: Session, current: CurrentUser, claim: PaymentClaim, amount: Decimal, reference: str, payment_date: date, status: str, method: Optional[str]) -> PaymentRecord:
+    if not reference.strip():
+        raise HTTPException(422, "A payment reference is required")
     reason = executor_check(current, claim) or payable_check(db, claim)
     if reason:
         raise HTTPException(status_code=403 if "recorded by" in reason or "another CSO" in reason else 409, detail=reason)
+    from .community_claims import is_direct, check_authority
+    if is_direct(claim):
+        check_authority(db, claim, lock=True)
     if status not in ("PAID", "PARTIAL", "FAILED"):
         raise HTTPException(status_code=422, detail="status must be PAID, PARTIAL or FAILED")
     if method not in (None, "BANK", "MOBILE_WALLET"):
@@ -118,7 +128,7 @@ def record_payment(db: Session, current: CurrentUser, claim: PaymentClaim, amoun
         claim.payment_status = "FAILED" if status == "FAILED" else "PENDING"
     elif total < claim.amount:
         claim.payment_status = "PARTIALLY_RECORDED"
-    elif get_setting(db, "payment_requires_proof") and not has_proof(db, claim.id):
+    elif (is_direct(claim) or get_setting(db, "payment_requires_proof")) and not has_proof(db, claim.id):
         claim.payment_status = "PROOF_REQUIRED"
     else:
         claim.payment_status = "PAID"
@@ -146,11 +156,16 @@ def confirm_paid(db: Session, current: CurrentUser, claim: PaymentClaim) -> None
 
 
 def reconcile_check(db: Session, current: CurrentUser, claim: PaymentClaim) -> Optional[str]:
+    from .community_claims import is_direct
+    if is_direct(claim) and current.staff_id == claim.staff_id:
+        return "You cannot reconcile your own community claim"
     role = cl.finance_role(claim) if claim.workflow_version >= 2 else RECONCILER_ROLE.get(claim.route_code or "")
     if not role or role not in current.roles:
         return f"Reconciliation on Route {claim.route_code} is done by {role}"
     if role == CSO_FINANCE and not cl.user_in_executor_org(current, claim):
         return "This claim belongs to another CSO"
+    if not cl.channel_scope_ok(current, claim):
+        return "This claim is outside your finance Region × Cadre scope"
     recorders = {r for (r,) in db.query(PaymentRecord.recorded_by).filter(PaymentRecord.claim_id == claim.id)}
     if current.id in recorders:
         return "Reconciliation must be done by someone other than the person who recorded the payment"
@@ -183,8 +198,9 @@ async def store_proof(db: Session, current: CurrentUser, claim: PaymentClaim, up
     reason = executor_check(current, claim)
     if reason:
         raise HTTPException(status_code=403, detail=reason)
-    if claim.status not in (cl.EXPORTED, cl.HANDED_OFF):
-        raise HTTPException(status_code=409, detail="Proof can be attached only to exported or handed-off claims")
+    allowed = {cl.READY, cl.EXPORTED} if claim.workflow_version >= 2 else {cl.EXPORTED, cl.HANDED_OFF}
+    if claim.status not in allowed:
+        raise HTTPException(status_code=409, detail="Proof can be attached only after approval and payment routing")
     extension = ALLOWED_PROOF_TYPES.get(upload.content_type or "")
     if not extension:
         raise HTTPException(status_code=415, detail="Proof must be a PDF, PNG or JPEG file")

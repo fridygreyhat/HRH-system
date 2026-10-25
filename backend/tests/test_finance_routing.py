@@ -125,3 +125,29 @@ def test_only_finance_reviewed_new_records_can_be_channeled(api, db, period, v22
     api.post("/finance/channel", "admin", {
         "work_log_id": log["id"], "target_payor_id": 1, "review_confirmed": True, "review_type": "SERVICES",
     }, expect=409)
+
+
+@pytest.mark.parametrize("kind", ["SERVICES", "PAYROLL"])
+def test_dashboard_includes_rpm_approved_claims_before_finance_review_without_allowing_early_channel(api, db, period, v22, kind):
+    activity = priced_activity(api, v22, period, kind=kind)
+    pending = to_finance(api, entered_log(api, period, activity))
+    assert pending["status"] == "PENDING_FINANCE_REVIEW" and pending["finance_snapshot"] is None
+    claim = next(c for c in pending["claims"] if c["status"] == "PENDING_FINANCE_REVIEW")
+    rows = api.get("/finance/pending-routing?stage=PENDING_FINANCE_REVIEW", v22["finance"])
+    row = next(r for r in rows if r["work_log_id"] == pending["id"])
+    assert row["claim_id"] == claim["id"]
+    assert row["finance_review_required"] and row["next_action"] == "REVIEW_AMOUNT"
+    assert float(row["amount"]) == float(claim["amount"]) and row["currency"] == claim["currency"]
+    assert row["provider_name"] and row["cadre_name"] and row["region_name"]
+    assert all(r["work_log_id"] != pending["id"] for r in api.get("/finance/pending-routing?stage=FINANCE_REVIEWED", v22["finance"]))
+    api.post("/finance/channel", v22["finance"], {
+        "claim_id": claim["id"], "target_payor_id": row["eligible_payors"][0]["id"],
+        "review_confirmed": True, "review_type": kind,
+    }, expect=409)
+    reviewed = api.post(f"/worklogs/{pending['id']}/actions/finance_review", v22["finance"], {
+        "review_confirmed": True, "review_type": kind, "category_id": category_id(db, "A" if kind == "SERVICES" else "B"),
+    })
+    assert reviewed["status"] == "FINANCE_REVIEWED"
+    rows = api.get("/finance/pending-routing?stage=FINANCE_REVIEWED", v22["finance"])
+    row = next(r for r in rows if r["work_log_id"] == pending["id"])
+    assert not row["finance_review_required"] and row["next_action"] == "CHANNEL"

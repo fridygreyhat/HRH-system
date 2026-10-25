@@ -990,3 +990,32 @@ details > summary { cursor: pointer; font-weight: 600; }
   font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
+
+/* Route C: community claims are period aggregates, visually distinct from daily work-log review. */
+.community-claims { --community-ink: #193f45; --community-accent: #ba5b3d; }
+.community-claims .routing-eyebrow { color: var(--community-accent); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.community-compose { padding: clamp(1rem, 3vw, 1.8rem); border-top: 3px solid var(--community-accent); }
+.community-compose-heading { display: flex; align-items: flex-start; gap: 1rem; margin-bottom: 1.2rem; }
+.community-compose-heading h2, .community-list-heading h2 { margin: .2rem 0; color: var(--community-ink); font-size: 1.25rem; }
+.community-step { display: inline-block; color: var(--community-accent); font: 700 .68rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; }
+.community-units { border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; margin: 0; }
+.community-units legend { color: var(--community-ink); padding: 0 .4rem; font-weight: 650; }
+.community-config-state { padding: .9rem 1rem; border-left: 3px solid var(--warn-fg); background: var(--warn-bg); color: var(--text); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.community-config-state p { margin: .25rem 0 0; color: var(--muted); font-size: .875rem; }
+.community-preview { margin-top: 1rem; padding: 1.1rem; background: var(--primary-soft); border-radius: var(--radius); }
+.community-preview-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
+.community-preview-top > div { display: grid; gap: .3rem; }
+.community-total { font-size: clamp(1.5rem, 4vw, 2.2rem); font-variant-numeric: tabular-nums; color: var(--community-ink); }
+.community-preview-note { color: var(--muted); font-size: .78rem; }
+.community-flow { padding: 1rem 1.2rem; border-left: 3px solid var(--primary); }
+.community-flow p { margin: .4rem 0 0; }
+.community-list-heading { display: flex; justify-content: space-between; align-items: end; gap: 1rem; }
+.community-table td { vertical-align: middle; }
+.community-row-actions { white-space: nowrap; }
+.community-row-actions .btn + .btn { margin-left: .25rem; }
+.community-table .routing-subline { display: block; margin-top: .2rem; }
+@media (max-width: 700px) {
+  .community-list-heading { align-items: flex-start; flex-direction: column; }
+  .community-table { min-width: 760px; }
+  .community-compose-heading { gap: .65rem; }
+}

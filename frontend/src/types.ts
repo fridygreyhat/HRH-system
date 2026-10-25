@@ -148,8 +148,10 @@ export interface RoutingQueueItem {
   region_name: string;
   period_label: string;
   status: string;
-  amount: string;
-  currency: string;
+  next_action?: 'REVIEW_AMOUNT' | 'CHANNEL' | 'RESOLVE_BUDGET_HOLD';
+  finance_review_required?: boolean;
+  amount: string | null;
+  currency: string | null;
   eligible_payors: RoutingPayor[];
   routing_exception: string | null;
 }
@@ -317,6 +319,7 @@ export interface ClaimSummary {
   budget_line_id: number | null;
   origin_channel: string | null;
   evidence_text: string | null;
+  description?: string | null;
   declared_units: Record<string, number> | null;
   amount: number;
   currency: string;
@@ -338,7 +341,7 @@ export interface ClaimSummary {
   amount_paid: number;
   /** Present for claims generated from the versioned work-log workflow. */
   workflow_version?: number | null;
-  work_type?: 'LEGACY' | 'SERVICES' | 'PAYROLL' | null;
+  work_type?: 'LEGACY' | 'SERVICES' | 'PAYROLL' | 'COMMUNITY' | null;
 }
 
 export interface ClaimComponent {
@@ -404,6 +407,21 @@ export interface ClaimDetail extends ClaimSummary {
   audit: ClaimAudit[];
   available_actions: string[];
   payment_actions: string[];
+  payment_recipient?: { name: string; payment_method: string | null; payment_provider: string | null; payment_account: string | null } | null;
+}
+
+export interface CommunityClaimOptions {
+  periods: PayPeriod[];
+  categories: { id: number; name: string; unit_fields: { key: string; label: string; unit_type: string }[]; configuration_error: string | null }[];
+}
+
+export interface CommunityClaimPreview {
+  amount: number;
+  currency: string;
+  components: ClaimComponent[];
+  payor_name: string | null;
+  region_name: string | null;
+  budget_line_id: number | null;
 }
 
 export interface ClaimPreview {

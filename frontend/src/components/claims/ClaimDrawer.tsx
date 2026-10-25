@@ -298,6 +298,16 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
               This claim was created from the RPM-approved work log’s saved activity rates. It is awaiting Regional Finance review and category selection. The amount is not routed, budget-committed or payable; finance will review this same claim before routing.
             </p>
           )}
+          {claim.payment_recipient && (
+            <Section title="Payment recipient · CSO verification">
+              <Facts items={[
+                ['Recipient', claim.payment_recipient.name],
+                ['Payment method', claim.payment_recipient.payment_method],
+                ['Provider', claim.payment_recipient.payment_provider],
+                ['Account', claim.payment_recipient.payment_account],
+              ]} />
+            </Section>
+          )}
 
           {claim.available_actions.length > 0 && (
             <Section title="Claim actions">
@@ -333,10 +343,10 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
                 ['Approved', claim.approved_at ? dateTime(claim.approved_at) : null],
               ]}
             />
-            {claim.evidence_text && (
+            {(claim.description || claim.evidence_text) && (
               <div>
-                <div className="field-label">Evidence</div>
-                <p className="timeline-comment">{claim.evidence_text}</p>
+                <div className="field-label">{claim.work_type === 'COMMUNITY' ? 'Description' : 'Evidence'}</div>
+                <p className="timeline-comment">{claim.description || claim.evidence_text}</p>
               </div>
             )}
             {claim.declared_units && Object.keys(claim.declared_units).length > 0 && (

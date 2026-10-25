@@ -8,9 +8,10 @@ import { Named, RoutingQueueItem } from '../types';
 export function RoutingQueue() {
   const [workType, setWorkType] = useState<'' | 'SERVICES' | 'PAYROLL'>('');
   const [regionId, setRegionId] = useState('');
+  const [stage, setStage] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
   const regions = useApi<Named[]>('/finance/regions');
-  const queue = useApi<RoutingQueueItem[]>(`/finance/pending-routing${qs({ work_type: workType, region_id: regionId })}`);
+  const queue = useApi<RoutingQueueItem[]>(`/finance/pending-routing${qs({ work_type: workType, region_id: regionId, stage })}`);
 
   return (
     <div className="stack-lg">
@@ -44,6 +45,14 @@ export function RoutingQueue() {
             {(regions.data || []).map((region) => <option key={region.id} value={region.id}>{region.name}</option>)}
           </select>
         </Field>
+        <Field label="Queue stage">
+          <select value={stage} onChange={(event) => setStage(event.target.value)} aria-label="Filter by queue stage">
+            <option value="">All stages</option>
+            <option value="PENDING_FINANCE_REVIEW">Amount review</option>
+            <option value="FINANCE_REVIEWED">Channel selection</option>
+            <option value="BUDGET_HOLD">Budget hold</option>
+          </select>
+        </Field>
         {regions.error && <Alert kind="warn">Region options could not be loaded. You can still review the full queue. {regions.error}</Alert>}
       </div>
 
@@ -57,7 +66,7 @@ export function RoutingQueue() {
           data={queue.data}
           error={null}
           loading={queue.loading}
-          empty={<div className="routing-empty"><span aria-hidden="true">✓</span><strong>No logs awaiting a payor decision</strong><p>Newly reviewed v2 work logs will appear here. Older legacy records stay in their existing workflow.</p></div>}
+          empty={<div className="routing-empty"><span aria-hidden="true">✓</span><strong>No work items need finance action</strong><p>Every RPM-approved claim appears here for amount review, channel selection or budget-hold resolution. Older legacy records stay in their existing workflow.</p></div>}
         >
           {(items) => (
             <div className="table-wrap routing-table-wrap">
@@ -65,26 +74,30 @@ export function RoutingQueue() {
                 <thead><tr>
                   <th>Provider / cadre</th><th>Verified assignment</th><th>Period · type</th><th>Status</th><th className="num">Amount</th><th>Eligible payor</th><th><span className="sr-only">Review</span></th>
                 </tr></thead>
-                <tbody>{items.map((item) => (
+                <tbody>{items.map((item) => {
+                  const reviewAmount = item.finance_review_required || item.next_action === 'REVIEW_AMOUNT';
+                  const resolveHold = item.next_action === 'RESOLVE_BUDGET_HOLD';
+                  return (
                   <tr key={item.work_log_id}>
                     <td><strong>{item.provider_name}</strong><span className="routing-subline">{item.cadre_code} · {item.cadre_name}</span></td>
                     <td><strong>{item.facility_name || 'Facility not recorded'}</strong><span className="routing-subline">{item.region_name}</span></td>
                     <td>{item.period_label}<span className="routing-subline"><span className={`type-mark type-${item.work_type.toLowerCase()}`}>{item.work_type === 'SERVICES' ? 'Services' : 'Payroll'}</span></span></td>
-                    <td><StatusBadge kind="log" status={item.status} bare /></td>
-                    <td className="num routing-amount">{item.currency} {item.amount}</td>
+                    <td><StatusBadge kind="log" status={item.status} bare /><span className="routing-subline">{reviewAmount ? 'Amount review required' : resolveHold ? 'Budget hold' : 'Channel selection'}</span></td>
+                    <td className="num routing-amount">{item.amount === null || !item.currency ? <span className="muted">Not prepared</span> : `${item.currency} ${item.amount}`}</td>
                     <td>
                       {item.eligible_payors.length ? item.eligible_payors.map((payor) => <span className="routing-payor" key={payor.id}>{payor.name}</span>) : <span className="muted">Pending lookup</span>}
                       {item.routing_exception && <span className="routing-exception" title={item.routing_exception}>Exception to resolve</span>}
                     </td>
-                    <td><button type="button" className="btn btn-primary btn-sm" onClick={() => setOpenId(item.work_log_id)}>Review / Channel</button></td>
+                    <td><button type="button" className="btn btn-primary btn-sm" onClick={() => setOpenId(item.work_log_id)}>{reviewAmount ? 'Review amount' : resolveHold ? 'Resolve hold' : 'Choose channel'}</button></td>
                   </tr>
-                ))}</tbody>
+                  );
+                })}</tbody>
               </table>
             </div>
           )}
         </AsyncState>
       )}
-      <p className="muted small routing-footnote">Queue includes only version 2 logs ready for regional finance routing. Budget holds remain visible for review; release behavior is unchanged.</p>
+      <p className="muted small routing-footnote">Every RPM-approved claim appears here—not only claims already reviewed by Finance. Review its amount first, then choose the payment channel; budget holds stay visible until resolved.</p>
       {openId !== null && <WorkLogDrawer logId={openId} onClose={() => setOpenId(null)} onChanged={queue.reload} />}
     </div>
   );

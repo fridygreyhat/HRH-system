@@ -9,6 +9,7 @@ import { Batches } from './pages/Batches';
 import { BackdateAccess } from './pages/BackdateAccess';
 import { Budgets } from './pages/Budgets';
 import { Claims } from './pages/Claims';
+import { CommunityClaims } from './pages/CommunityClaims';
 import { CsoPortal } from './pages/CsoPortal';
 import { Dashboard } from './pages/Dashboard';
 import { ChangePasswordForm, ForcedPasswordChange } from './pages/ChangePassword';
@@ -74,6 +75,7 @@ const PAGES: Page[] = [
   },
   { key: 'batches', label: 'Payroll batches', description: 'Exports, FHI360 → CSO handoffs and receipts', icon: 'layers', group: 'Finance', roles: ['FHI360_FINANCE', 'CSO_FINANCE', 'OVERSIGHT'], render: () => <Batches /> },
   { key: 'cso', label: 'CSO payments', description: 'Your pending payments, proof and reconciliation', icon: 'wallet', group: 'Finance', roles: ['CSO_FINANCE'], render: () => <CsoPortal /> },
+  { key: 'community-claims', label: 'Community claims', description: 'Period-based community claims and direct payment', icon: 'users', group: 'Finance', roles: ['PROVIDER', 'COMMUNITY_VERIFIER', 'TECHNICAL_OFFICER', 'CSO_FINANCE', 'OVERSIGHT', 'SUPER_ADMIN'], render: () => <CommunityClaims /> },
   { key: 'budgets', label: 'Budgets', description: 'Allocations, commitments, spend and tracker sync', icon: 'pie', group: 'Finance', roles: ['FHI360_FINANCE', 'CSO_FINANCE', 'RPM', 'OVERSIGHT'], render: () => <Budgets /> },
   {
     key: 'staff',

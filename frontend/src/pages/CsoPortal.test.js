@@ -5,6 +5,7 @@ import { CsoPortal } from './CsoPortal';
 import { money } from '../format';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+let mockCommunityClaim = null;
 
 jest.mock('../AuthContext', () => ({
   useAuth: () => ({ me: { id: 4, organizations: [{ id: 10, name: 'Kijiji Health CSO', type: 'CSO' }, { id: 90, name: 'FHI360', type: 'FHI360' }] } }),
@@ -12,7 +13,7 @@ jest.mock('../AuthContext', () => ({
 jest.mock('../api', () => ({ api: { post: jest.fn() } }));
 jest.mock('../hooks', () => ({
   useApi: path => ({
-    data: path === '/claims' || path === '/batches' ? [] : [
+    data: path === '/claims' ? (mockCommunityClaim ? [mockCommunityClaim] : []) : path === '/batches' ? [] : [
       { id: 1, code: 'KH-01', name: 'Facility support', source: 'MANUAL', organization_id: 10, organization_name: 'Kijiji Health CSO', region_id: 7, region_name: 'Mara', category_id: 5, category_name: 'Services', period_id: 21, period_label: 'January', allocated_amount: 100, committed_amount: 20, spent_amount: 10, available_amount: 70, currency: 'TZS', sync_status: 'RECONCILED' },
       { id: 2, code: 'KH-02', name: 'Outreach', source: 'MANUAL', organization_id: 10, organization_name: 'Kijiji Health CSO', region_id: 7, region_name: 'Mara', category_id: 5, category_name: 'Services', period_id: 22, period_label: 'February', allocated_amount: 50, committed_amount: 5, spent_amount: 15, available_amount: 30, currency: 'TZS', sync_status: 'RECONCILED' },
       { id: 3, code: 'FHI-01', name: 'FHI allocation', source: 'FHI360_TRACKER', organization_id: 90, organization_name: 'FHI360', region_id: 7, region_name: 'Mara', category_id: 5, category_name: 'Services', period_id: 21, period_label: 'January', allocated_amount: 800, committed_amount: 0, spent_amount: 0, available_amount: 800, currency: 'TZS', sync_status: 'RECONCILED' },
@@ -49,6 +50,34 @@ test('CSO portal presents scoped regional, category, and pay-period budget hiera
     expect(regionSummary.textContent).toContain(money(25, 'TZS'));
     expect(regionSummary.textContent).toContain(money(100, 'TZS'));
   } finally {
+    act(() => root.unmount());
+    container.remove();
+  }
+});
+
+test('CSO Community claims section shows incoming direct Route C work with external payment guidance', () => {
+  mockCommunityClaim = {
+    id: 61, work_log_id: null, staff_id: 12, category_id: 6, period_id: 21, route_code: 'C',
+    payor_org_id: 10, executor_org_id: null, budget_line_id: 3, origin_channel: 'COMMUNITY',
+    evidence_text: null, declared_units: { visits: 7 }, amount: 36000, currency: 'TZS',
+    status: 'PENDING_COMMUNITY_VERIFICATION', payment_status: 'NOT_STARTED', exception_reason: null,
+    batch_id: null, created_by: 12, verified_at: null, approved_at: null, created_at: '2025-01-01T00:00:00Z',
+    updated_at: '2025-01-01T00:00:00Z', staff_name: 'Neema Juma', category_name: 'Outreach',
+    period_label: 'January', payor_name: 'Kijiji Health CSO', executor_name: null, batch_reference: null,
+    amount_paid: 0, workflow_version: 2, work_type: 'COMMUNITY',
+  };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  act(() => root.render(<CsoPortal />));
+  try {
+    const routeTab = Array.from(container.querySelectorAll('.subnav button')).find(button => button.textContent.startsWith('Community claims'));
+    act(() => Simulate.click(routeTab));
+    expect(container.textContent).toContain('Awaiting community verification');
+    expect(container.textContent).toContain('Neema Juma');
+    expect(container.textContent).toContain('do not need a payroll export batch');
+  } finally {
+    mockCommunityClaim = null;
     act(() => root.unmount());
     container.remove();
   }

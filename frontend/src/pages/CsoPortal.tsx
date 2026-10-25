@@ -29,20 +29,20 @@ const RECON_GROUPS: { status: string; title: string }[] = [
   { status: 'RECONCILED', title: 'Reconciled' },
 ];
 const ROUTE_C_GROUPS: { status: string; title: string; hint: string }[] = [
-  { status: 'VALIDATION_NEEDED', title: 'Validation needed', hint: 'Fix the problem shown, then revalidate the claim.' },
-  { status: 'BUDGET_HOLD', title: 'Budget hold', hint: 'Not enough budget. Release the hold once budget is available.' },
-  { status: 'DRAFT', title: 'Drafts', hint: 'Submit for approval.' },
+  { status: 'VALIDATION_NEEDED', title: 'Returned for correction', hint: 'The provider can update and resubmit this claim.' },
+  { status: 'BUDGET_HOLD', title: 'Budget hold', hint: 'Review the budget hold and release it when the allocation is available.' },
+  { status: 'DRAFT', title: 'Drafts', hint: 'The provider has not submitted this claim.' },
   {
     status: 'AWAITING_APPROVAL',
     title: 'Awaiting approval',
-    hint: 'Must be approved by a CSO finance colleague who did not prepare the claim.',
+    hint: 'Independently approve after community verification. Approval commits budget; it does not record payment.',
   },
   {
     status: 'PENDING_COMMUNITY_VERIFICATION',
     title: 'Awaiting community verification',
-    hint: 'Waiting for the community verifier to confirm the service was delivered.',
+    hint: 'A scoped community verifier must confirm service delivery before CSO approval.',
   },
-  { status: 'APPROVED', title: 'Approved', hint: 'Mark ready for payment so it can be included in a community payment batch.' },
+  { status: 'APPROVED', title: 'Approved · payment to record', hint: 'Pay externally, then record the disbursement and attach proof here. No export batch is required.' },
 ];
 
 const outstanding = (c: ClaimSummary) => Math.max(0, Number(c.amount) - Number(c.amount_paid || 0));
@@ -216,7 +216,7 @@ export function CsoPortal() {
     .filter((c) => PENDING_STATUSES.includes(c.payment_status) || (isDirectV2Ready(c) && c.payment_status !== 'PAID' && c.payment_status !== 'RECONCILED'))
     .sort((a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime());
   const awaitingReceipt = (batches.data || []).filter((b) => b.route_code === 'B' && b.status === 'HANDED_OFF');
-  const routeC = all.filter((c) => c.route_code === 'C' || c.route_code === null);
+  const routeC = all.filter((c) => c.work_type === 'COMMUNITY' || c.route_code === 'C' || c.route_code === null);
   const inPayment = all.filter((c) => c.payment_status !== 'NOT_STARTED' || isDirectV2Ready(c));
   const directReady = pending.filter((c) => isDirectV2Ready(c) && c.payment_status === 'NOT_STARTED');
   const routeCCount = ROUTE_C_GROUPS.reduce((s, g) => s + routeC.filter((c) => c.status === g.status).length, 0);
@@ -358,6 +358,7 @@ export function CsoPortal() {
 
       {show('routec') && (
         <Section title="Community claims needing attention">
+          <p className="notice notice-info small">Direct Route C claims are approved by CSO Finance after community verification, then paid externally and recorded here with proof. They do not need a payroll export batch.</p>
           <AsyncState data={claims.data} error={claims.error} loading={claims.loading}>
             {() =>
               routeCCount ? (

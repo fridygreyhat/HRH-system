@@ -97,6 +97,7 @@ def _detail(db: Session, current: CurrentUser, claim: PaymentClaim) -> dict:
         .all()
     )
     finance_view = current.has_any(FHI360_FINANCE, CSO_FINANCE)
+    recipient = db.get(Staff, claim.staff_id) if pay.executor_check(current, claim) is None else None
     return {
         **_summary(db, claim),
         "calculation_snapshot": claim.calculation_snapshot,
@@ -107,6 +108,8 @@ def _detail(db: Session, current: CurrentUser, claim: PaymentClaim) -> dict:
         "audit": [{**to_dict(a), "actor_name": name} for a, name in audit_rows],
         "available_actions": cl.available_actions(db, current, claim),
         "payment_actions": pay.payment_actions(db, current, claim),
+        "payment_recipient": {"name": recipient.legal_name, "payment_method": recipient.payment_method,
+                              "payment_provider": recipient.payment_provider, "payment_account": recipient.payment_account} if recipient else None,
     }
 
 
@@ -121,11 +124,12 @@ def list_claims(
     payment_status: Optional[str] = None,
     route: Optional[str] = None,
     period_id: Optional[int] = None,
+    work_type: Optional[str] = None,
     db: Session = Depends(get_db),
     current: CurrentUser = Depends(get_current_user),
 ):
     query = db.query(PaymentClaim).filter(claim_visibility(current))
-    for column, value in ((PaymentClaim.status, status), (PaymentClaim.payment_status, payment_status), (PaymentClaim.route_code, route), (PaymentClaim.period_id, period_id)):
+    for column, value in ((PaymentClaim.status, status), (PaymentClaim.payment_status, payment_status), (PaymentClaim.route_code, route), (PaymentClaim.period_id, period_id), (PaymentClaim.work_type, work_type)):
         if value:
             query = query.filter(column == value)
     return [_summary(db, c) for c in query.order_by(PaymentClaim.updated_at.desc()).limit(500)]

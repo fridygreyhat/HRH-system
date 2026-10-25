@@ -300,6 +300,10 @@ def channel_scope_ok(current: CurrentUser, claim: PaymentClaim) -> bool:
         return False
     from .v22_scope import may_manage
     assignment = current.db.get(StaffAssignment, claim.assignment_id) if claim.assignment_id else None
+    from .community_claims import is_direct
+    if is_direct(claim):
+        cadre_id = (claim.calculation_snapshot or {}).get("cadre_id")
+        return bool(assignment and cadre_id and may_manage(current, assignment.region_id, cadre_id))
     log = current.db.get(WorkLog, claim.work_log_id) if claim.work_log_id else None
     return bool(assignment and log and may_manage(current, assignment.region_id, log.cadre_id))
 
@@ -325,6 +329,9 @@ def finance_role(claim):
 
 
 def check_action(db: Session, current: CurrentUser, claim: PaymentClaim, action: str) -> Optional[str]:
+    from . import community_claims
+    if community_claims.is_direct(claim):
+        return community_claims.check_action(db, current, claim, action)
     if current.staff_id == claim.staff_id:
         return "You cannot act on your own claim"
     s = claim.status
@@ -369,6 +376,9 @@ def available_actions(db: Session, current: CurrentUser, claim: PaymentClaim) ->
 
 
 def perform(db: Session, current: CurrentUser, claim: PaymentClaim, action: str, comment: Optional[str]) -> PaymentClaim:
+    from . import community_claims
+    if community_claims.is_direct(claim):
+        return community_claims.perform(db, current, claim, action, comment)
     reason = check_action(db, current, claim, action)
     if reason:
         raise HTTPException(status_code=409 if reason.startswith("Cannot") else 403, detail=reason)

@@ -13,7 +13,7 @@ Reviewers with no matching scope see nothing. OVERSIGHT has read-only visibility
 from datetime import date
 from typing import Optional
 
-from sqlalchemy import and_, exists, false, or_, select, true
+from sqlalchemy import Integer, and_, case, cast, exists, false, or_, select, true
 from sqlalchemy.orm import Session
 
 from ..core.roles import (
@@ -119,10 +119,16 @@ def claim_visibility(current: CurrentUser):
     if current.has_any(OVERSIGHT):
         return true()
     conditions = [PaymentClaim.staff_id == current.staff_id]
+    direct_community = and_(PaymentClaim.workflow_version >= 2, PaymentClaim.work_type == "COMMUNITY",
+                            PaymentClaim.route_code == "C", PaymentClaim.work_log_id.is_(None))
+    claim_cadre = case(
+        (direct_community, cast(PaymentClaim.calculation_snapshot["cadre_id"].astext, Integer)),
+        else_=select(WorkLog.cadre_id).where(WorkLog.id == PaymentClaim.work_log_id).scalar_subquery(),
+    )
     if FHI360_FINANCE in current.roles:
         conditions.append(and_(PaymentClaim.workflow_version == 1, PaymentClaim.route_code.in_(("A", "B"))))
         conditions.append(and_(PaymentClaim.workflow_version >= 2, PaymentClaim.work_type == "SERVICES",
-                               record_condition(current, PaymentClaim.assignment_id, select(WorkLog.cadre_id).where(WorkLog.id == PaymentClaim.work_log_id).scalar_subquery())))
+                               record_condition(current, PaymentClaim.assignment_id, claim_cadre)))
         conditions.append(and_(PaymentClaim.route_code.is_(None), PaymentClaim.created_by == current.id))
     if CSO_FINANCE in current.roles:
         orgs = current.scope_values("organization_id")
@@ -131,19 +137,25 @@ def claim_visibility(current: CurrentUser):
                 and_(
                     PaymentClaim.executor_org_id.in_(orgs),
                     or_(and_(PaymentClaim.workflow_version == 1, or_(PaymentClaim.route_code == "C", PaymentClaim.status == "HANDED_OFF")),
-                        and_(PaymentClaim.workflow_version >= 2, PaymentClaim.work_type == "PAYROLL",
-                             record_condition(current, PaymentClaim.assignment_id, select(WorkLog.cadre_id).where(WorkLog.id == PaymentClaim.work_log_id).scalar_subquery()))),
+                        and_(PaymentClaim.workflow_version >= 2,
+                             or_(PaymentClaim.work_type == "PAYROLL",
+                                 and_(direct_community, PaymentClaim.status.notin_(("DRAFT", "VALIDATION_NEEDED", "PENDING_COMMUNITY_VERIFICATION")))),
+                             record_condition(current, PaymentClaim.assignment_id, claim_cadre))),
                 )
             )
             conditions.append(and_(PaymentClaim.route_code.is_(None), PaymentClaim.created_by == current.id))
-    for role in (RPM, COMMUNITY_VERIFIER, REGIONAL_FINANCE):
+    for role in (RPM, COMMUNITY_VERIFIER, REGIONAL_FINANCE, TECHNICAL_OFFICER):
         subquery = assignments_in_role_scope(current, role)
         if subquery is not None:
             condition = PaymentClaim.assignment_id.in_(subquery)
             if role == COMMUNITY_VERIFIER:
-                condition = and_(condition, PaymentClaim.route_code == "C")
+                condition = and_(condition, PaymentClaim.route_code == "C",
+                                 or_(PaymentClaim.workflow_version == 1, PaymentClaim.status.notin_(("DRAFT", "VALIDATION_NEEDED"))))
+            if role == TECHNICAL_OFFICER:
+                condition = and_(condition, direct_community, PaymentClaim.status.notin_(("DRAFT", "VALIDATION_NEEDED")),
+                                 record_condition(current, PaymentClaim.assignment_id, claim_cadre))
             if role in (RPM, REGIONAL_FINANCE):
-                scoped = record_condition(current, PaymentClaim.assignment_id, select(WorkLog.cadre_id).where(WorkLog.id == PaymentClaim.work_log_id).scalar_subquery(), role=role)
+                scoped = record_condition(current, PaymentClaim.assignment_id, claim_cadre, role=role)
                 condition = and_(condition, scoped if role == REGIONAL_FINANCE else or_(PaymentClaim.workflow_version == 1, scoped))
             conditions.append(condition)
     return or_(*conditions)

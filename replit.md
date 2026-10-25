@@ -214,6 +214,36 @@ from the real bootstrap password.
 
 ## New-record financial workflow (v2.2)
 
+- The user approved a separate **direct community claim** exception:
+  Provider draft/submission → assigned Community Verifier **or** scoped
+  Technical Officer → independent assigned-CSO Finance approval → external
+  payment reference and mandatory receipt → PAID → independent reconciliation.
+  This path bypasses RPM and Regional Finance; ordinary Services/Payroll work
+  must still follow their existing work-log approval and routing gates.
+  A verifier cannot also approve the same claim, including on dual-role accounts.
+  Providers cannot verify, approve, pay or reconcile their own claim.
+- Direct community reporting uses explicitly configured active Route C,
+  community-origin categories that do not require an HRH work log. Do not
+  convert daily timesheet categories or fabricate payable rates or allocations.
+  One live claim per provider, category and pay period prevents repeated
+  submissions. Draft/returned totals are editable only by their provider; period,
+  category and captured rates remain fixed. Returning a claim requires a reason
+  and fresh verification on resubmission. Cancellation preserves its audit.
+- Direct claims freeze approved rate components at creation, including caps,
+  currency and the provider's cadre/region. Later rate retirement/revisions
+  must not reprice drafts, corrections, approvals or payments. New pricing needs
+  unambiguous approved rates covering the entire selected period; otherwise
+  fail explicitly rather than guessing a mid-period rate. Regional CSO authority
+  and the exact allocation are rechecked before commitment/payment.
+- Community payments require proof even if the general proof setting is off.
+  Ready v2 claims can upload proof without a legacy batch export. Payment proof
+  alone does not mark a claim PAID; its full amount and reference must be recorded.
+  Claims with recorded funds cannot be cancelled. Bank/mobile-money recipient
+  details are returned only to the authorized, scoped payor.
+- Regional Finance's Routing Dashboard includes RPM-approved liabilities still
+  awaiting amount review, reviewed claims ready to channel, and budget holds.
+  Stage labels do not permit channeling before finance review. Amounts come from
+  the derived claim/captured snapshot, never a later rate revision.
 - CSOs require explicit administrator-managed regional payment authority. An
   existing provider assignment or budget is not evidence of that authority:
   do not infer or auto-create CSO-region mappings during migration or seeding

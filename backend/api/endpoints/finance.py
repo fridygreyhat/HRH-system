@@ -72,9 +72,12 @@ def payors(work_log_id: int = Query(gt=0), db: Session = Depends(get_db), curren
 def pending_routing(
     region_id: Optional[int] = Query(default=None, gt=0),
     work_type: Optional[Literal["SERVICES", "PAYROLL"]] = None,
+    stage: Optional[Literal["PENDING_FINANCE_REVIEW", "FINANCE_REVIEWED", "BUDGET_HOLD"]] = None,
     db: Session = Depends(get_db), current=Depends(require_roles(REGIONAL_FINANCE)),
 ):
-    query = _visible(db, current).filter(WorkLog.status.in_([wf.FINANCE_REVIEWED, wf.BUDGET_HOLD]), WorkLog.finance_snapshot.isnot(None))
+    query = _visible(db, current).filter(WorkLog.status.in_([wf.PENDING_FINANCE, wf.FINANCE_REVIEWED, wf.BUDGET_HOLD]))
+    if stage:
+        query = query.filter(WorkLog.status == stage)
     if region_id:
         query = query.filter(WorkLog.assignment_id.in_(db.query(StaffAssignment.id).filter(StaffAssignment.region_id == region_id)))
     if work_type:
@@ -86,13 +89,19 @@ def pending_routing(
         facility = db.get(Facility, assignment.facility_id) if assignment.facility_id else None
         region, period = db.get(Region, assignment.region_id), db.get(PayPeriod, log.period_id)
         claim = db.query(PaymentClaim).filter(PaymentClaim.work_log_id == log.id, PaymentClaim.status != "CANCELLED").first()
+        snapshot = log.finance_snapshot or {}
+        amount = claim.amount if claim else snapshot.get("total")
+        currency = claim.currency if claim else snapshot.get("currency")
+        review_required = log.status == wf.PENDING_FINANCE
         rows.append({
             "work_log_id": log.id, "claim_id": claim.id if claim else None,
             "workflow_version": log.workflow_version, "work_type": log.work_type,
             "provider_name": staff.legal_name, "cadre_id": cadre.id, "cadre_code": cadre.code, "cadre_name": cadre.name,
             "facility_id": facility.id if facility else None, "facility_name": facility.name if facility else None,
             "region_id": region.id, "region_name": region.name, "period_label": wf.period_label(period),
-            "status": log.status, "amount": log.finance_snapshot["total"], "currency": log.finance_snapshot["currency"],
+            "status": log.status, "amount": str(amount) if amount is not None else None, "currency": currency,
+            "finance_review_required": review_required,
+            "next_action": "REVIEW_AMOUNT" if review_required else "RESOLVE_BUDGET_HOLD" if log.status == wf.BUDGET_HOLD else "CHANNEL",
             **_payors(db, log),
         })
     return rows
