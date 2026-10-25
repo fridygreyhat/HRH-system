@@ -71,7 +71,8 @@ The user requested Weekend Clinics as the only initial Data Clerk service;
 it uses the same Data Clerk data-entry indicators. Regional Technical can add
 scoped services later. Do not invent rates or budgets. Remove daily evidence
 and comment inputs, preserving older saved text and entry snapshots.
-Period comments are unchanged for Data Clerks.
+Data Clerk period-comment inputs are also removed. Do not erase previously
+saved period comments when saving other header details.
 
 ## Provider location and Health Care Provider forms
 

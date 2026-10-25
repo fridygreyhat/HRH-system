@@ -14,10 +14,10 @@ import { EntriesView, FlagsList, latestReturn, returnFlags, TotalsPanel } from '
 const WEEK_EN = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const WEEK_SW = ['Jtt', 'Jnn', 'Jtn', 'Alh', 'Ijm', 'Jms', 'Jpl'];
 
-function HeaderForm({ log, onSaved }: { log: WorkLogDetail; onSaved: (l: WorkLogDetail) => void }) {
+export function HeaderForm({ log, onSaved }: { log: WorkLogDetail; onSaved: (l: WorkLogDetail) => void }) {
   const { t } = useAuth();
   const isHcp = log.cadre.code === 'HCP';
-  const hidesPeriodComment = isHcp || log.cadre.code === 'CHW';
+  const hidesPeriodComment = isHcp || ['CHW', 'DATA_CLERK'].includes(log.cadre.code);
   const sections = useApi<SectionRow[]>(log.cadre.uses_section ? '/admin/sections' : null);
   const [occupation, setOccupation] = useState(log.occupation || '');
   const [occupationOther, setOccupationOther] = useState(log.occupation_other || '');
