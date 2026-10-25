@@ -11,6 +11,7 @@ import { Claims } from './pages/Claims';
 import { CsoPortal } from './pages/CsoPortal';
 import { Dashboard } from './pages/Dashboard';
 import { ChangePasswordForm, ForcedPasswordChange } from './pages/ChangePassword';
+import { DemoWalkthrough } from './pages/DemoWalkthrough';
 import { Login } from './pages/Login';
 import { MyWorkLogs } from './pages/MyWorkLogs';
 import { PrintWorkLog } from './pages/PrintWorkLog';
@@ -36,6 +37,15 @@ interface Page {
 }
 
 const PAGES: Page[] = [
+  {
+    key: 'demos',
+    label: 'Demo walkthrough',
+    description: 'Read-only replay of recorded role-by-role approval workflows',
+    icon: 'route',
+    group: 'Overview',
+    roles: ['PROVIDER', 'SUPERVISOR', 'FACILITY_IN_CHARGE', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'COMMUNITY_VERIFIER', 'FHI360_FINANCE', 'CSO_FINANCE', 'OVERSIGHT', 'CENTRAL_ADMIN', 'REGIONAL_ADMIN', 'SYSTEM_ADMIN', 'SUPER_ADMIN'],
+    render: () => <DemoWalkthrough />,
+  },
   {
     key: 'dashboard',
     label: 'Dashboard',
@@ -142,8 +152,9 @@ function App() {
   const route = useHashRoute();
   const [menuOpen, setMenuOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
-  const pages = PAGES.filter((p) => hasRole(...p.roles));
-  const current = pages.find((p) => p.key === route.page) || pages[0];
+  const pages = PAGES.filter((p) => p.key === 'demos' || hasRole(...p.roles));
+  const defaultPage = pages.find((p) => p.key !== 'demos') || pages[0];
+  const current = pages.find((p) => p.key === route.page) || defaultPage;
   const isReviewer = hasRole(...REVIEWERS);
   // A super admin holds every role; naming them all would crowd the top bar.
   const roleSummary = me ? (me.roles.includes('SUPER_ADMIN') ? roleLabel('SUPER_ADMIN') : me.roles.map(roleLabel).join(', ')) : '';

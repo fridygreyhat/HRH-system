@@ -25,12 +25,32 @@ the original Docker requirements files remain in `backend/`.
 Username: **admin**. Use the initial password entered as the `ADMIN_PASSWORD`
 Replit Secret. The app requires changing it at first sign-in.
 
-The database has only the repository's base configuration and administrator;
-no demo users, rates, staff or budgets were added. Follow the README's first-time
-setup sequence to configure the organization and staff.
+The bootstrap adds the repository's base configuration and administrator only.
+Additional accounts and configuration created later are not part of that seed.
+Follow the README's first-time setup sequence to configure the organization and staff.
 
 The bootstrap secret is only used to create the account. Changing it later does
 not reset the password of an existing account.
+
+## Simulated workflow walkthrough
+
+Every signed-in account can open **Demo walkthrough** (`#demos`). This is an
+immutable replay of actual API transitions executed against synthetic data in a
+throwaway PostgreSQL test database, not a separate set of live financial records.
+It includes all three cadres in both regions, Services and Payroll, return and
+budget-hold examples, and the preserved legacy B/C workflows.
+
+Generate its small runtime snapshot dataset with
+`python scripts/generate_demo_walkthrough.py`. The generator creates and removes
+its own test database. It must never target the application or production DB.
+Mock SMS/OTP settings exist only in the test subprocess; the running app retains
+its real gateway configuration. No credentials, OTPs, phones or bank accounts are
+included in the snapshots. The downloadable sample proof is marked **NOT PROOF
+OF A REAL PAYMENT**. Demo navigation does not impersonate live users or grant
+permissions, and the demo API has no financial write endpoints.
+
+Simulation verifies workflow rules, not Vodacom delivery, actual external
+payments or durable storage of real proof files.
 
 ## Development commands
 
