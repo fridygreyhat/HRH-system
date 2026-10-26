@@ -69,8 +69,8 @@ EVENTS: dict[str, dict] = {
     "WORKLOG_FINANCE_REVIEW": {
         "recipient": "Regional Finance",
         "variables": ["provider", "period"],
-        "en": "HRH: RPM authorized {provider}'s {period} log. Review the validated amount and route it to the correct payment channel.",
-        "sw": "HRH: RPM ameidhinisha kumbukumbu ya {provider} ya {period}. Kagua kiasi na elekeza kwenye njia sahihi ya malipo.",
+        "en": "HRH: RM authorized {provider}'s {period} log. Review the validated amount and route it to the correct payment channel.",
+        "sw": "HRH: RM ameidhinisha kumbukumbu ya {provider} ya {period}. Kagua kiasi na elekeza kwenye njia sahihi ya malipo.",
     },
     "WORKLOG_FINANCE_HOLD": {
         "recipient": "Regional Program Manager",

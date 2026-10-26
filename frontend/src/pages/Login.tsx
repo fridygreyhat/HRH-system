@@ -7,7 +7,7 @@ import { Alert, Field } from '../components/ui';
 interface Meta {
   version: string;
 }
-const STAGES = ['Provider logs work', 'CTC verifies', 'Technical review', 'RPM authorizes', 'Claim · budget · payment'];
+const STAGES = ['Provider logs work', 'CTC verifies', 'Technical review', 'RM authorizes', 'Claim · budget · payment'];
 
 export function Login() {
   const { login, sessionExpired } = useAuth();

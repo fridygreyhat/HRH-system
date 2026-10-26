@@ -14,7 +14,7 @@ const ALL_STEPS = [
   { action: 'verify', en: 'CTC verification', sw: 'Uhakiki wa CTC', who: { en: 'CTC In-Charge', sw: 'Mkuu wa CTC' } },
   { action: 'confirm_otp', en: 'Provider confirmation', sw: 'Uthibitisho wa mtoa huduma', who: { en: 'SMS code', sw: 'Namba ya SMS' } },
   { action: 'endorse', en: 'Technical review', sw: 'Mapitio ya kitaalamu', who: { en: 'Technical Officer', sw: 'Afisa wa kitaalamu' } },
-  { action: 'authorize', en: 'RPM authorization', sw: 'Idhini ya RPM', who: { en: 'Regional Manager', sw: 'Meneja wa kanda' } },
+  { action: 'authorize', en: 'RM authorization', sw: 'Idhini ya RM', who: { en: 'Regional Manager', sw: 'Meneja wa kanda' } },
 ];
 const DONE_LABEL = { en: 'Approved', sw: 'Imeidhinishwa' };
 
@@ -98,7 +98,7 @@ export function ApprovalStepper({
       { action: 'verify', title: 'CTC verification' },
       { action: 'confirm_otp', title: 'Provider confirmation' },
       { action: 'endorse', title: 'Technical review' },
-      { action: 'authorize', title: 'RPM authorization' },
+      { action: 'authorize', title: 'RM authorization' },
       { action: 'finance_review', title: 'Regional finance review' },
       { action: routeAction, title: status === 'ROUTED_CSO' ? 'Routed to CSO' : 'Routed to FHI360' },
       { action: 'paid', title: 'Paid' },

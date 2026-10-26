@@ -19,7 +19,7 @@ const ROLE_GUIDANCE: Record<string, string> = {
   SUPERVISOR: 'CTC / Supervisor: checks submitted work against facility context, then verifies or returns it for correction.',
   FACILITY_IN_CHARGE: 'Facility In-Charge: supplies the facility endorsement when the cadre or workflow requires it. This walkthrough shows only the recorded approval step.',
   TECHNICAL_OFFICER: 'Technical Officer: reviews the work and applies the technical endorsement for the assigned cadre. The page is a read-only record, not an approval screen.',
-  RPM: 'Regional Program Manager: operational approval across all regional cadres. RPM approval is not a payment action and there is no payment button here.',
+  RPM: 'Regional Manager (RM): operational approval across all regional cadres. RM approval is not a payment action and there is no payment button here.',
   REGIONAL_FINANCE: 'Regional Finance: reviews the pending claim and confirms the explicit payor context before routing. This is review only, not a payment action.',
   FHI360_FINANCE: 'FHI360 Finance: handles the recorded FHI360-payor path and batch preparation. External execution is not initiated here.',
   CSO_FINANCE: 'CSO Finance: receives the recorded CSO handoff, records external payment evidence and reconciles with a second person in the operational process.',

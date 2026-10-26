@@ -73,7 +73,7 @@ function ProposeForm({ lookups, onDone, onCancel }: { lookups: Lookups; onDone: 
   return (
     <form className="stack" onSubmit={submit}>
       <p className="notice notice-info">
-        Your proposal stays inactive until an RPM or Oversight user other than you approves it. Only ACTIVE rules price claims.
+        Your proposal stays inactive until an RM or Oversight user other than you approves it. Only ACTIVE rules price claims.
       </p>
       <div className="grid-2">
         <Field label="Claim category *">
@@ -220,7 +220,7 @@ export function RateRulesSection() {
         )}
       </div>
       <p className="notice notice-info">
-        Only ACTIVE rules are used to price claims. Proposed rules are inactive until approved by an RPM or Oversight user other than the proposer.
+        Only ACTIVE rules are used to price claims. Proposed rules are inactive until approved by an RM or Oversight user other than the proposer.
       </p>
       <Alert kind="success">{notice}</Alert>
       <Alert>{lookupError}</Alert>
@@ -328,7 +328,7 @@ export function RateRulesSection() {
             onCancel={() => setProposing(false)}
             onDone={() => {
               setProposing(false);
-              setNotice('Rule proposed. It is inactive until an RPM or Oversight user approves it.');
+              setNotice('Rule proposed. It is inactive until an RM or Oversight user approves it.');
               reload();
             }}
           />

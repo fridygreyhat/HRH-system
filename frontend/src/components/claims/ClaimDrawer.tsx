@@ -306,7 +306,7 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
           )}
           {financeReviewPending && (
             <p className="notice notice-info">
-              This claim was created from the RPM-approved work log’s saved activity rates. It is awaiting Regional Finance review and category selection. The amount is not routed, budget-committed or payable; finance will review this same claim before routing.
+              This claim was created from the RM-approved work log’s saved activity rates. It is awaiting Regional Finance review and category selection. The amount is not routed, budget-committed or payable; finance will review this same claim before routing.
             </p>
           )}
           {claim.payment_recipient && (

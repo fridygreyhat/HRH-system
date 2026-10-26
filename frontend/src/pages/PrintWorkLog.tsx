@@ -191,7 +191,7 @@ export function PrintWorkLog({ logId }: { logId: number }) {
             <SignBox titleSw="Mfawidhi wa kituo" titleEn="Facility in-charge endorsement" row={signOff(log, 'facility_endorse')} />
           )}
           <SignBox titleSw="Mapitio ya kitaalamu" titleEn="Technical review" row={signOff(log, 'endorse')} />
-          <SignBox titleSw="Idhini ya RPM" titleEn="RPM approval" row={signOff(log, 'authorize')} />
+          <SignBox titleSw="Idhini ya RM" titleEn="RM approval" row={signOff(log, 'authorize')} />
         </div>
         <p style={{ marginTop: '0.5rem' }}>
           Work log #{log.id} · version {log.version} · status {log.status} · printed {dateTime(new Date().toISOString())}. Approval is not payment.

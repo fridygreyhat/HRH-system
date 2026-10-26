@@ -30,7 +30,7 @@ const ACTION_HELP: Record<string, string> = {
   return_to_reviewer: 'Send back to the previous review stage.',
   reject: 'Final rejection of this work log.',
   hold: 'Place on budget hold until released.',
-  release: 'Release the budget hold back to RPM authorization.',
+  release: 'Release the budget hold back to RM authorization.',
   reopen: 'Reopen an approved log for correction (linked claims must be cancelled first).',
   facility_endorse: 'Record the Facility In-Charge endorsement required by this cadre form.',
 };
@@ -389,7 +389,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
             <Section title="Linked claims">
               {log.claims.some((claim) => claim.status === 'PENDING_FINANCE_REVIEW') && (
                 <p className="notice notice-info">
-                  RPM authorization records a pending finance claim from the activity rate snapshots. This is an operational record for finance review—not routed, budget-committed or payable. Regional Finance reviews this same claim and selects its category.
+                  RM authorization records a pending finance claim from the activity rate snapshots. This is an operational record for finance review—not routed, budget-committed or payable. Regional Finance reviews this same claim and selects its category.
                 </p>
               )}
               <ul className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>

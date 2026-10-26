@@ -32,7 +32,7 @@ test('queue exposes pending finance amount review before channel selection and o
     expect(container.textContent).toContain('Amount review required');
     expect(container.textContent).toContain('TZS 173450');
     expect(container.textContent).toContain('Review amount');
-    expect(container.textContent).toContain('Every RPM-approved claim appears here');
+    expect(container.textContent).toContain('Every RM-approved claim appears here');
     act(() => Simulate.click(Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Review amount')));
     expect(container.textContent).toContain('Review work log #92');
   } finally {

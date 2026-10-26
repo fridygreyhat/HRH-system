@@ -76,7 +76,7 @@ function TemplateEditor({ template, canEdit, onPublished }: { template: SmsTempl
             }}
           />
         </Field>
-        {!canEdit && <p className="muted small">Read only: SMS texts are published by RPM or Oversight users. You can still preview the current text.</p>}
+        {!canEdit && <p className="muted small">Read only: SMS texts are published by RM or Oversight users. You can still preview the current text.</p>}
         <Alert>{previewAction.error || publishAction.error}</Alert>
         <Alert kind="success">{published}</Alert>
         <div className="row">
@@ -152,7 +152,7 @@ export function SmsTemplatesSection() {
       <h3>SMS templates</h3>
       <p className="muted">
         One message per event and language. Publishing creates a new version; earlier versions are kept for the record.
-        {!canEdit && ' You can view and preview templates; RPM and Oversight users publish changes.'}
+        {!canEdit && ' You can view and preview templates; RM and Oversight users publish changes.'}
       </p>
       <div className="filters">
         <Field label="Language">

@@ -154,7 +154,7 @@ function TechnicalArea({ value, onChange, disabled }: { value: number[]; onChang
     <fieldset className="stack">
       <legend>Review cadre scope</legend>
       <p className="muted small">
-        Technical and finance access is limited to the selected cadres and the user's geographic or organization scopes. RPM approval covers all cadres within its regional scope.
+        Technical and finance access is limited to the selected cadres and the user's geographic or organization scopes. RM approval covers all cadres within its regional scope.
       </p>
       <Alert>{cadres.error}</Alert>
       {(cadres.data || []).map((c) => (

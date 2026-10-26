@@ -66,7 +66,7 @@ export function RoutingQueue() {
           data={queue.data}
           error={null}
           loading={queue.loading}
-          empty={<div className="routing-empty"><span aria-hidden="true">✓</span><strong>No work items need finance action</strong><p>Every RPM-approved claim appears here for amount review, channel selection or budget-hold resolution. Older legacy records stay in their existing workflow.</p></div>}
+          empty={<div className="routing-empty"><span aria-hidden="true">✓</span><strong>No work items need finance action</strong><p>Every RM-approved claim appears here for amount review, channel selection or budget-hold resolution. Older legacy records stay in their existing workflow.</p></div>}
         >
           {(items) => (
             <div className="table-wrap routing-table-wrap">
@@ -97,7 +97,7 @@ export function RoutingQueue() {
           )}
         </AsyncState>
       )}
-      <p className="muted small routing-footnote">Every RPM-approved claim appears here—not only claims already reviewed by Finance. Review its amount first, then choose the payment channel; budget holds stay visible until resolved.</p>
+      <p className="muted small routing-footnote">Every RM-approved claim appears here—not only claims already reviewed by Finance. Review its amount first, then choose the payment channel; budget holds stay visible until resolved.</p>
       {openId !== null && <WorkLogDrawer logId={openId} onClose={() => setOpenId(null)} onChanged={queue.reload} />}
     </div>
   );

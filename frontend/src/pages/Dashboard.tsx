@@ -140,7 +140,7 @@ function DashboardBody({ d, periodSelected }: { d: DashboardData; periodSelected
     <div className="stack-lg">
       <div className="kpis">
         <Kpi icon="users" label="Active staff" value={num(d.staff.active)} hint={`${num(d.staff.exited)} exited · ${num(d.staff.total)} total`} />
-        <Kpi icon="clipboard" label="Awaiting review" value={num(waiting)} hint="Across CTC, technical and RPM stages" />
+        <Kpi icon="clipboard" label="Awaiting review" value={num(waiting)} hint="Across CTC, technical and RM stages" />
         <Kpi icon="clock" label={`Waiting ${reminderHours} h or more`} value={num(late)} tone={late ? 'danger' : 'success'} hint={late ? 'Reminder checks run hourly' : 'All queues within target'} />
         <Kpi icon="receipt" label="Approved, not yet paid" value={compactMoney(Math.max(approvedUnpaid, 0))} hint="Liabilities still moving to payment" />
         <Kpi icon="wallet" label="Paid & recorded" value={compactMoney(paid)} tone="success" hint="Payment status Paid or Reconciled" />

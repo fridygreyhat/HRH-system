@@ -211,7 +211,7 @@ export function CommunityClaims() {
         </section>
       )}
 
-      {!provider && <section className="community-flow card"><span className="community-step">INDEPENDENT REVIEW · ROUTE C</span><p><strong>Provider submits → scoped verifier confirms → CSO Finance approves and pays.</strong> No RPM or Regional Finance routing is required for this claim type.</p></section>}
+      {!provider && <section className="community-flow card"><span className="community-step">INDEPENDENT REVIEW · ROUTE C</span><p><strong>Provider submits → scoped verifier confirms → CSO Finance approves and pays.</strong> No RM or Regional Finance routing is required for this claim type.</p></section>}
       <section className="stack">
         <div className="community-list-heading"><div><span className="community-step">CLAIM REGISTER</span><h2>{provider ? 'Your claims' : 'Claims in your scope'}</h2></div><span className="muted small">Work approval and payment recording remain separate.</span></div>
         <AsyncState data={claims.data} error={claims.error} loading={claims.loading} empty="No community claims are visible yet. Drafts and reviews will appear here when available.">
