@@ -41,3 +41,8 @@ externalPort = 80
 EXPOSE_DEV_OTP = "false"
 SMS_GATEWAY_TYPE = "vodacom"
 VODACOM_SENDER_ID = "Tanzania HRH"
+
+[deployment]
+deploymentTarget = "vm"
+run = ["python", "scripts/run_replit.py"]
+build = ["bash", "-c", "npm ci && npm run build"]

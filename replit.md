@@ -325,6 +325,21 @@ from the real bootstrap password.
 
 ## SMS and file storage
 
+### Publishing precautions
+
+- Publishing uses a Reserved VM with the existing API and notification worker.
+  This keeps the hourly reminders running even when nobody visits the website;
+  it incurs always-running compute rather than request-based autoscaling.
+- The publishing build runs `npm ci && npm run build`, and startup uses
+  `python scripts/run_replit.py`. Review the production database/schema in the
+  Publishing tool; startup deliberately does not migrate or seed it.
+- Keep credentials in Production app secrets, never browser build variables.
+  Uploaded source documents, local uploads, agent memory and environment files
+  are excluded from the published bundle. Secrets previously pasted into chat
+  should be rotated before live use.
+- Until durable proof storage is configured, publishing is suitable for testing,
+  not storing real payment-proof uploads.
+
 - SMS supports `SMS_GATEWAY_TYPE=vodacom`, `twilio`, or `mock`; unknown values
   fail explicitly rather than reporting mock success. Replit is configured for
   Vodacom with sender ID **Tanzania HRH** (provided by the user). Credentials are

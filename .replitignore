@@ -1,1 +1,13 @@
 /generated-artifacts/
+/.env
+/.env.*
+!/.env.example
+/backend/.env
+/backend/.env.*
+/frontend/.env
+/frontend/.env.*
+/attached_assets/
+/.data/
+/.agents/
+/.git/
+/screenshots/
