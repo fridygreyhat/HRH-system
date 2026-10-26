@@ -43,6 +43,6 @@ SMS_GATEWAY_TYPE = "vodacom"
 VODACOM_SENDER_ID = "Tanzania HRH"
 
 [deployment]
-deploymentTarget = "vm"
+deploymentTarget = "cloudrun"
 run = ["python", "scripts/run_replit.py"]
 build = ["bash", "-c", "npm ci && npm run build"]
