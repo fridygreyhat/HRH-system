@@ -2,6 +2,7 @@ import logging
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -58,5 +59,6 @@ def health_check(db: Session = Depends(get_db)):
     try:
         db.execute(text("SELECT 1"))
         return {"status": "healthy", "database": "connected"}
-    except Exception as e:
-        return {"status": "unhealthy", "database": str(e)}
+    except Exception:
+        logging.getLogger(__name__).error("Database health check failed")
+        return JSONResponse(status_code=503, content={"status": "unhealthy", "database": "unavailable"})

@@ -7,29 +7,36 @@ export function useApi<T>(path: string | null) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(!!path);
   const latest = useRef(path);
+  const requestId = useRef(0);
   latest.current = path;
 
   const reload = useCallback(async () => {
+    const id = ++requestId.current;
     if (!path) {
+      setData(null);
+      setError(null);
       setLoading(false);
       return;
     }
     setLoading(true);
+    setError(null);
     try {
       const result = await api.get<T>(path);
-      if (latest.current === path) {
+      if (latest.current === path && requestId.current === id) {
         setData(result);
         setError(null);
       }
     } catch (e) {
-      if (latest.current === path) setError((e as Error).message);
+      if (latest.current === path && requestId.current === id) setError((e as Error).message);
     } finally {
-      if (latest.current === path) setLoading(false);
+      if (latest.current === path && requestId.current === id) setLoading(false);
     }
   }, [path]);
 
   useEffect(() => {
+    setData(null);
     reload();
+    return () => { requestId.current += 1; };
   }, [reload]);
 
   return { data, error, loading, reload, setData };

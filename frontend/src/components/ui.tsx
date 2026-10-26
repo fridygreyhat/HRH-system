@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
+import { Icon } from './Icon';
 import {
   CLAIM_STATUS_LABELS,
   LOCATION_LABELS,
@@ -202,7 +203,7 @@ export function Drawer({ title, onClose, children, wide = false }: { title: Reac
         <header className="drawer-header">
           <h2 id={id}>{title}</h2>
           <button className="btn btn-ghost" data-close onClick={onClose} aria-label="Close">
-            ✕
+            <Icon name="close" size={18} />
           </button>
         </header>
         <div className="drawer-body">{children}</div>
@@ -221,7 +222,7 @@ export function Modal({ title, onClose, children }: { title: React.ReactNode; on
         <header className="modal-header">
           <h2 id={id}>{title}</h2>
           <button className="btn btn-ghost" data-close onClick={onClose} aria-label="Close">
-            ✕
+            <Icon name="close" size={18} />
           </button>
         </header>
         {children}

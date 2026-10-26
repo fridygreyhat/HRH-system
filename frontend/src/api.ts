@@ -1,20 +1,26 @@
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 const TOKEN_KEY = 'hrh_token';
+let memoryToken: string | null = null;
+let memoryOnly = false;
 
 export const getToken = (): string | null => {
+  if (memoryOnly) return memoryToken;
   try {
     return localStorage.getItem(TOKEN_KEY);
   } catch {
-    return null;
+    return memoryToken;
   }
 };
 
 export const setToken = (token: string | null): void => {
+  memoryToken = token;
   try {
     if (token) localStorage.setItem(TOKEN_KEY, token);
     else localStorage.removeItem(TOKEN_KEY);
+    memoryOnly = false;
   } catch {
-    /* storage unavailable: the session simply won't survive a reload */
+    // Blocked storage must not prevent sign-in; this session ends on reload.
+    memoryOnly = true;
   }
 };
 
@@ -73,8 +79,11 @@ async function send(method: string, path: string, body?: Payload): Promise<Respo
     throw new ApiError(0, 'Cannot reach the server. Check your connection and try again.');
   }
   if (res.status === 401 && token) {
-    setToken(null);
-    unauthorizedHandler?.();
+    // A response started before a fresh sign-in cannot revoke the new session.
+    if (getToken() === token) {
+      setToken(null);
+      unauthorizedHandler?.();
+    }
     throw new ApiError(401, 'Your session has expired. Please sign in again.');
   }
   if (!res.ok) {
@@ -98,8 +107,17 @@ export interface BlobResult {
 
 function filenameFrom(res: Response, fallback: string): string {
   const disposition = res.headers.get('content-disposition') || '';
-  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
-  return match ? decodeURIComponent(match[1]) : fallback;
+  // RFC 5987 filenames take precedence over their ASCII fallback.
+  const extended = /(?:^|;)\s*filename\*\s*=\s*(?:UTF-8'[^']*')"?([^";]+)"?/i.exec(disposition);
+  if (extended) {
+    try {
+      return decodeURIComponent(extended[1]);
+    } catch {
+      return extended[1]; // A malformed header must not discard a valid file.
+    }
+  }
+  const plain = /(?:^|;)\s*filename\s*=\s*(?:"((?:\\.|[^"\\])*)"|([^;]+))/i.exec(disposition);
+  return plain ? (plain[1] !== undefined ? plain[1].replace(/\\(.)/g, '$1') : plain[2].trim()) || fallback : fallback;
 }
 
 /** Build a query string from defined, non-empty values. */
