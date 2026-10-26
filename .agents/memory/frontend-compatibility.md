@@ -1,18 +1,19 @@
 ---
 name: Imported frontend compatibility
-description: Why dependency installs must preserve the imported CRA frontend's older Node typings.
+description: Build-tool compatibility and why the unsupported CRA dependency tree must not return.
 ---
 
-Keep Node type declarations compatible with the imported TypeScript 4.9 frontend.
-When npm installs through a workspace root, do not rely on a leaf package's
-overrides to enforce that compatibility.
+Keep TypeScript and Node type declarations compatible across the root npm
+workspace and standalone frontend installs. Do not reintroduce react-scripts
+as a shortcut for build or test compatibility.
 
-**Why:** The frontend build can succeed while a standalone TypeScript check
-fails because newer Node typings contain syntax TypeScript 4.9 cannot parse.
-The imported frontend's leaf-level override was not sufficient when installed
-through a root npm workspace.
+**Why:** The imported CRA dependency tree could not resolve its security
+findings through compatible parent upgrades. Its replacement deliberately
+upgraded TypeScript instead of forcing new tooling to consume obsolete Node
+typings. A leaf package's overrides do not control root workspace installs.
 
-**How to apply:** After changing frontend dependency installation or workspace
-configuration, check the resolved Node typings and run the standalone TypeScript
-check as well as the CRA build. Preserve compatible typings unless deliberately
-upgrading the compiler and verifying the full frontend.
+**How to apply:** Check resolved typings and run type checks, frontend tests and
+the production build after dependency changes. Preserve security floors in
+both workspace and standalone manifests. Jest's abstract jsdom environment has
+a broad peer range that can retain an old installed jsdom despite a Jest
+upgrade; keep its peer resolution aligned with the main Jest environment.

@@ -1,5 +1,5 @@
 # Dependencies + source (shared by the dev server and the production build).
-FROM node:18-alpine AS deps
+FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json .
 RUN npm install

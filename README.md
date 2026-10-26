@@ -24,7 +24,7 @@ the backend, so browsers never talk to a second origin.
 | API docs | http://localhost:3000/api/docs |
 | Worker   | `worker` service: SMS outbox + hourly reminders |
 | Backend tests | `docker compose run --rm --no-deps backend pytest -q backend/tests` |
-| Frontend checks | `cd frontend && docker build --target build -t hrh-fe . && docker run --rm -e CI=true hrh-fe sh -c "npx tsc --noEmit -p . && npx react-scripts build"` |
+| Frontend checks | `cd frontend && docker build --target build -t hrh-fe . && docker run --rm -e CI=true hrh-fe sh -c "npm test -- --runInBand && npm run build"` |
 
 The web app has a light/dark theme switch, an English/Kiswahili switch, a sidebar that becomes a slide-in menu
 on phones, and a dashboard with charts (each chart has a table view).
@@ -129,7 +129,7 @@ backend/
   worker.py        outbox delivery + reminders
   seed.py          base configuration (no sample data)
   tests/           acceptance tests mapped to the master prompt's section 17 (sample data in tests/demo_data.py)
-frontend/          React + TypeScript (CRA), built and served by nginx (nginx.conf proxies /api)
+frontend/          React + TypeScript (Vite), built and served by nginx (nginx.conf proxies /api)
 ```
 
 ## Production checklist

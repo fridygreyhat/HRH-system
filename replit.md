@@ -9,7 +9,7 @@ an npm/shell wrapper leaving an old server behind during restarts. It stops both
 processes when the workflow stops. `npm start` remains available for manual use.
 
 - Preview: port **5000**, bound to `0.0.0.0`.
-- Frontend: the existing React/TypeScript CRA application, compiled into `frontend/build`.
+- Frontend: React/TypeScript compiled by Vite into `frontend/build`; Jest runs the existing tests.
 - API: the existing FastAPI application, mounted at `/api`.
 - API documentation: `/api/docs`.
 - Database health: `/api/health`.
@@ -19,6 +19,11 @@ processes when the workflow stops. `npm start` remains available for manual use.
 
 The original backend/frontend directories, Docker setup and application stack
 remain intact. The root npm configuration wraps the existing frontend workspace.
+The frontend tooling requires Node 20.19+ or 22.12+, with TypeScript 5.9 and
+compatible Node 20 typings. `npm run build` type-checks before building; `npm test
+--workspace=hrh-frontend -- --runInBand` runs the frontend checks. The optional
+frontend dev server uses port 3001 and proxies `/api` to local port 8001 (or
+`DEV_API_PROXY_TARGET`). Published/managed preview operation remains on port 5000.
 Python dependencies are installed through the root `pyproject.toml` / `uv.lock`;
 the original Docker requirements files remain in `backend/`.
 

@@ -68,7 +68,7 @@ services:
       backend:
         condition: service_healthy
 
-  # Development only: React dev server with hot reload on http://localhost:3001 (calls the API on :8001).
+  # Development only: Vite dev server on http://localhost:3001 with a same-origin API proxy.
   #   docker compose --profile dev up -d frontend-dev
   frontend-dev:
     profiles: ["dev"]
@@ -79,10 +79,9 @@ services:
       - "3001:3001"
     environment:
       PORT: "3001"
-      REACT_APP_API_URL: http://localhost:8001
-      WATCHPACK_POLLING: "true"
-      WDS_SOCKET_PORT: "3001"
-      BROWSER: none
+      REACT_APP_API_URL: /api
+      DEV_API_PROXY_TARGET: http://backend:8000
+      CHOKIDAR_USEPOLLING: "true"
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/public:/app/public
