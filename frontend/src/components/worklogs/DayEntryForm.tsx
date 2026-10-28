@@ -88,7 +88,8 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
   const hidesEvidence = isHcp || isChw || isDataClerk;
   const defaultChwActivity = applicableActivities.find((activity) => activity.key === 'chw_daily_timesheet');
   const defaultClerkActivity = applicableActivities.find((activity) => activity.key === 'data_clerk_daily_timesheet');
-  const [activityKey, setActivityKey] = useState(entry?.activity_key || (isHcp ? '' : (isChw ? defaultChwActivity : isDataClerk ? defaultClerkActivity : undefined)?.key || applicableActivities[0]?.key || allActivities[0]?.key || ''));
+  const attendance = log.work_type === 'PAYROLL' ? applicableActivities.find((activity) => activity.key === 'daily_attendance') : undefined;
+  const [activityKey, setActivityKey] = useState(entry?.activity_key || attendance?.key || (isHcp ? '' : (isChw ? defaultChwActivity : isDataClerk ? defaultClerkActivity : undefined)?.key || applicableActivities[0]?.key || allActivities[0]?.key || ''));
   const selectedActivity = activities.find((activity) => activity.key === activityKey);
   const activityType = selectedActivity?.item_type || log.work_type;
   const [indicatorGroupKey, setIndicatorGroupKey] = useState('');
@@ -97,7 +98,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
     || selectedActivity?.groups?.[0];
   const requiresLocation = Boolean(selectedActivity?.requires_location || activityKey === 'secondary_facility');
   const direct = log.cadre.hours_mode === 'DIRECT' || Boolean(selectedActivity?.hours_input);
-  const visibleFields = !isHcp && !isChw && !isDataClerk && (selectedActivity?.item_type === 'PAYROLL' || log.work_type === 'PAYROLL')
+  const visibleFields = log.work_type === 'PAYROLL' || (!isHcp && !isChw && !isDataClerk && selectedActivity?.item_type === 'PAYROLL')
     ? []
     : selectedActivity
       ? selectedActivity.fields.flatMap((key) => log.cadre.fields.filter((field) => field.key === key))
@@ -132,7 +133,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
       setValidationError(lang === 'sw' ? 'Nasa mahali ulipo kabla ya kuhifadhi siku hii.' : 'Capture your current location before saving this day.');
       return;
     }
-    const missing = (selectedActivity?.required_fields || []).filter((key) => measures[key] === undefined || measures[key] === '');
+    const missing = (log.work_type === 'PAYROLL' ? [] : selectedActivity?.required_fields || []).filter((key) => measures[key] === undefined || measures[key] === '');
     if (missing.length) {
       if (isGroupedIndicators) {
         const firstIncompleteGroup = selectedActivity?.groups?.find((group) => group.fields.some((key) => missing.includes(key)));
@@ -191,6 +192,11 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
           ? `Jumatatu–Ijumaa: hadi saa ${limits.daily_hours} kwa siku na ${limits.weekly_hours} kwa wiki. Kliniki za Jumamosi: saa ${limits.saturday_min_hours}–${limits.saturday_max_hours}, hazihesabiwi kwenye kikomo cha siku za kazi. Kazi ya Jumapili hairuhusiwi.`
           : `Monday–Friday: up to ${limits.daily_hours} hours per day and ${limits.weekly_hours} total. Saturday weekend clinics: ${limits.saturday_min_hours}–${limits.saturday_max_hours} hours, separate from the weekday limit. Sunday work is not allowed.`}
       </p>
+      <p className="notice notice-info" role="note">
+        {lang === 'sw'
+          ? 'Unaweza kujaza Payroll na Services kwa tarehe moja, kila moja kwenye daftari lake. Saa na idhini zinahesabiwa kando.'
+          : 'You can record Payroll and Services on the same date in their separate work logs. Hours and approvals are tracked separately.'}
+      </p>
       {backdateAccess && backdateAccess.enabled !== false && (
         <p className="notice notice-info" role="note">
           {dateGrant
@@ -213,10 +219,10 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
         </div>
       )}
 
-      {activities.length > 0 && (
+      {activities.length > 0 && log.work_type !== 'PAYROLL' && (
         <Field
           label={isHcp
-            ? activityType === 'PAYROLL' ? (lang === 'sw' ? 'Kituo cha kila siku' : 'Daily facility cascade')
+            ? activityType === 'PAYROLL' ? (lang === 'sw' ? 'Mahudhurio ya kila siku' : 'Daily attendance')
               : activityType === 'SERVICES' ? (lang === 'sw' ? 'Huduma' : 'Service')
                 : (lang === 'sw' ? 'Aina ya shughuli ya HCP' : 'HCP activity type')
             : isDataClerk
@@ -225,8 +231,8 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
             : lang === 'sw' ? 'Aina ya shughuli' : 'Activity'}
           hint={isHcp
             ? (lang === 'sw'
-              ? 'Malipo (PAYROLL) ni daftari la kila siku la kituo; Huduma (SERVICES) hurekodi huduma kando.'
-              : 'PAYROLL is the daily facility timesheet; SERVICES records services separately.')
+              ? 'Payroll inarekodi mahudhurio na saa; Services inarekodi shughuli kando.'
+              : 'Payroll records attendance and hours only; Services records activities separately.')
             : isDataClerk && activityType === 'SERVICES'
               ? (lang === 'sw' ? 'Kliniki za mwisho wa wiki pekee kwa sasa. Huduma nyingine zitaongezwa na Afisa wa Ufundi wa Mkoa.'
                 : 'Weekend Clinics only for now. Your Regional Technical Officer can add other services.')

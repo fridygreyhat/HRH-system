@@ -241,7 +241,7 @@ def transition(
         from . import finance_gate
         if action == "authorize" and next_status == PENDING_FINANCE:
             claim = finance_gate.prepare_after_rpm(db, current, log)
-            details = {**(details or {}), "prepared_claim_id": claim.id}
+            details = {**(details or {}), "prepared_claim_id": claim.id if claim else None}
             log.approved_at = now
         elif action == "finance_review":
             finance_gate.review(db, current, log, (details or {}).get("category_id"))
@@ -281,7 +281,7 @@ def _validate_submission(db: Session, log: WorkLog) -> None:
         activity = entry.activity_snapshot if log.workflow_version >= 2 else activity_for(cadre.code, entry.activity_key)
         if not activity:
             raise HTTPException(status_code=422, detail=f"Select an activity for {entry.entry_date} before submitting.")
-        missing = set(activity["required_fields"]) - set(measures)
+        missing = set(activity["required_fields"]) - set(measures) if log.work_type != "PAYROLL" else set()
         if missing:
             raise HTTPException(status_code=422, detail=f"Complete all required indicators for {entry.entry_date}: {', '.join(sorted(missing))}. Enter zero when none were recorded.")
     hour_flags = [flag for flag in review_summary(db, log)["anomalies"] if flag["code"] in HOUR_POLICY_CODES]

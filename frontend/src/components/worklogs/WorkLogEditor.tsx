@@ -305,7 +305,7 @@ export function WorkLogEditor({ logId, initialDate, onBack }: { logId: number; i
 
       {me?.client_settings.provider_otp_required !== false && log.awaiting_my_otp && <OtpPanel log={log} onChanged={setData} />}
 
-      <PayoutEstimate logId={log.id} version={log.updated_at} />
+      {log.work_type !== 'PAYROLL' && <PayoutEstimate logId={log.id} version={log.updated_at} />}
 
       <HeaderForm key={`${log.id}-${log.updated_at}`} log={log} onSaved={setData} />
 

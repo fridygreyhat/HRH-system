@@ -13,6 +13,22 @@ from .data_clerk_forms import DATA_CLERK_KEYS, clerk_metadata, data_clerk_builti
 HCP_DAILY_CASCADES = {"opd_screening", "ctc_art_refills", "laboratory"}
 
 
+def payroll_attendance(cadre_id):
+    return {
+        "key": "daily_attendance", "label_en": "Daily attendance", "label_sw": "Mahudhurio ya kila siku",
+        "item_type": "PAYROLL", "form_mode": "SINGLE", "hours_input": True,
+        "fields": [], "required_fields": [], "field_definitions": [], "rate_value": None,
+        "currency": "TZS", "unit_type": "PER_HOUR", "billable_field": None, "cadre_id": cadre_id,
+    }
+
+
+def attendance_only(activity):
+    """Remove indicator requirements without modifying recorded rate snapshots."""
+    result = deepcopy(activity)
+    result.update(fields=[], required_fields=[], field_definitions=[], groups=[], cascade_pairs=[])
+    return result
+
+
 def definition_out(row: ActivityRate) -> dict:
     fields = row.field_definitions
     result = {
@@ -101,10 +117,21 @@ def catalog_for_log(db, log) -> list[dict]:
         if entry.activity_snapshot and entry.activity_key not in keys:
             result.append(deepcopy(entry.activity_snapshot))
             keys.add(entry.activity_key)
+    if log.work_type == "PAYROLL":
+        result = [attendance_only(item) for item in result]
+        if not any(item["key"] == "daily_attendance" for item in result):
+            result.insert(0, payroll_attendance(log.cadre_id))
     return result
 
 
 def resolve_activity(db, log, key: str, day, existing=None) -> dict:
+    if log.workflow_version >= 2 and log.work_type == "PAYROLL" and key == "daily_attendance":
+        return payroll_attendance(log.cadre_id)
+    activity = _resolve_activity(db, log, key, day, existing)
+    return attendance_only(activity) if log.work_type == "PAYROLL" else activity
+
+
+def _resolve_activity(db, log, key: str, day, existing=None) -> dict:
     if log.workflow_version < 2:
         item = activity_for(db.get(Cadre, log.cadre_id).code, key)
         if not item:

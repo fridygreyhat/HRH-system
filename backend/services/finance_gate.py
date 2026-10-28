@@ -100,6 +100,10 @@ def prepare_after_rpm(db, current, log):
         raise HTTPException(409, "This work log already has a live claim")
     amount = preview(db, log)
     if amount["exceptions"]:
+        if log.work_type == "PAYROLL":
+            # Attendance approval does not assert a payable salary. Finance must
+            # resolve pricing before a claim can be created, routed or paid.
+            return None
         raise HTTPException(422, "Cannot prepare a claim: " + " ".join(amount["exceptions"]))
     snapshot = jsonable_encoder({
         **amount, "operationally_approved_by": current.id,

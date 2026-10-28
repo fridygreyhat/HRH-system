@@ -417,13 +417,14 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
                 raise HTTPException(status_code=422, detail=f"{fields[key].label_en} must be a whole number between 0 and 10000")
             values[key] = Decimal(int(raw))
 
-    limits = hour_limits(db)
+    limits = hour_limits(db, log.work_type)
     week_start = entry_date - timedelta(days=entry_date.weekday())
     week_end = week_start + timedelta(days=6)
     existing_hours = (
         db.query(WorkLogEntry)
         .join(WorkLog, WorkLog.id == WorkLogEntry.work_log_id)
-        .filter(WorkLog.staff_id == log.staff_id, WorkLogEntry.entry_date >= week_start, WorkLogEntry.entry_date <= week_end)
+        .filter(WorkLog.staff_id == log.staff_id, WorkLog.work_type == log.work_type,
+                WorkLogEntry.entry_date >= week_start, WorkLogEntry.entry_date <= week_end)
         .all()
     )
     daily_total = sum(

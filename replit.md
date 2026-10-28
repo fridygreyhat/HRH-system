@@ -297,15 +297,18 @@ from the real bootstrap password.
   at `/rates`. Entry snapshots retain the rate and indicator definitions used.
   Per-unit cascade pricing requires an explicitly selected billable indicator;
   never infer that positives, linkage, or the final cascade field is payable.
-  Unpriced work cannot pass RPM approval: preparing a priced liability and the
-  operational approval are one transaction, with an explicit configuration error
-  when pricing is missing. Rate revisions do not silently reprice recorded work.
+  Unpriced Services cannot pass RM approval. Payroll attendance can pass RM
+  approval without a rate; no claim is created until a valid amount is available.
+  Finance pricing, routing and payment guards remain required. Rate revisions
+  do not silently reprice recorded work. Payroll has no daily indicator fields,
+  allows at most eight weekday hours (40 Monday–Friday), and its hour totals
+  are independent of Services, which may be recorded on the same date.
 - RPM operational authority covers **every cadre within its assigned regions**,
   without needing cadre grants. Technical, Regional Finance and new channel-finance records enforce
   **Region × Cadre** scopes. Configure reviewer cadres and region scopes for
   these users; CSO Finance additionally requires the assigned CSO organization.
   Broad RPM authority must not widen a separate finance or technical role.
-- RPM approval automatically derives a `PENDING_FINANCE_REVIEW` claim, with
+- Priced RPM approval automatically derives a `PENDING_FINANCE_REVIEW` claim, with
   recorded-rate amount and components, but no category, payor or committed budget.
   **Why:** operational approval records the liability; finance alone selects its
   financial configuration. Finance review fills in the category, payor and budget

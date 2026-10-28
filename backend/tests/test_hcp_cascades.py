@@ -3,7 +3,7 @@ import pytest
 
 
 @pytest.mark.parametrize("kind,keys", [
-    ("PAYROLL", {"opd_screening", "ctc_art_refills", "laboratory"}),
+    ("PAYROLL", {"daily_attendance", "opd_screening", "ctc_art_refills", "laboratory"}),
     ("SERVICES", {"index_testing", "sns_rnr_testing", "tb_contact_tracing",
                   "weekend_clinic", "tb_active_case_finding", "inmate_tb_screening"}),
 ])
@@ -15,11 +15,11 @@ def test_hcp_catalog_matches_attachment(api, db, period, monkeypatch, kind, keys
     assert {item["key"] for item in activities} == keys
     for item in activities:
         assert item["required_fields"] == item["fields"]
-        assert item["hours_input"] is False
+        assert item["hours_input"] is (item["key"] == "daily_attendance")
     day = period["start_date"]
     item = activities[0]
     payload = {"activity_key": item["key"], "start_time": "08:00", "end_time": "09:00",
-               "measures": {key: 0 for key in item["fields"]}}
+               "hours_worked": 1, "measures": {key: 0 for key in item["fields"]}}
     saved = api.put(f"/worklogs/{log['id']}/entries/{day}", "hcp1", payload)
     entry = saved["entries"][0]
     assert entry["activity_key"] == item["key"]
@@ -27,7 +27,7 @@ def test_hcp_catalog_matches_attachment(api, db, period, monkeypatch, kind, keys
     assert not entry["evidence_text"]
     assert not entry["comment"]
     api.call("PUT", f"/worklogs/{log['id']}/entries/{day}", "hcp1",
-             json={**payload, "measures": {}}, expect=422)
+             json={**payload, "measures": {}}, expect=200 if kind == "PAYROLL" else 422)
     other = "opd_screening" if kind == "SERVICES" else "index_testing"
     api.call("PUT", f"/worklogs/{log['id']}/entries/{day}", "hcp1",
              json={**payload, "activity_key": other}, expect=422)
@@ -43,7 +43,7 @@ def test_hcp_daily_and_outreach_same_date_preserve_history(api, db, period, monk
         activity = log["cadre"]["activities"][0]
         payload = {"activity_key": activity["key"], "start_time": f"{8 + index:02d}:00",
                    "end_time": f"{9 + index:02d}:00",
-                   "measures": {key: 0 for key in activity["fields"]}}
+                   "hours_worked": 1, "measures": {key: 0 for key in activity["fields"]}}
         saved = api.put(f"/worklogs/{log['id']}/entries/{day}", "hcp1",
                         {**payload, "evidence_text": "Previously recorded evidence", "comment": "Existing note"})
         saved = api.put(f"/worklogs/{log['id']}/entries/{day}", "hcp1", payload)

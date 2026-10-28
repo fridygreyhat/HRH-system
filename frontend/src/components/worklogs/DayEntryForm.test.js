@@ -32,6 +32,26 @@ const renderForm = (code, entry) => {
 };
 const button = text => Array.from(container.querySelectorAll('button')).find(b => b.textContent === text);
 
+test.each(['CHW', 'HCP', 'DATA_CLERK'])('%s Payroll hides indicator parameters and shows eight-hour limit', code => {
+  const log = logFor(code);
+  log.work_type = 'PAYROLL';
+  log.cadre.hours_mode = 'DIRECT';
+  log.review_summary.limits.daily_hours = 8;
+  log.review_summary.limits.weekly_hours = 40;
+  const field = { key: 'clients', label_en: 'Clients served', field_type: 'NUMBER' };
+  log.cadre.fields = [field];
+  log.cadre.activities = [{
+    key: 'daily_attendance', label_en: 'Daily attendance', item_type: 'PAYROLL',
+    fields: ['clients'], required_fields: ['clients'], hours_input: true,
+  }];
+  act(() => root.render(<DayEntryForm log={log} date="2026-10-23"
+    flags={[]} captureOnEntry={false} onSaved={jest.fn()} onClose={jest.fn()} />));
+  expect(container.textContent).not.toContain('Clients served');
+  expect(container.textContent).toContain('up to 8 hours per day');
+  expect(container.textContent).toContain('Payroll and Services on the same date');
+  expect(container.querySelector('input[type="number"]').max).toBe('8');
+});
+
 test.each(['CHW', 'HCP', 'DATA_CLERK'])('%s cannot save until location is captured, even with optional capture disabled', async code => {
   const capture = jest.fn(success => success({ coords: { latitude: -7.77, longitude: 35.69, accuracy: 12 } }));
   Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: capture } });
@@ -102,56 +122,42 @@ const submitDay = async () => {
   await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
 };
 
-test('CHW group dropdown lists five groups and only reveals the selected fields', () => {
-  const { groups } = renderGroupedChw();
-  expect(groupDropdown().options).toHaveLength(5);
-  expect(container.querySelectorAll('fieldset')).toHaveLength(1);
-  groups.forEach(group => expect(groupDropdown().textContent).toContain(group.label_en));
-  expect(container.querySelectorAll('input[type="number"]')).toHaveLength(7);
-  chooseGroup('tb');
-  expect(container.querySelectorAll('input[type="number"]')).toHaveLength(3);
-  expect(container.querySelector('legend').textContent).toBe('TB screening');
-  chooseGroup('self_testing');
-  expect(container.querySelectorAll('input[type="number"]')).toHaveLength(2);
+test('CHW Payroll hides all five historical indicator groups', () => {
+  renderGroupedChw();
+  expect(groupDropdown()).toBeUndefined();
+  expect(container.querySelectorAll('fieldset')).toHaveLength(0);
+  expect(container.querySelectorAll('input[type="number"]')).toHaveLength(1);
   expect(container.querySelectorAll('textarea')).toHaveLength(0);
   expect(container.textContent).not.toContain('evidenceWarning');
   expect(button('saveDay').disabled).toBe(true);
 });
 
-test('switching CHW groups retains counts and saves all 14 indicators together', async () => {
+test('CHW Payroll saves attendance without resending historical indicators', async () => {
   const values = Object.fromEntries([
     ...Array.from({ length: 6 }, (_, i) => [`hiv_${i}`, 0]),
     ...['tb', 'laboratory'].flatMap(group => [0, 1].map(i => [`${group}_${i}`, 0])),
     ...[0, 1, 2].map(i => [`appointments_${i}`, 0]),
     ['self_testing_0', 0],
   ]);
-  const { keys } = renderGroupedChw(values);
-  const firstIndicator = container.querySelectorAll('input[type="number"]')[1];
-  act(() => Simulate.change(firstIndicator, { target: { value: '7' } }));
-  chooseGroup('tb');
-  chooseGroup('hiv');
-  expect(container.querySelectorAll('input[type="number"]')[1].value).toBe('7');
+  renderGroupedChw(values);
   await captureGps();
   await submitDay();
   expect(api.put).toHaveBeenCalledTimes(1);
-  expect(Object.keys(api.put.mock.calls[0][1].measures).sort()).toEqual([...keys].sort());
-  expect(api.put.mock.calls[0][1].measures.hiv_0).toBe(7);
+  expect(api.put.mock.calls[0][1].measures).toEqual({});
 });
 
-test('missing hidden CHW counts select the incomplete group instead of saving', async () => {
+test('missing historical CHW counts no longer block Payroll saving', async () => {
   const values = Object.fromEntries([
     ...Array.from({ length: 6 }, (_, i) => [`hiv_${i}`, 0]),
     ...['tb', 'laboratory'].flatMap(group => [0, 1].map(i => [`${group}_${i}`, 0])),
     ...[0, 1, 2].map(i => [`appointments_${i}`, 0]),
   ]);
   renderGroupedChw(values);
-  expect(groupDropdown().value).toBe('hiv');
+  expect(groupDropdown()).toBeUndefined();
   await captureGps();
   await submitDay();
-  expect(api.put).not.toHaveBeenCalled();
-  expect(groupDropdown().value).toBe('self_testing');
-  expect(container.querySelector('legend').textContent).toBe('HIV self-testing');
-  expect(container.textContent).toContain('HIV self-testing');
+  expect(api.put).toHaveBeenCalledTimes(1);
+  expect(api.put.mock.calls[0][1].measures).toEqual({});
 });
 
 const renderClerk = (kind = 'PAYROLL', missingKey) => {
@@ -198,17 +204,16 @@ const renderClerk = (kind = 'PAYROLL', missingKey) => {
 const clerkGroup = () => Array.from(container.querySelectorAll('select'))
   .find(select => Array.from(select.options).some(option => option.textContent === 'CTC-2 and treatment data'));
 
-test('Data Clerk PAYROLL shows indicators and saves without evidence/comments', async () => {
-  const required = renderClerk('PAYROLL');
-  expect(clerkGroup().options).toHaveLength(5);
-  expect(container.querySelectorAll('input[type="number"]')).toHaveLength(9);
+test('Data Clerk PAYROLL saves hours only, without evidence/comments or indicators', async () => {
+  renderClerk('PAYROLL');
+  expect(clerkGroup()).toBeUndefined();
+  expect(container.querySelectorAll('input[type="number"]')).toHaveLength(0);
   expect(container.querySelectorAll('textarea')).toHaveLength(0);
   await captureGps();
   await submitDay();
   expect(api.put).toHaveBeenCalledTimes(1);
   const payload = api.put.mock.calls[0][1];
-  expect(Object.keys(payload.measures).sort()).toEqual([...required].sort());
-  expect(payload.measures.reporting_0).toBe(false);
+  expect(payload.measures).toEqual({});
   expect(payload).not.toHaveProperty('evidence_text');
   expect(payload).not.toHaveProperty('comment');
 });
@@ -231,16 +236,11 @@ test('Data Clerk Services shows only Weekend Clinics, without daily activity gro
   });
 });
 
-test('Data Clerk missing hidden Yes/No check opens reporting; optional notes do not block saving', async () => {
+test('Data Clerk historical Yes/No checks no longer block Payroll attendance', async () => {
   renderClerk('PAYROLL', 'reporting_0');
   await captureGps();
   await submitDay();
-  expect(api.put).not.toHaveBeenCalled();
-  expect(clerkGroup().value).toBe('reporting');
-  const no = Array.from(container.querySelectorAll('button')).find(b => b.textContent === 'no');
-  act(() => no.click());
-  await submitDay();
+  expect(clerkGroup()).toBeUndefined();
   expect(api.put).toHaveBeenCalledTimes(1);
-  expect(api.put.mock.calls[0][1].measures.reporting_0).toBe(false);
-  expect(api.put.mock.calls[0][1].measures).not.toHaveProperty('followup_0');
+  expect(api.put.mock.calls[0][1].measures).toEqual({});
 });

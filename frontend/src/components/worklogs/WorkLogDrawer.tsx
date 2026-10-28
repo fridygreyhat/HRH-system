@@ -401,7 +401,10 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
             </Section>
           )}
 
-          {log.workflow_version === 2 && log.financial_preview && (
+          {log.work_type === 'PAYROLL' && (
+            <p className="notice notice-info">Payroll approval confirms attendance and hours. Missing payment rates do not block RM approval. Finance must validate the payable amount and payment configuration before any payment.</p>
+          )}
+          {log.workflow_version === 2 && log.financial_preview && (log.work_type !== 'PAYROLL' || hasRole('REGIONAL_FINANCE')) && (
             <Section title="Financial preview">
               <p className="muted small">Indicative only until finance review. Historical paid records retain their original snapshot.</p>
               {log.financial_preview.exceptions.length > 0 && (

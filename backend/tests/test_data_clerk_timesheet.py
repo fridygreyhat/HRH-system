@@ -25,28 +25,17 @@ def payload_for(log, activity_key, **extra):
 def test_clerk_daily_roles_are_payroll_and_no_evidence_or_comment_required(api, period, new_workflow):
     log = api.post("/worklogs", "clerk1", {"period_id": period["id"], "work_type": "PAYROLL"})
     assert {a["key"] for a in log["cadre"]["activities"]} == {
-        "data_clerk_daily_timesheet", "data_clerk_secondary_facility",
+        "daily_attendance", "data_clerk_daily_timesheet", "data_clerk_secondary_facility",
     }
     activity = next(a for a in log["cadre"]["activities"] if a["key"] == "data_clerk_daily_timesheet")
-    assert len(activity["fields"]) == 24
-    assert len(activity["required_fields"]) == 22
-    types = {f["key"]: f["field_type"] for f in log["cadre"]["fields"]}
-    assert sum(types[key] == "BOOLEAN" for key in activity["required_fields"]) == 4
-    assert sum(types[key] == "INTEGER" for key in activity["required_fields"]) == 18
-    assert [len(g["fields"]) for g in activity["groups"]] == [9, 3, 6, 4, 2]
-    assert set(activity["required_fields"]) == set(DATA_CLERK_REQUIRED)
-    assert {"ctc_clients_registered", "ctc_transfers_in",
-            "ctc_hvl_requests", "ctc_eid_requests",
-            "ctc_hvl_results_received", "ctc_eid_results_received"} <= set(activity["required_fields"])
-    assert "ctc_eligible_lists_shared" not in activity["required_fields"]
+    assert activity["fields"] == activity["required_fields"] == activity["groups"] == []
+    assert log["cadre"]["fields"] == []
     path = f"/worklogs/{log['id']}/entries/{period['start_date']}"
     payload = payload_for(log, activity["key"])
     saved = api.put(path, "clerk1", payload)
     assert not saved["entries"][0]["evidence_text"]
     assert not saved["entries"][0]["comment"]
-    assert float(saved["entries"][0]["measures"]["ctc_full_backup"]) == 0
-    incomplete = dict(payload["measures"]); incomplete.pop("ctc_full_backup")
-    api.put(path, "clerk1", {**payload, "measures": incomplete}, expect=422)
+    assert saved["entries"][0]["measures"] == {}
     api.put(path, "clerk1", {**payload, "evidence_text": "Older evidence", "comment": "Older comment"})
     saved = api.put(path, "clerk1", payload)
     assert saved["entries"][0]["evidence_text"] == "Older evidence"
@@ -63,7 +52,7 @@ def test_secondary_facility_requires_name_and_still_requires_gps(api, period, ne
     saved = api.put(path, "clerk1", payload)
     assert saved["entries"][0]["activity_location"] == "Secondary test facility"
     assert saved["entries"][0]["activity_snapshot"]["requires_location"] is True
-    assert len(saved["entries"][0]["measures"]) == 22
+    assert saved["entries"][0]["measures"] == {}
 
 
 def test_only_weekend_clinic_service_and_separate_payroll_record(api, period, new_workflow):

@@ -157,7 +157,7 @@ def review_summary(db: Session, log: WorkLog, current=None) -> dict:
     """Monthly totals and non-blocking flags for implausible measure funnels/hours."""
     rows = entries_with_measures(db, log.id)
     totals_by_key = totals(db, log)["measures"]
-    limits = hour_limits(db)
+    limits = hour_limits(db, log.work_type)
     weekly_max = limits["weekly_hours"]
     period = db.get(PayPeriod, log.period_id)
     week_start = period.start_date - timedelta(days=period.start_date.weekday())
@@ -167,7 +167,8 @@ def review_summary(db: Session, log: WorkLog, current=None) -> dict:
     history = (
         db.query(WorkLogEntry.entry_date, WorkLogEntry.hours_worked)
         .join(WorkLog, WorkLog.id == WorkLogEntry.work_log_id)
-        .filter(WorkLog.staff_id == log.staff_id, WorkLogEntry.entry_date >= week_start, WorkLogEntry.entry_date <= week_end)
+        .filter(WorkLog.staff_id == log.staff_id, WorkLog.work_type == log.work_type,
+                WorkLogEntry.entry_date >= week_start, WorkLogEntry.entry_date <= week_end)
         .all()
     )
     for day, hours in history:
@@ -204,7 +205,7 @@ def review_summary(db: Session, log: WorkLog, current=None) -> dict:
 
 
 def monthly_provider_totals(db: Session, log: WorkLog, current=None) -> list[dict]:
-    """Calendar-month totals across the provider's visible logs, including weekly pay periods."""
+    """Calendar-month totals for this work type, including weekly pay periods."""
     from .scope import worklog_visibility
 
     period = db.get(PayPeriod, log.period_id)
@@ -212,7 +213,8 @@ def monthly_provider_totals(db: Session, log: WorkLog, current=None) -> list[dic
     end = period.end_date.replace(day=monthrange(period.end_date.year, period.end_date.month)[1])
     query = (
         db.query(WorkLogEntry).join(WorkLog, WorkLog.id == WorkLogEntry.work_log_id)
-        .filter(WorkLog.staff_id == log.staff_id, WorkLogEntry.entry_date >= start, WorkLogEntry.entry_date <= end)
+        .filter(WorkLog.staff_id == log.staff_id, WorkLog.work_type == log.work_type,
+                WorkLogEntry.entry_date >= start, WorkLogEntry.entry_date <= end)
     )
     if current is not None:
         query = query.filter(worklog_visibility(current))

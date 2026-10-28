@@ -10,13 +10,20 @@ from ..core.settings import get_setting
 HOUR_POLICY_CODES = {"DAILY_HOURS", "WEEKLY_HOURS", "SATURDAY_HOURS", "SUNDAY_WORK"}
 
 
-def hour_limits(db: Session) -> dict[str, Decimal]:
-    return {
+def hour_limits(db: Session, work_type: str = "SERVICES") -> dict[str, Decimal]:
+    limits = {
         "daily_hours": Decimal(str(get_setting(db, "max_daily_hours"))),
         "weekly_hours": Decimal(str(get_setting(db, "max_weekly_hours"))),
         "saturday_min_hours": Decimal(str(get_setting(db, "saturday_min_hours"))),
         "saturday_max_hours": Decimal(str(get_setting(db, "saturday_max_hours"))),
     }
+    if work_type == "PAYROLL":
+        # Payroll attendance is independent of additional Services on that date.
+        limits["daily_hours"] = min(limits["daily_hours"], Decimal(8))
+        limits["weekly_hours"] = min(limits["weekly_hours"], Decimal(40))
+        limits["saturday_max_hours"] = min(limits["saturday_max_hours"], Decimal(8))
+        limits["saturday_min_hours"] = min(limits["saturday_min_hours"], limits["saturday_max_hours"])
+    return limits
 
 
 def day_hours_violation(day: date, total: Decimal, limits: dict[str, Decimal]) -> dict | None:

@@ -8,26 +8,20 @@ def new_workflow(monkeypatch, legacy_workflow_default):
     monkeypatch.setattr(workflow_policy, "NEW_RECORD_WORKFLOW_VERSION", 2)
 
 
-def test_chw_daily_has_all_14_indicators_in_five_groups(api, period, new_workflow):
+def test_chw_payroll_has_no_daily_indicator_requirements(api, period, new_workflow):
     log = api.post("/worklogs", "chw1", {"period_id": period["id"], "work_type": "PAYROLL"})
     activities = log["cadre"]["activities"]
-    assert [a["key"] for a in activities] == ["chw_daily_timesheet"]
-    daily = activities[0]
-    assert [len(g["fields"]) for g in daily["groups"]] == [6, 2, 3, 2, 1]
-    assert len({g["color"] for g in daily["groups"]}) == 5
-    assert len(daily["fields"]) == len(set(daily["fields"])) == 14
-    assert daily["required_fields"] == daily["fields"]
-    assert daily["fields"] == [key for group in daily["groups"] for key in group["fields"]]
+    assert {a["key"] for a in activities} == {"daily_attendance", "chw_daily_timesheet"}
+    daily = next(a for a in activities if a["key"] == "chw_daily_timesheet")
+    assert daily["fields"] == daily["required_fields"] == daily["groups"] == []
     values = {key: 0 for key in daily["fields"]}
     path = f"/worklogs/{log['id']}/entries/{period['start_date']}"
     payload = {"activity_key": daily["key"], "hours_worked": 4, "measures": values}
     saved = api.put(path, "chw1", payload)
     assert not saved["entries"][0]["evidence_text"]
     assert not saved["entries"][0]["comment"]
-    assert len(saved["entries"][0]["measures"]) == 14
+    assert saved["entries"][0]["measures"] == {}
     assert saved["entries"][0]["activity_snapshot"]["groups"] == daily["groups"]
-    incomplete = {**values}; incomplete.pop(next(iter(values)))
-    api.put(path, "chw1", {**payload, "measures": incomplete}, expect=422)
     api.put(path, "chw1", {**payload, "measures": {**values, "chw_tb_screened": -1}}, expect=422)
     # Hiding inputs must preserve text already in the historical record.
     api.put(path, "chw1", {**payload, "evidence_text": "Previous evidence", "comment": "Previous comment"})
