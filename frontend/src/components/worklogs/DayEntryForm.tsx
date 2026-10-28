@@ -191,7 +191,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
           ? `Jumatatu–Ijumaa: hadi saa ${limits.daily_hours} kwa siku na ${limits.weekly_hours} kwa wiki. Kliniki za Jumamosi: saa ${limits.saturday_min_hours}–${limits.saturday_max_hours}, hazihesabiwi kwenye kikomo cha siku za kazi. Kazi ya Jumapili hairuhusiwi.`
           : `Monday–Friday: up to ${limits.daily_hours} hours per day and ${limits.weekly_hours} total. Saturday weekend clinics: ${limits.saturday_min_hours}–${limits.saturday_max_hours} hours, separate from the weekday limit. Sunday work is not allowed.`}
       </p>
-      {backdateAccess && (
+      {backdateAccess && backdateAccess.enabled !== false && (
         <p className="notice notice-info" role="note">
           {dateGrant
             ? <>This date has approved backdated access until <strong>{new Date(dateGrant.expires_at).toLocaleString()}</strong>.</>

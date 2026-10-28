@@ -23,6 +23,7 @@ DEFAULTS: dict[str, Any] = {
     "max_weekly_hours": 45.0,
     "saturday_min_hours": 4.0,
     "saturday_max_hours": 6.0,
+    "backdate_restriction_enabled": False,
     "backdate_grace_hours": 72,
     "sms_max_attempts": 5,
     # Require uploaded proof before a CSO/FHI360 payment can be marked PAID.
@@ -50,7 +51,8 @@ SETTING_DESCRIPTIONS = {
     "max_weekly_hours": "Maximum combined Monday–Friday hours; Saturday clinics are counted separately",
     "saturday_min_hours": "Minimum total hours for a Saturday weekend clinic",
     "saturday_max_hours": "Maximum total hours for a Saturday weekend clinic; Sunday work is not allowed",
-    "backdate_grace_hours": "Hours allowed for a new timesheet entry without Technical Officer permission (72 = three days; CHW, HCP and Data Clerk)",
+    "backdate_restriction_enabled": "Enforce the missed-date limit for CHW, HCP and Data Clerk entries (temporarily disabled)",
+    "backdate_grace_hours": "Hours allowed without Technical Officer permission when the backdate restriction is enabled (72 = three days)",
     "sms_max_attempts": "Delivery attempts before an SMS is marked failed",
     "payment_requires_proof": "Require proof upload before marking a payment PAID",
     "escalation_recipient_roles": "Roles to escalate overdue items to (empty = none)",

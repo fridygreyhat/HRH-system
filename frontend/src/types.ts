@@ -248,6 +248,7 @@ export interface Assignment {
 
 export interface WorkLogDetail extends WorkLogSummary {
   backdate_access?: {
+    enabled?: boolean;
     grace_hours: number;
     grants: { entry_date: string; expires_at: string }[];
   };

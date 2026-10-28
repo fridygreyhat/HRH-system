@@ -9,13 +9,52 @@ from .conftest import ENTRY
 @pytest.fixture
 def deadline(db):
     from backend.models import SystemSetting
+    enabled = db.get(SystemSetting, "backdate_restriction_enabled")
+    previous_enabled = enabled.value if enabled else None
+    if enabled:
+        enabled.value = True
+    else:
+        enabled = SystemSetting(key="backdate_restriction_enabled", value=True)
+        db.add(enabled)
     row = db.get(SystemSetting, "backdate_grace_hours")
     previous = row.value
     row.value = 72
     db.commit()
     yield
     row.value = previous
+    if previous_enabled is None:
+        db.delete(enabled)
+    else:
+        enabled.value = previous_enabled
     db.commit()
+
+
+@pytest.mark.parametrize("cadre,username", [("CHW", "chw1"), ("HCP", "hcp1"), ("DATA_CLERK", "clerk1")])
+def test_backdating_temporarily_unrestricted(api, db, period, cadre, username):
+    from backend.models import SystemSetting, PayPeriod
+    assert api.get("/admin/settings", "admin")
+    # Preserve the existing 72-hour parameter: disabling the switch must suffice.
+    row = db.get(SystemSetting, "backdate_grace_hours")
+    previous = row.value
+    row.value = 72
+    db.commit()
+    try:
+        log = api.post("/worklogs", username, {"period_id": period["id"]})
+        path = f"/worklogs/{log['id']}/entries/{period['start_date']}"
+        saved = api.put(path, username, ENTRY[cadre](None))
+        assert saved["backdate_access"]["enabled"] is False
+        assert saved["backdate_access"]["grants"] == []
+        assert len(saved["entries"]) == 1
+        api.call("DELETE", path, username)
+        reporting_period = db.get(PayPeriod, period["id"])
+        reporting_period.status = "CLOSED"
+        db.commit()
+        api.put(path, username, ENTRY[cadre](None), expect=409)
+    finally:
+        row.value = previous
+        reporting_period = db.get(PayPeriod, period["id"])
+        reporting_period.status = "OPEN"
+        db.commit()
 
 
 def staff_id(db, username):

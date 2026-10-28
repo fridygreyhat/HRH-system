@@ -361,7 +361,9 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
     # each pass the daily/weekly cap using the same remaining hours.
     db.query(Staff).filter(Staff.id == log.staff_id).with_for_update().one()
     late_access = None
-    if not entry and completed_at < earliest_allowed:
+    if not entry and period.status != "OPEN":
+        raise HTTPException(status_code=409, detail="This reporting period is closed.")
+    if get_setting(db, "backdate_restriction_enabled") and not entry and completed_at < earliest_allowed:
         if period.status != "OPEN":
             raise HTTPException(status_code=409, detail="This reporting period is closed; a backdated permission cannot reopen it.")
         late_access = active_access(db, log.staff_id, entry_date, log.assignment_id)
