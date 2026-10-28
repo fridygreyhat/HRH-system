@@ -6,6 +6,7 @@ import { useAction, useApi } from '../../hooks';
 import { ClaimCategory, ClaimDetail, ClaimPreview, EligibleWorkLog, PayPeriod, RateRule, StaffSummary } from '../../types';
 import { Alert, Drawer, Field, RouteBadge, Tabs } from '../ui';
 import { ComponentsTable } from './ClaimDrawer';
+import { RegionalFinanceNextSteps } from './RegionalFinanceNextSteps';
 
 type Mode = 'worklog' | 'community';
 
@@ -32,7 +33,19 @@ function declaredKeys(rules: RateRule[], categoryId: number): { key: string; lab
  * Prepare a claim. The server preview (route, payor, executor, components, exceptions) is always shown
  * before the claim is created.
  */
-export function CreateClaim({ onClose, onCreated }: { onClose: () => void; onCreated: (claim: ClaimDetail) => void }) {
+export function CreateClaim(props: { onClose: () => void; onCreated: (claim: ClaimDetail) => void }) {
+  const { hasRole } = useAuth();
+  if (hasRole('REGIONAL_FINANCE') && !hasRole('SUPER_ADMIN')) {
+    return (
+      <Drawer title="Regional Finance" onClose={props.onClose}>
+        <RegionalFinanceNextSteps />
+      </Drawer>
+    );
+  }
+  return <LegacyCreateClaim {...props} />;
+}
+
+function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCreated: (claim: ClaimDetail) => void }) {
   const { hasRole } = useAuth();
   const [mode, setMode] = useState<Mode>('worklog');
   const categories = useApi<ClaimCategory[]>('/admin/claim-categories');

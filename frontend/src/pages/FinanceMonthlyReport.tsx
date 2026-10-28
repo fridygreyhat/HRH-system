@@ -44,6 +44,8 @@ const monthName = (month: string) => {
   return Number.isNaN(date.getTime()) ? month : new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric' }).format(date);
 };
 
+const PAGE_SIZE = 10;
+
 function IndicatorList({ indicators }: { indicators: IndicatorTotal[] }) {
   if (!indicators.length) return <span className="muted">No indicators recorded</span>;
   return (
@@ -58,6 +60,89 @@ function IndicatorList({ indicators }: { indicators: IndicatorTotal[] }) {
   );
 }
 
+function ProviderGroup({
+  cadre,
+  providers,
+}: {
+  cadre: MonthlyCadre;
+  providers: MonthlyProvider[];
+}) {
+  const [query, setQuery] = useState('');
+  const [page, setPage] = useState(0);
+  const filtered = useMemo(() => {
+    const term = query.trim().toLocaleLowerCase();
+    if (!term) return providers;
+    return providers.filter((provider) =>
+      [provider.provider_name, provider.facility_name, provider.region_name]
+        .some((value) => value.toLocaleLowerCase().includes(term)),
+    );
+  }, [providers, query]);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const shown = filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+  const groupId = `providers-${cadre.code.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+
+  return (
+    <section className="finance-provider-group" aria-labelledby={`${groupId}-heading`}>
+      <header className="finance-provider-group-heading">
+        <div>
+          <p className="finance-overview-kicker">{cadre.code}</p>
+          <h3 id={`${groupId}-heading`}>{cadre.name}</h3>
+          <p className="finance-group-total-note">
+            {num(cadre.provider_count)} providers · {num(cadre.days)} days · {num(cadre.hours)} hours
+            <span>Cadre totals stay fixed when this list is searched.</span>
+          </p>
+        </div>
+        <div className="finance-group-indicators">
+          <span className="finance-group-label">Aggregate indicators</span>
+          <IndicatorList indicators={cadre.indicators} />
+        </div>
+      </header>
+      <div className="finance-provider-tools">
+        <label htmlFor={`${groupId}-search`}>Find a provider or placement</label>
+        <input
+          id={`${groupId}-search`}
+          type="search"
+          value={query}
+          onChange={(event) => { setQuery(event.target.value); setPage(0); }}
+          placeholder="Name, facility or region"
+          aria-controls={`${groupId}-list`}
+        />
+        <span className="finance-provider-count" aria-live="polite">
+          {filtered.length ? `${currentPage * PAGE_SIZE + 1}–${Math.min((currentPage + 1) * PAGE_SIZE, filtered.length)} of ${filtered.length}` : '0'} shown · {num(cadre.provider_count)} in cadre
+        </span>
+      </div>
+      {shown.length ? (
+        <ul className="finance-provider-list" id={`${groupId}-list`}>
+          {shown.map((provider) => (
+            <li key={`${provider.staff_id}-${provider.cadre_code}-${provider.facility_name}-${provider.region_name}`}>
+              <div className="finance-provider-identity">
+                <strong>{provider.provider_name}</strong>
+                <span>{provider.facility_name || 'Facility not specified'} <i aria-hidden="true">·</i> {provider.region_name || 'Region not specified'}</span>
+              </div>
+              <div className="finance-provider-metrics">
+                <span><small>Days</small><strong>{num(provider.days)}</strong></span>
+                <span><small>Hours</small><strong>{num(provider.hours)}</strong></span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="finance-provider-no-results" role="status">No providers match “{query}” in this cadre.</p>
+      )}
+      {filtered.length > PAGE_SIZE && (
+        <nav className="finance-pagination" aria-label={`${cadre.name} provider pages`}>
+          <span>Page {currentPage + 1} of {pageCount}</span>
+          <div>
+            <button type="button" className="btn btn-secondary" onClick={() => setPage(Math.max(0, currentPage - 1))} disabled={currentPage === 0} aria-label={`Previous ${cadre.name} providers`}>Previous</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setPage(Math.min(pageCount - 1, currentPage + 1))} disabled={currentPage >= pageCount - 1} aria-label={`Next ${cadre.name} providers`}>Next</button>
+          </div>
+        </nav>
+      )}
+    </section>
+  );
+}
+
 export function FinanceMonthlyReport() {
   const [month, setMonth] = useState(() => todayLocal().slice(0, 7));
   const [workType, setWorkType] = useState<WorkType>('PAYROLL');
@@ -65,6 +150,26 @@ export function FinanceMonthlyReport() {
   const regions = useApi<Named[]>('/finance/regions');
   const summary = useApi<MonthlySummary>(`/finance/monthly-summary${qs({ month, region_id: regionId, work_type: workType })}`);
   const providers = useMemo(() => summary.data?.providers || [], [summary.data]);
+  const providerGroups = useMemo(() => {
+    const cadres = summary.data?.cadres || [];
+    const byCode = new Map(cadres.map((cadre) => [cadre.code, cadre]));
+    providers.forEach((provider) => {
+      if (!byCode.has(provider.cadre_code)) {
+        byCode.set(provider.cadre_code, {
+          code: provider.cadre_code,
+          name: provider.cadre_name,
+          provider_count: providers.filter((item) => item.cadre_code === provider.cadre_code).length,
+          days: 0,
+          hours: '0',
+          indicators: [],
+        });
+      }
+    });
+    return Array.from(byCode.values()).map((cadre) => ({
+      cadre,
+      providers: providers.filter((provider) => provider.cadre_code === cadre.code),
+    }));
+  }, [summary.data, providers]);
 
   return (
     <div className="stack-lg finance-monthly">
@@ -152,23 +257,13 @@ export function FinanceMonthlyReport() {
 
               <section className="finance-provider-section" aria-labelledby="provider-totals-heading">
                 <div className="finance-section-heading">
-                  <div><p className="finance-overview-kicker">No daily entries</p><h2 id="provider-totals-heading">Provider month totals</h2></div>
-                  <span>{num(data.totals.providers)} providers</span>
+                  <div><p className="finance-overview-kicker">No daily entries · RM-authorized placements</p><h2 id="provider-totals-heading">Providers by cadre</h2></div>
+                  <span>{providerGroups.length} cadres · {num(data.totals.providers)} providers</span>
                 </div>
-                <div className="table-wrap finance-report-table-wrap">
-                  <table className="finance-report-table finance-provider-table">
-                    <thead><tr><th>Provider</th><th>Cadre</th><th>Facility · region</th><th className="num">Days</th><th className="num">Hours</th><th>Aggregate indicators</th></tr></thead>
-                    <tbody>{providers.map((provider) => (
-                      <tr key={`${provider.staff_id}-${provider.cadre_code}`}>
-                        <th scope="row"><strong>{provider.provider_name}</strong></th>
-                        <td><strong>{provider.cadre_code}</strong><span className="finance-subline">{provider.cadre_name}</span></td>
-                        <td><strong>{provider.facility_name || '—'}</strong><span className="finance-subline">{provider.region_name}</span></td>
-                        <td className="num">{num(provider.days)}</td>
-                        <td className="num finance-hours">{num(provider.hours)}</td>
-                        <td><IndicatorList indicators={provider.indicators} /></td>
-                      </tr>
-                    ))}</tbody>
-                  </table>
+                <div className="finance-provider-groups">
+                  {providerGroups.map(({ cadre, providers: cadreProviders }) => (
+                    <ProviderGroup key={`${month}-${workType}-${cadre.code}`} cadre={cadre} providers={cadreProviders} />
+                  ))}
                 </div>
               </section>
             </div>

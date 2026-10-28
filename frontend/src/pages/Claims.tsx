@@ -4,6 +4,7 @@ import { qs } from '../api';
 import { useAuth } from '../AuthContext';
 import { ClaimDrawer } from '../components/claims/ClaimDrawer';
 import { CreateClaim } from '../components/claims/CreateClaim';
+import { RegionalFinanceNextSteps } from '../components/claims/RegionalFinanceNextSteps';
 import { Alert, AsyncState, Field, RouteBadge, StatusBadge } from '../components/ui';
 import { CLAIM_STATUS_LABELS, CLAIM_STATUSES, dateTime, money, PAYMENT_STATUS_LABELS, PAYMENT_STATUSES, routeLabel } from '../format';
 import { useApi } from '../hooks';
@@ -11,7 +12,10 @@ import { ClaimSummary, PayPeriod } from '../types';
 
 export function Claims() {
   const { hasRole } = useAuth();
-  const canCreate = hasRole('FHI360_FINANCE', 'CSO_FINANCE');
+  // Prefer the Regional Finance workflow even when the account also holds
+  // Central Finance access. Its manual form is invalid for new work logs.
+  const regionalFinance = hasRole('REGIONAL_FINANCE') && !hasRole('SUPER_ADMIN');
+  const canCreate = hasRole('FHI360_FINANCE', 'CSO_FINANCE') && !regionalFinance;
   const [status, setStatus] = useState('');
   const [paymentStatus, setPaymentStatus] = useState('');
   const [route, setRoute] = useState('');
@@ -22,7 +26,7 @@ export function Claims() {
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const onlyProvider = hasRole('PROVIDER') && !hasRole('FHI360_FINANCE', 'CSO_FINANCE', 'RPM', 'OVERSIGHT', 'COMMUNITY_VERIFIER');
+  const onlyProvider = hasRole('PROVIDER') && !hasRole('REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'RPM', 'OVERSIGHT', 'COMMUNITY_VERIFIER');
 
   return (
     <div className="stack-lg">
@@ -45,6 +49,8 @@ export function Claims() {
           </button>
         </div>
       </header>
+
+      {regionalFinance && <RegionalFinanceNextSteps />}
 
       <div className="filters" role="search">
         <Field label="Claim status">

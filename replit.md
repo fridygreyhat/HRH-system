@@ -468,6 +468,15 @@ payment pricing” below for the current policy. Services remains payable.
   do not delete work or weaken the normal used-period date locks to repair it.
 
 ### Operational approval versus payment pricing
+- Regional Finance accounts that also hold channel-finance roles should start
+  from RM-approved work: monthly reports for Payroll, routing review for Services.
+  Do not send them into the legacy manual-claim form or remove the server-side
+  new-claim routing gate to make that form succeed.
+  **Why:** mixed-role users otherwise see a manual preparation option that is
+  invalid for new records; user-requested Regional Finance work must use its gate.
+- Keep providers grouped by cadre in the regional monthly report. Large cadre
+  lists must remain compact and searchable, with full-month totals independent
+  of list filtering or pagination.
 - Payroll is a work report only: CTC verification → Technical review → RM approval.
   It has no activity-rate requirement, budget gate, finance approval or payment routing.
   Finance sees calendar-month indicator and hour totals across all assigned cadres
