@@ -32,6 +32,41 @@ const renderForm = (code, entry) => {
 };
 const button = text => Array.from(container.querySelectorAll('button')).find(b => b.textContent === text);
 
+test('CHW TB Contact tracing renders and saves all five service indicators', async () => {
+  const log = logFor('CHW');
+  log.workflow_version = 2;
+  log.cadre.hours_mode = 'DIRECT';
+  const fields = [
+    ['chw_tb_contacts_listed', 'TB Case Contacts Listed (Household and close contacts of the TB client)'],
+    ['chw_tb_contacts_screened', 'TB Contacts Reached and Screened for TB'],
+    ['chw_tb_contacts_presumptive', 'Presumptive TB Contacts Identified'],
+    ['chw_tb_contact_samples_transported', 'Samples collected and transported for TB confirmation/Investigation'],
+    ['chw_tb_contacts_started_referred', 'TB Cases Diagnosed and Started/Referred for TB Treatment'],
+  ];
+  log.cadre.fields = fields.map(([key, label_en]) => ({ key, label_en, field_type: 'INTEGER' }));
+  const keys = fields.map(([key]) => key);
+  log.cadre.activities = [{
+    key: 'chw_tb_contact_tracing', label_en: 'TB Contact tracing', item_type: 'SERVICES',
+    fields: keys, required_fields: keys, field_definitions: log.cadre.fields,
+    hours_input: true, unit_type: 'PER_DAY', rate_value: null,
+  }];
+  act(() => root.render(<DayEntryForm log={log} date="2026-10-23"
+    flags={[]} captureOnEntry={false} onSaved={jest.fn()} onClose={jest.fn()} />));
+  for (const [, label] of fields) expect(container.textContent).toContain(label);
+  const inputs = container.querySelectorAll('input[type=number]');
+  const values = [20, 15, 5, 7, 3];
+  expect(inputs).toHaveLength(6);
+  act(() => Simulate.change(inputs[0], { target: { value: '4' } }));
+  values.forEach((value, index) => act(() => Simulate.change(inputs[index + 1], { target: { value: String(value) } })));
+  await captureGps();
+  await submitDay();
+  expect(api.put).toHaveBeenCalled();
+  expect(api.put.mock.calls[0][1]).toMatchObject({
+    activity_key: 'chw_tb_contact_tracing', hours_worked: 4,
+    measures: Object.fromEntries(keys.map((key, index) => [key, values[index]])),
+  });
+});
+
 test('Services can save two activities on one date with one daily hours total', async () => {
   const log = logFor('CHW');
   log.workflow_version = 2;

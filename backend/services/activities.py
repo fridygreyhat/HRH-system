@@ -1,5 +1,5 @@
 """Activity-specific daily measures transcribed from the supplied HRH forms."""
-from .chw_forms import CHW_SERVICE_FIELDS
+from .chw_forms import CHW_SERVICE_FIELDS, CHW_TB_CONTACT_FIELDS
 
 # Each entry is one daily activity. Its measures are shown together in the
 # provider form, reviewer summary, and print view rather than asking staff to
@@ -114,6 +114,7 @@ FIELD_SPECS = {
         ("chw_hvl_followups", "Clients followed up for HVL sampling", "Wateja waliofuatiliwa kwa kipimo cha HVL"),
         ("chw_dbs_followups", "Children followed up for DBS sampling", "Watoto waliofuatiliwa kwa kipimo cha DBS"),
         *CHW_SERVICE_FIELDS,
+        *CHW_TB_CONTACT_FIELDS,
         ("chw_self_tests_distributed", "HIV self-test kits distributed (HTS_SELF)", "Vipimo vya kujipima VVU vilivyosambazwa"),
     ],
     "DATA_CLERK": [

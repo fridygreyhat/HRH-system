@@ -71,11 +71,19 @@ The user selected a dropdown listing the five groups, revealing the selected
 group's indicators rather than displaying all groups at once. Switching groups
 must retain entered counts, and all 14 indicators remain required for saving.
 
-CHW SERVICES initially includes Special and Weekend Clinics only, with
-Expected Client Attendees and Clients attended and served. Regional Technical
+CHW SERVICES includes Special and Weekend Clinics, with Expected Client
+Attendees and Clients attended and served, plus TB Contact tracing with five
+required whole-number counts: contacts listed, contacts reached and screened,
+presumptive contacts, samples collected and transported, and TB cases diagnosed
+and started/referred for treatment. Regional Technical
 Officers can add scoped service activities through the existing Rates setup.
 No rates or budgets are invented. CHW evidence, daily-comment and period-comment
 inputs are removed; older text and immutable entry snapshots remain intact.
+
+**Why:** The user requested TB Contact tracing as a separate CHW Service, not
+as extra Payroll indicators. Its definitions are supplied by the versioned
+catalog even on installations without the new seed fields, so publishing this
+service does not require startup migrations or rewriting saved entries.
 
 ## Provider confirmation and regional pay periods
 
