@@ -31,8 +31,8 @@ export function flagFieldLabel(cadre: Cadre, key: string, lang: Lang = 'en'): st
 }
 
 /** The most recent audit row that sent the log back to the provider (return / reopen / decline). */
-export function latestReturn(log: WorkLogDetail): WorkLogAudit | null {
-  const rows = log.audit.filter((a) => a.new_status === 'RETURNED_TO_PROVIDER' && a.old_status !== 'RETURNED_TO_PROVIDER');
+export function latestReturn(log: WorkLogDetail): NonNullable<WorkLogDetail['review_feedback']>[number] | null {
+  const rows = (log.review_feedback || log.audit).filter((a) => a.new_status === 'RETURNED_TO_PROVIDER' && a.old_status !== 'RETURNED_TO_PROVIDER');
   return rows.length ? rows[rows.length - 1] : null;
 }
 

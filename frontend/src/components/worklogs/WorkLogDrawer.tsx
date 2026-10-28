@@ -1,4 +1,5 @@
 import { ApprovalStepper } from './ApprovalStepper';
+import { AdminAudit } from '../AdminAudit';
 import React, { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../api';
 import { useAuth } from '../../AuthContext';
@@ -275,6 +276,12 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
             </button>
           </div>
           <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} technicalReviewer={log.cadre?.technical_reviewer_title} workflowVersion={log.workflow_version} workType={log.work_type} />
+          {!!log.review_feedback?.length && <Section title="Current review feedback">
+            {log.review_feedback.map((feedback, index) => <div key={index}>
+              {feedback.comment && <p>{feedback.comment}</p>}
+              {!!feedback.details?.flags?.length && <FlagsList flags={feedback.details.flags} cadre={log.cadre} lang="en" />}
+            </div>)}
+          </Section>}
           <Section title="Monthly provider summary">
             <div className="row">
               <span className="badge badge-neutral">Weekday daily limit: {log.review_summary?.limits.daily_hours} h</span>
@@ -460,7 +467,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
             </Section>
           )}
 
-          <Section title="Audit trail">
+          <AdminAudit><Section title="Audit trail">
             <AuditTimeline
               rows={log.audit.map((a) => ({
                 ...a,
@@ -469,7 +476,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
               actionLabels={WORKLOG_ACTION_LABELS}
               statusKind="log"
             />
-          </Section>
+          </Section></AdminAudit>
 
           <div ref={reviewMarker} aria-hidden="true" style={{ height: 1 }} />
           {log.available_actions.length > 0 && (

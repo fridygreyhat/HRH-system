@@ -25,7 +25,7 @@ const SECTIONS: AdminSection[] = [
   { key: 'settings', label: 'Settings', roles: ['SYSTEM_ADMIN', 'OVERSIGHT'], render: () => <SettingsSection /> },
   { key: 'sms', label: 'SMS templates', roles: ['RPM', 'OVERSIGHT', 'SYSTEM_ADMIN'], render: () => <SmsTemplatesSection /> },
   { key: 'outbox', label: 'SMS outbox', roles: ['SYSTEM_ADMIN', 'OVERSIGHT'], render: () => <OutboxSection /> },
-  { key: 'audit', label: 'Audit events', roles: ['SYSTEM_ADMIN', 'OVERSIGHT'], render: () => <AuditSection /> },
+  { key: 'audit', label: 'Audit events', roles: ['SYSTEM_ADMIN', 'SUPER_ADMIN', 'CENTRAL_ADMIN'], render: () => <AuditSection /> },
 ];
 
 export function Admin() {

@@ -302,8 +302,10 @@ from the real bootstrap password.
   Finance pricing, routing and payment guards remain required. Rate revisions
   do not silently reprice recorded work. CHW Payroll restores the five daily
   activity groups and all 14 reporting counts, including editable older
-  attendance-only entries; HCP and Data Clerk Payroll remain attendance-only.
-  **Why:** the user asked to recover CHW activities and complete monthly sheets.
+  attendance-only entries. HCP daily OPD, CTC ART and laboratory cascades and
+  Data Clerk daily activity groups are also restored, with monthly-entry guidance.
+  Preserve saved financial terms when restoring editable reporting fields.
+  **Why:** the user asked to recover activities for all three provider cadres.
   Payroll allows at most eight weekday hours (40 Monday–Friday), and its hour totals
   are independent of Services, which may be recorded on the same date.
 - Service payment setup uses **fixed amounts per service per day** only. When
@@ -324,6 +326,11 @@ from the real bootstrap password.
   Never disable append-only triggers or run this reset automatically at startup,
   migration or publish. It must be explicitly confirmed in the signed-in live
   app, with a fresh preview; claims or committed/spent funds block the action.
+- Audit trails are visible only to Super Admin, System Admin and Central Admin.
+  Enforce this in APIs as well as UI; do not delete audit records. Operational
+  reviewers and providers still receive current status and the latest correction
+  note/flags, not the complete audit history.
+  **Why:** the user requested removing audit-trail access from CTC, Technical and Finance.
 - RPM operational authority covers **every cadre within its assigned regions**,
   without needing cadre grants. Technical, Regional Finance and new channel-finance records enforce
   **Region × Cadre** scopes. Configure reviewer cadres and region scopes for

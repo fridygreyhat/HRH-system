@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ...core import audit as system_audit
+from ...core.audit_access import AUDIT_ADMIN_ROLES
 from ...core.roles import (
     ALL_ROLES,
     CENTRAL_ADMIN,
@@ -691,7 +692,7 @@ def sms_outbox(status: Optional[str] = None, limit: int = 200, db: Session = Dep
 
 
 @router.get("/audit-events")
-def audit_events(entity_type: Optional[str] = None, limit: int = 200, db: Session = Depends(get_db), _: CurrentUser = Depends(require_roles(SYSTEM_ADMIN, OVERSIGHT))):
+def audit_events(entity_type: Optional[str] = None, limit: int = 200, db: Session = Depends(get_db), _: CurrentUser = Depends(require_roles(*AUDIT_ADMIN_ROLES))):
     query = db.query(AuditEvent, User.full_name).outerjoin(User, User.id == AuditEvent.actor_id)
     if entity_type:
         query = query.filter(AuditEvent.entity_type == entity_type)

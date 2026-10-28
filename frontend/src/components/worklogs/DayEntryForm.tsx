@@ -77,10 +77,11 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
     ? cadreActivities.filter((activity) => !activity.item_type || activity.item_type === log.work_type)
     : cadreActivities;
   const applicableActivities = allActivities.filter((activity) =>
+    !(log.cadre.code === 'HCP' && log.work_type === 'PAYROLL' && activity.key === 'daily_attendance') &&
     (!activity.effective_start_date || activity.effective_start_date <= date) &&
     (!activity.effective_end_date || date < activity.effective_end_date),
   );
-  const activities = entry?.activity_key && !applicableActivities.some((activity) => activity.key === entry.activity_key)
+  const activities = entry?.activity_key && !(log.cadre.code === 'HCP' && log.work_type === 'PAYROLL' && entry.activity_key === 'daily_attendance') && !applicableActivities.some((activity) => activity.key === entry.activity_key)
     ? [...applicableActivities, ...allActivities.filter((activity) => activity.key === entry.activity_key)]
     : applicableActivities;
   const isHcp = log.cadre.code === 'HCP';
@@ -89,8 +90,8 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
   const hidesEvidence = isHcp || isChw || isDataClerk;
   const defaultChwActivity = applicableActivities.find((activity) => activity.key === 'chw_daily_timesheet');
   const defaultClerkActivity = applicableActivities.find((activity) => activity.key === 'data_clerk_daily_timesheet');
-  const attendance = log.work_type === 'PAYROLL' ? (isChw ? defaultChwActivity : undefined) || applicableActivities.find((activity) => activity.key === 'daily_attendance') : undefined;
-  const [activityKey, setActivityKey] = useState(entry?.activity_key || attendance?.key || (isHcp ? '' : (isChw ? defaultChwActivity : isDataClerk ? defaultClerkActivity : undefined)?.key || applicableActivities[0]?.key || allActivities[0]?.key || ''));
+  const attendance = log.work_type === 'PAYROLL' ? (isChw ? defaultChwActivity : isDataClerk ? defaultClerkActivity : undefined) || applicableActivities.find((activity) => activity.key === 'daily_attendance') : undefined;
+  const [activityKey, setActivityKey] = useState((isHcp && entry?.activity_key === 'daily_attendance' ? '' : entry?.activity_key) || attendance?.key || (isHcp ? '' : (isChw ? defaultChwActivity : isDataClerk ? defaultClerkActivity : undefined)?.key || applicableActivities[0]?.key || allActivities[0]?.key || ''));
   const selectedActivity = activities.find((activity) => activity.key === activityKey);
   const activityType = selectedActivity?.item_type || log.work_type;
   const [indicatorGroupKey, setIndicatorGroupKey] = useState('');
@@ -99,7 +100,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
     || selectedActivity?.groups?.[0];
   const requiresLocation = Boolean(selectedActivity?.requires_location || activityKey === 'secondary_facility');
   const direct = log.cadre.hours_mode === 'DIRECT' || Boolean(selectedActivity?.hours_input);
-  const attendanceOnly = log.work_type === 'PAYROLL' && !isChw;
+  const attendanceOnly = log.work_type === 'PAYROLL' && !isChw && !isHcp && !isDataClerk;
   const visibleFields = attendanceOnly || (!isHcp && !isChw && !isDataClerk && selectedActivity?.item_type === 'PAYROLL')
     ? []
     : selectedActivity
@@ -238,10 +239,10 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
         </div>
       )}
 
-      {activities.length > 0 && (log.work_type !== 'PAYROLL' || (isChw && activities.length > 1)) && (
+      {activities.length > 0 && (log.work_type !== 'PAYROLL' || isHcp || ((isChw || isDataClerk) && activities.length > 1)) && (
         <Field
           label={isHcp
-            ? activityType === 'PAYROLL' ? (lang === 'sw' ? 'Mahudhurio ya kila siku' : 'Daily attendance')
+            ? log.work_type === 'PAYROLL' ? (lang === 'sw' ? 'Shughuli ya daftari la siku / kaskedi' : 'Daily timesheet activity / cascade')
               : activityType === 'SERVICES' ? (lang === 'sw' ? 'Huduma' : 'Service')
                 : (lang === 'sw' ? 'Aina ya shughuli ya HCP' : 'HCP activity type')
             : isDataClerk
@@ -250,8 +251,8 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
             : lang === 'sw' ? 'Aina ya shughuli' : 'Activity'}
           hint={isHcp
             ? (lang === 'sw'
-              ? 'Payroll inarekodi mahudhurio na saa; Services inarekodi shughuli kando.'
-              : 'Payroll records attendance and hours only; Services records activities separately.')
+              ? 'Chagua kaskedi ya shughuli za kila siku na ujaze viashiria. Services inarekodiwa kando.'
+              : 'Choose the daily activity cascade and complete its indicators. Services are recorded separately.')
             : isDataClerk && activityType === 'SERVICES'
               ? (lang === 'sw' ? 'Kliniki za mwisho wa wiki pekee kwa sasa. Huduma nyingine zitaongezwa na Afisa wa Ufundi wa Mkoa.'
                 : 'Weekend Clinics only for now. Your Regional Technical Officer can add other services.')

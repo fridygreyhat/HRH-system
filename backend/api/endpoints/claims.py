@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ...core import audit as system_audit
+from ...core.audit_access import can_view_audit
 from ...core.roles import CSO_FINANCE, FHI360_FINANCE
 from ...core.security import CurrentUser, get_current_user, require_roles
 from ...core.serialize import to_dict
@@ -106,7 +107,10 @@ def _detail(db: Session, current: CurrentUser, claim: PaymentClaim) -> dict:
         "components": [to_dict(c) for c in db.query(ClaimComponent).filter(ClaimComponent.claim_id == claim.id)],
         "payments": [to_dict(p) for p in db.query(PaymentRecord).filter(PaymentRecord.claim_id == claim.id).order_by(PaymentRecord.id)] if finance_view else [],
         "proofs": [to_dict(p, exclude=("storage_key",)) for p in db.query(PaymentProof).filter(PaymentProof.claim_id == claim.id)] if finance_view else [],
-        "audit": [{**to_dict(a), "actor_name": name} for a, name in audit_rows],
+        "audit": [{**to_dict(a), "actor_name": name} for a, name in audit_rows] if can_view_audit(current) else [],
+        "review_feedback": next(([{"action": row.action, "comment": row.comment}]
+                                 for row, _ in reversed(audit_rows)
+                                 if row.new_status == claim.status and row.action in {"return", "reject", "hold", "cancel"}), []),
         "available_actions": cl.available_actions(db, current, claim),
         "payment_actions": pay.payment_actions(db, current, claim),
         "payment_recipient": pd.recipient(recipient, claim) if recipient else None,

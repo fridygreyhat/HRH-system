@@ -275,6 +275,7 @@ export interface WorkLogDetail extends WorkLogSummary {
   location_exception_count: number;
   gps_visible: boolean;
   audit: WorkLogAudit[];
+  review_feedback?: Pick<WorkLogAudit, 'action' | 'old_status' | 'new_status' | 'comment' | 'details' | 'actor_name'>[];
   endorsements: { id: number; version: number; kind: string; actor_name: string; comment: string | null; created_at?: string }[];
   versions: { version: number; created_at: string }[];
   available_actions: string[];
@@ -429,6 +430,7 @@ export interface ClaimDetail extends ClaimSummary {
   payments: PaymentRecord[];
   proofs: PaymentProof[];
   audit: ClaimAudit[];
+  review_feedback?: { action: string; comment: string | null }[];
   available_actions: string[];
   payment_actions: string[];
   payment_recipient?: { name: string; payment_method: string | null; payment_provider: string | null; payment_account: string | null; bank_branch?: string | null } | null;

@@ -1,4 +1,5 @@
 import { ApprovalStepper } from './ApprovalStepper';
+import { AdminAudit } from '../AdminAudit';
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api';
 import { useAuth } from '../../AuthContext';
@@ -130,7 +131,7 @@ export function DayCalendar({
   const today = todayLocal();
   const dates = datesBetween(log.period.start_date, log.period.end_date);
   const byDate = new Map(log.entries.map((e) => [e.entry_date, e]));
-  const chwPayroll = log.cadre.code === 'CHW' && log.work_type === 'PAYROLL';
+  const chwPayroll = ['CHW', 'HCP', 'DATA_CLERK'].includes(log.cadre.code) && log.work_type === 'PAYROLL';
   const sundayOff = !log.review_summary.limits.sunday_allowed;
   const missingDates = dates.filter(d => d <= today && !byDate.has(d) &&
     !(sundayOff && new Date(`${d}T00:00:00Z`).getUTCDay() === 0));
@@ -146,10 +147,10 @@ export function DayCalendar({
       </div>
       <p className="muted small">{log.can_edit ? t('calendarHint') : t('locked')}</p>
       {chwPayroll && <div className="notice notice-info stack">
-        <strong>{lang === 'sw' ? 'Jaza daftari la mwezi mzima' : 'Complete your monthly CHW timesheet'}</strong>
+        <strong>{lang === 'sw' ? 'Jaza daftari la mwezi mzima' : `Complete your monthly ${log.cadre.code === 'DATA_CLERK' ? 'Data Clerk' : log.cadre.code} timesheet`}</strong>
         <p>{lang === 'sw'
-          ? 'Chagua kila tarehe uliyofanya kazi. Jaza makundi yote matano, weka 0 ikiwa hakukuwa na shughuli, na nasa mahali ulipo kabla ya kuhifadhi.'
-          : 'Choose each date you actually worked. Complete all five activity groups, enter 0 where no activity occurred, and capture your location before saving.'}</p>
+          ? 'Chagua kila tarehe uliyofanya kazi. Jaza viashiria vyote vinavyohitajika, weka 0 ikiwa hakukuwa na shughuli, na nasa mahali ulipo kabla ya kuhifadhi.'
+          : `Choose each date you actually worked. ${log.cadre.code === 'HCP' ? 'Choose your daily activity cascade and complete its indicators.' : 'Complete the required activity groups.'} Enter 0 where no activity occurred, and capture your location before saving.`}</p>
         <p className="small">{lang === 'sw'
           ? `Tarehe zilizopita bila rekodi: ${missingDates.length}. Hii haimaanishi ulifanya kazi siku zote.`
           : `${missingDates.length} past eligible dates have no entry. This does not mean you worked on every date.`}
@@ -295,6 +296,8 @@ export function WorkLogEditor({ logId, initialDate, onBack }: { logId: number; i
       <header className="stack">
         <h1>{log.cadre.form_title || log.cadre.name}</h1>
         <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} technicalReviewer={log.cadre?.technical_reviewer_title} />
+        {log.status !== 'RETURNED_TO_PROVIDER' && log.review_feedback?.map((feedback, index) =>
+          feedback.comment ? <Alert kind="warn" key={index}>{feedback.comment}</Alert> : null)}
         <div className="row">
           <span className="muted">
             {log.period_label} · #{log.id}
@@ -378,12 +381,12 @@ export function WorkLogEditor({ logId, initialDate, onBack }: { logId: number; i
         />
       )}
 
-      <details className="card">
+      <AdminAudit><details className="card">
         <summary>{t('history')}</summary>
         <div style={{ marginTop: '0.75rem' }}>
           <AuditTimeline rows={log.audit.filter((a) => a.action !== 'opened')} actionLabels={WORKLOG_ACTION_LABELS} statusKind="log" />
         </div>
-      </details>
+      </details></AdminAudit>
       <div className="row">
         <button className="btn btn-ghost btn-sm" onClick={reload} disabled={loading}>
           ↻ {t('reload')}

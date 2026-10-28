@@ -63,7 +63,7 @@ test('Services can save two activities on one date with one daily hours total', 
   });
 });
 
-test.each(['HCP', 'DATA_CLERK'])('%s Payroll hides indicator parameters and shows eight-hour limit', code => {
+test.each(['HCP', 'DATA_CLERK'])('%s Payroll restores indicators and keeps the eight-hour limit', code => {
   const log = logFor(code);
   log.work_type = 'PAYROLL';
   log.cadre.hours_mode = 'DIRECT';
@@ -72,12 +72,13 @@ test.each(['HCP', 'DATA_CLERK'])('%s Payroll hides indicator parameters and show
   const field = { key: 'clients', label_en: 'Clients served', field_type: 'NUMBER' };
   log.cadre.fields = [field];
   log.cadre.activities = [{
-    key: 'daily_attendance', label_en: 'Daily attendance', item_type: 'PAYROLL',
+    key: code === 'HCP' ? 'opd_screening' : 'data_clerk_daily_timesheet', label_en: 'Daily activity', item_type: 'PAYROLL',
     fields: ['clients'], required_fields: ['clients'], hours_input: true,
   }];
   act(() => root.render(<DayEntryForm log={log} date="2026-10-23"
     flags={[]} captureOnEntry={false} onSaved={jest.fn()} onClose={jest.fn()} />));
-  expect(container.textContent).not.toContain('Clients served');
+  if (code === 'HCP') act(() => Simulate.change(container.querySelector('select'), { target: { value: 'opd_screening' } }));
+  expect(container.textContent).toContain('Clients served');
   expect(container.textContent).toContain('up to 8 hours per day');
   expect(container.textContent).toContain('Payroll and Services on the same date');
   expect(container.querySelector('input[type="number"]').max).toBe('8');
@@ -276,16 +277,17 @@ const renderClerk = (kind = 'PAYROLL', missingKey) => {
 const clerkGroup = () => Array.from(container.querySelectorAll('select'))
   .find(select => Array.from(select.options).some(option => option.textContent === 'CTC-2 and treatment data'));
 
-test('Data Clerk PAYROLL saves hours only, without evidence/comments or indicators', async () => {
-  renderClerk('PAYROLL');
-  expect(clerkGroup()).toBeUndefined();
-  expect(container.querySelectorAll('input[type="number"]')).toHaveLength(0);
+test('Data Clerk PAYROLL saves reporting counts and checks, without evidence/comments', async () => {
+  const required = renderClerk('PAYROLL');
+  expect(clerkGroup().options).toHaveLength(5);
+  expect(container.querySelectorAll('input[type="number"]')).toHaveLength(9);
   expect(container.querySelectorAll('textarea')).toHaveLength(0);
   await captureGps();
   await submitDay();
   expect(api.put).toHaveBeenCalledTimes(1);
   const payload = api.put.mock.calls[0][1];
-  expect(payload.measures).toEqual({});
+  expect(Object.keys(payload.measures)).toEqual(required);
+  expect(payload.measures.reporting_0).toBe(false);
   expect(payload).not.toHaveProperty('evidence_text');
   expect(payload).not.toHaveProperty('comment');
 });
@@ -308,11 +310,10 @@ test('Data Clerk Services shows only Weekend Clinics, without daily activity gro
   });
 });
 
-test('Data Clerk historical Yes/No checks no longer block Payroll attendance', async () => {
+test('Data Clerk requires an explicit Yes/No answer before saving', async () => {
   renderClerk('PAYROLL', 'reporting_0');
   await captureGps();
   await submitDay();
-  expect(clerkGroup()).toBeUndefined();
-  expect(api.put).toHaveBeenCalledTimes(1);
-  expect(api.put.mock.calls[0][1].measures).toEqual({});
+  expect(clerkGroup().value).toBe('reporting');
+  expect(api.put).not.toHaveBeenCalled();
 });

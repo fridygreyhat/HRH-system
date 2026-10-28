@@ -17,6 +17,7 @@ import {
 } from '../../format';
 import { useAction, useApi } from '../../hooks';
 import { ClaimAudit, ClaimComponent, ClaimDetail, PaymentProof } from '../../types';
+import { AdminAudit } from '../AdminAudit';
 import { Alert, AuditTimeline, Drawer, Facts, Field, Modal, ReasonDialog, RouteBadge, Section, StatusBadge, Tabs } from '../ui';
 import { ClaimTrace } from './ClaimTrace';
 
@@ -458,9 +459,12 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
             </Section>
           )}
 
-          <Section title="History">
+          {!!claim.review_feedback?.length && <Section title="Current review feedback">
+            {claim.review_feedback.map((feedback, index) => feedback.comment ? <p key={index}>{feedback.comment}</p> : null)}
+          </Section>}
+          <AdminAudit><Section title="History">
             <AuditTimeline rows={auditRows(claim.audit)} actionLabels={CLAIM_ACTION_LABELS} statusKind="claim" />
-          </Section>
+          </Section></AdminAudit>
             </>
           )}
         </div>

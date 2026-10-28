@@ -33,6 +33,7 @@ from ...models import (
     utcnow,
 )
 from ...services import claims as claims_service
+from ...core.audit_access import can_view_audit
 from ...services import notifications
 from ...services import worklog_workflow as wf
 from ...services.forms import assignment_out, cadre_fields, cadre_out, entries_with_measures, review_summary, totals
@@ -169,6 +170,9 @@ def _detail(db: Session, current: CurrentUser, log: WorkLog) -> dict:
     )
     actions = wf.available_actions(db, current, log)
     owner = current.staff_id == log.staff_id
+    feedback = next(((row, name) for row, name in reversed(audit_rows)
+                     if row.new_status == log.status and row.action in
+                     {"return", "return_to_reviewer", "reopen", "decline", "reject"}), None)
     result = {
         **_summary(db, log),
         "staff": {"id": staff.id, "name": staff.legal_name, "first_name": staff.first_name, "middle_name": staff.middle_name,
@@ -183,7 +187,12 @@ def _detail(db: Session, current: CurrentUser, log: WorkLog) -> dict:
         "review_summary": review_summary(db, log, current),
         "location_exception_count": sum(1 for e in entries if e["location_exception"]),
         "gps_visible": show_gps,
-        "audit": [{**to_dict(a), "actor_name": name} for a, name in audit_rows],
+        "audit": [{**to_dict(a), "actor_name": name} for a, name in audit_rows] if can_view_audit(current) else [],
+        "review_feedback": [
+            {**{key: getattr(row, key) for key in ("action", "old_status", "new_status", "comment")},
+             "actor_name": name, "details": {"flags": (row.details or {}).get("flags", [])}}
+            for row, name in ([feedback] if feedback else [])
+        ],
         "endorsements": [{**to_dict(e), "actor_name": name} for e, name in endorsements],
         "versions": [{"version": v.version, "created_at": v.created_at} for v in db.query(WorkLogVersion).filter(WorkLogVersion.work_log_id == log.id).order_by(WorkLogVersion.version)],
         "available_actions": actions,
@@ -411,7 +420,7 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
     if not requires_location and body.activity_location:
         raise HTTPException(status_code=422, detail="A secondary-facility name is only valid for that activity.")
     allowed_fields = set(activity["fields"])
-    if cadre.code in {"HCP", "CHW", "DATA_CLERK"} and (log.workflow_version >= 2 or (cadre.code == "CHW" and activity.get("groups"))):
+    if cadre.code in {"HCP", "CHW", "DATA_CLERK"} and (log.workflow_version >= 2 or log.work_type == "PAYROLL"):
         missing = set(activity.get("required_fields", [])) - set(body.measures)
         if missing:
             raise HTTPException(status_code=422, detail=f"Complete all selected cascade indicators (enter zero for none): {sorted(missing)}")
