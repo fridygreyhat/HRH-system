@@ -303,6 +303,18 @@ from the real bootstrap password.
   do not silently reprice recorded work. Payroll has no daily indicator fields,
   allows at most eight weekday hours (40 Monday–Friday), and its hour totals
   are independent of Services, which may be recorded on the same date.
+- Service payment setup uses **fixed amounts per service per day** only. When
+  several services are recorded for one provider-date, pay the **highest fixed
+  amount once**, never add the service amounts together. Preserve every service's
+  indicators and immutable rate snapshot. Missing amounts or mixed currencies
+  must block pricing, not silently discard a service. Guard overlapping/imported
+  logs against a second live claim for the same provider-date.
+  **Why:** the user confirmed the highest-amount daily rule.
+  Payroll hourly-rate creation/revision is disabled; old rate definitions and
+  existing financial snapshots stay read-only rather than being deleted.
+- Only Super Admin may delete a pay period, and only if no work logs, claims
+  or budget lines reference it. Audit the deletion and catch concurrent use.
+  Used periods must be closed, never cascade-deleted.
 - RPM operational authority covers **every cadre within its assigned regions**,
   without needing cadre grants. Technical, Regional Finance and new channel-finance records enforce
   **Region × Cadre** scopes. Configure reviewer cadres and region scopes for

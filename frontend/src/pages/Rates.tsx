@@ -6,8 +6,8 @@ import { dateOnly, money, todayLocal } from '../format';
 import { useAction, useApi } from '../hooks';
 import { RateActivity, RateTemplates } from '../types';
 
-function CreateRate({ lookups, onClose, onSaved }: { lookups: RateTemplates; onClose: () => void; onSaved: () => void }) {
-  const [type, setType] = useState<'SERVICES' | 'PAYROLL'>('SERVICES');
+export function CreateRate({ lookups, onClose, onSaved }: { lookups: RateTemplates; onClose: () => void; onSaved: () => void }) {
+  const type = 'SERVICES';
   const [cadreId, setCadreId] = useState('');
   const [regionId, setRegionId] = useState('');
   const [template, setTemplate] = useState('');
@@ -15,7 +15,6 @@ function CreateRate({ lookups, onClose, onSaved }: { lookups: RateTemplates; onC
   const [labelSw, setLabelSw] = useState('');
   const [mode, setMode] = useState<'CASCADE' | 'SINGLE'>('CASCADE');
   const [rate, setRate] = useState('');
-  const [unit, setUnit] = useState<'PER_UNIT' | 'PER_HOUR' | 'PER_DAY'>('PER_UNIT');
   const [billableIndex, setBillableIndex] = useState('');
   const [effective, setEffective] = useState(todayLocal());
   const action = useAction();
@@ -28,7 +27,7 @@ function CreateRate({ lookups, onClose, onSaved }: { lookups: RateTemplates; onC
     { key: 'linked_to_care', label_en: 'Linked to care' },
   ];
   const billableFields = selectedTemplate?.field_definitions?.length ? selectedTemplate.field_definitions : genericCascadeFields;
-  const requiresBillableIndex = type === 'SERVICES' && mode === 'CASCADE' && unit === 'PER_UNIT';
+  const requiresBillableIndex = false;
   const chooseTemplate = (key: string) => {
     setTemplate(key);
     setBillableIndex('');
@@ -45,10 +44,6 @@ function CreateRate({ lookups, onClose, onSaved }: { lookups: RateTemplates; onC
       action.setError('Choose a cadre and enter a valid rate.');
       return;
     }
-    if (type === 'PAYROLL' && (mode !== 'SINGLE' || unit !== 'PER_HOUR')) {
-      action.setError('Payroll activity is always single-measure and paid per hour.');
-      return;
-    }
     if (requiresBillableIndex && (billableIndex === '' || Number(billableIndex) < 0 || Number(billableIndex) >= billableFields.length)) {
       action.setError('Choose the billable indicator for a cascade per-unit rate.');
       return;
@@ -59,11 +54,11 @@ function CreateRate({ lookups, onClose, onSaved }: { lookups: RateTemplates; onC
       cadre_id: Number(cadreId),
       region_id: regionId ? Number(regionId) : null,
       item_type: type,
-      form_mode: type === 'PAYROLL' ? 'SINGLE' : mode,
+      form_mode: mode,
       ...(template ? { template_key: template } : {}),
       rate_value: amount,
       currency: 'TZS',
-      unit_type: type === 'PAYROLL' ? 'PER_HOUR' : unit,
+      unit_type: 'PER_DAY',
       effective_start_date: effective,
       ...(requiresBillableIndex ? { billable_index: Number(billableIndex) } : {}),
     }));
@@ -73,11 +68,7 @@ function CreateRate({ lookups, onClose, onSaved }: { lookups: RateTemplates; onC
     <form className="stack" onSubmit={submit}>
       <p className="notice notice-info">A revised rate creates a new activity version. Existing work entries retain their original finance snapshot.</p>
       <div className="grid-2">
-        <Field label="Work type">
-          <select value={type} onChange={(event) => { setType(event.target.value as 'SERVICES' | 'PAYROLL'); setTemplate(''); setBillableIndex(''); setMode(event.target.value === 'PAYROLL' ? 'SINGLE' : 'CASCADE'); setUnit(event.target.value === 'PAYROLL' ? 'PER_HOUR' : 'PER_UNIT'); }}>
-            <option value="SERVICES">Services</option><option value="PAYROLL">Payroll</option>
-          </select>
-        </Field>
+        <Field label="Work type"><input value="Services — fixed daily amount" readOnly /></Field>
         <Field label="Cadre">
           <select required value={cadreId} onChange={(event) => { setCadreId(event.target.value); setTemplate(''); }}>
             <option value="">Choose…</option>{lookups.cadres.map((cadre) => <option key={cadre.id} value={cadre.id}>{cadre.name} ({cadre.code})</option>)}
@@ -106,14 +97,10 @@ function CreateRate({ lookups, onClose, onSaved }: { lookups: RateTemplates; onC
             </select>
           </Field>
         )}
-        <Field label="Rate per unit (TZS)">
+        <Field label="Fixed amount per service per day (TZS)">
           <input type="number" min="0" step="any" required value={rate} onChange={(event) => setRate(event.target.value)} />
         </Field>
-        <Field label="Rate unit">
-          <select value={type === 'PAYROLL' ? 'PER_HOUR' : unit} disabled={type === 'PAYROLL'} onChange={(event) => { setUnit(event.target.value as typeof unit); setBillableIndex(''); }}>
-            <option value="PER_UNIT">Per count</option><option value="PER_DAY">Per day</option><option value="PER_HOUR">Per hour</option>
-          </select>
-        </Field>
+        <Field label="Payment rule"><input readOnly value="One service per day — highest fixed amount" /></Field>
         <Field label="Effective from">
           <input type="date" required value={effective} onChange={(event) => setEffective(event.target.value)} />
         </Field>
@@ -126,7 +113,7 @@ function CreateRate({ lookups, onClose, onSaved }: { lookups: RateTemplates; onC
           </select>
         </Field>
       )}
-      {type === 'PAYROLL' && <p className="muted small">Payroll entries capture hours only; no additional measures are collected.</p>}
+      <p className="notice notice-info">Payroll hourly-rate setup has been removed. Record every service performed; only the highest fixed daily amount is payable for each provider on each date.</p>
       {type === 'SERVICES' && mode === 'CASCADE' && !template && <p className="muted small">A cascade service form is generated with the four configured funnel measures.</p>}
       {type === 'SERVICES' && mode === 'SINGLE' && <p className="muted small">A single service form collects one count measure.</p>}
       <Alert>{action.error}</Alert>
@@ -150,8 +137,8 @@ function ReviseRate({ activity, onClose, onSaved }: { activity: RateActivity; on
     if (result) onSaved();
   };
   return <form className="stack" onSubmit={submit}>
-    <p className="notice notice-info">This creates a new immutable rate version. Paid history is not recalculated.</p>
-    <Field label="New rate (TZS)"><input type="number" min="0" step="any" required value={rate} onChange={(event) => setRate(event.target.value)} /></Field>
+    <p className="notice notice-info">This creates a fixed daily service amount. Older hourly or per-count definitions are converted only in this new version; recorded work and paid history retain their original snapshots.</p>
+    <Field label="New fixed daily amount (TZS)"><input type="number" min="0" step="any" required value={rate} onChange={(event) => setRate(event.target.value)} /></Field>
     <Field label="Effective from"><input type="date" required value={date} onChange={(event) => setDate(event.target.value)} /></Field>
     <Alert>{action.error}</Alert>
     <div className="row"><button className="btn btn-primary" disabled={action.busy}>{action.busy ? 'Saving…' : 'Create revision'}</button><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button></div>
@@ -163,7 +150,7 @@ export function Rates() {
   const canEdit = hasRole('TECHNICAL_OFFICER');
   const rates = useApi<RateActivity[]>('/rates');
   const templates = useApi<RateTemplates>('/rates/templates');
-  const [type, setType] = useState('');
+  const [type, setType] = useState('SERVICES');
   const [cadreId, setCadreId] = useState('');
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<RateActivity | null>(null);
@@ -173,7 +160,7 @@ export function Rates() {
   return (
     <div className="stack-lg">
       <header className="page-header">
-        <div><h1>Rates</h1><p className="muted small">Scoped activity definitions and effective-dated rates. Decisions use the saved snapshot, never today’s rate.</p></div>
+        <div><h1>Service daily amounts</h1><p className="muted small">Fixed amounts per service per day. Only the highest amount is paid when a provider records several services on one date. Payroll rates are no longer configured here.</p></div>
         {canEdit && <button className="btn btn-primary" onClick={() => { setNotice(''); setCreating(true); }} disabled={!templates.data}>Add rate definition</button>}
       </header>
       {canEdit && <p className="notice notice-info">Technical Officers may create and revise definitions. Finance and oversight roles can inspect rates only.</p>}
@@ -198,7 +185,7 @@ export function Rates() {
               <td>{activity.billable_field ? activity.field_definitions.find((field) => field.key === activity.billable_field)?.label_en || activity.billable_field : '—'}</td>
               <td>{activity.unit_type.replace('_', ' ').toLowerCase()}</td><td className="num nowrap">{money(activity.rate_value, activity.currency)}</td><td className="nowrap">{dateOnly(activity.effective_start_date)}</td>
               <td><span className={`badge ${activity.is_active ? 'badge-success' : 'badge-neutral'}`}>{activity.is_active ? 'Active' : 'Inactive'}</span></td>
-              <td>{canEdit && <button className="btn btn-secondary btn-sm" onClick={() => setEditing(activity)}>Revise</button>}</td>
+              <td>{canEdit && activity.item_type === 'SERVICES' && <button className="btn btn-secondary btn-sm" onClick={() => setEditing(activity)}>Revise daily amount</button>}{activity.item_type === 'PAYROLL' && <span className="muted small">Historical only</span>}</td>
             </tr>;
           })}</tbody>
         </table></div> : <p className="empty">No definitions match these filters.</p>}

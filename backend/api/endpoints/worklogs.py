@@ -65,6 +65,12 @@ class HeaderIn(BaseModel):
     period_comment: Optional[str] = Field(default=None, max_length=2000)
 
 
+class AdditionalServiceIn(BaseModel):
+    activity_key: str = Field(min_length=1, max_length=80)
+    activity_location: Optional[str] = Field(default=None, max_length=255)
+    measures: dict[str, Union[bool, int, float]] = {}
+
+
 class EntryIn(BaseModel):
     activity_key: str = Field(min_length=1, max_length=80)
     activity_location: Optional[str] = Field(default=None, max_length=255)
@@ -74,6 +80,7 @@ class EntryIn(BaseModel):
     evidence_text: Optional[str] = Field(default=None, max_length=2000)
     comment: Optional[str] = Field(default=None, max_length=1000)
     measures: dict[str, Union[bool, int, float]] = {}
+    additional_services: list[AdditionalServiceIn] = Field(default_factory=list, max_length=30)
     gps_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     gps_lon: Optional[float] = Field(default=None, ge=-180, le=180)
     gps_accuracy_m: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
@@ -349,6 +356,14 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
         raise HTTPException(status_code=422, detail=f"{entry_date} is in the future")
     entry = db.query(WorkLogEntry).filter(WorkLogEntry.work_log_id == log.id, WorkLogEntry.entry_date == entry_date).first()
     activity = resolve_activity(db, log, body.activity_key, entry_date, entry)
+    from ...services.daily_services import validate_additional
+    additional = validate_additional(db, log, entry_date, body.activity_key, body.additional_services, entry)
+    if log.work_type == "SERVICES" and (not entry or entry.activity_key != body.activity_key) and activity.get("rate_value") is not None and activity.get("unit_type") != "PER_DAY":
+        raise HTTPException(422, "Revise this service to a fixed daily amount before recording new work.")
+    if additional:
+        activity = {**activity, "additional_services": additional, "payment_policy": "HIGHEST_FIXED_PER_DAY"}
+    elif entry and log.work_type == "SERVICES":
+        activity = {key: value for key, value in activity.items() if key != "additional_services"}
     direct_hours = cadre.hours_mode == "DIRECT" or activity.get("hours_input", False)
     backdate_hours = int(get_setting(db, "backdate_grace_hours"))
     earliest_allowed = datetime.now(TZ) - timedelta(hours=backdate_hours)

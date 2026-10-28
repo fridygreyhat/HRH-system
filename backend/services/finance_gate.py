@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 
 from ..core.roles import REGIONAL_FINANCE, RPM
-from ..models import ClaimCategory, ClaimComponent, Organization, PaymentClaim, PayPeriod, StaffAssignment, utcnow
+from ..models import ClaimCategory, ClaimComponent, Organization, PaymentClaim, PayPeriod, Staff, StaffAssignment, WorkLog, WorkLogEntry, utcnow
 from . import budgets, claims, cso_regions
 from .forms import entries_with_measures
 
@@ -15,6 +15,13 @@ def preview(db, log) -> dict:
     total = Decimal(0)
     for entry, measures in entries_with_measures(db, log.id):
         activity = entry.activity_snapshot or {}
+        if log.work_type == "SERVICES" and (activity.get("unit_type") == "PER_DAY" or activity.get("additional_services")):
+            from .daily_services import fixed_daily_lines
+            selected, errors = fixed_daily_lines(entry, measures)
+            exceptions.extend(errors)
+            if not selected:
+                continue
+            activity = selected["activity"]
         name = activity.get("label_en", entry.activity_key or "Unspecified activity")
         rate = activity.get("rate_value")
         if rate is None:
@@ -36,7 +43,7 @@ def preview(db, log) -> dict:
         currencies.add(currency)
         lines.append({
             "entry_id": entry.id, "date": str(entry.entry_date), "activity": name,
-            "activity_key": entry.activity_key, "activity_rate_id": activity.get("id"),
+            "activity_key": activity.get("key", entry.activity_key), "activity_rate_id": activity.get("id"),
             "unit_type": unit_type, "measure_key": activity.get("billable_field"),
             "units": str(units), "rate": str(rate), "amount": str(amount), "currency": currency,
         })
@@ -92,8 +99,24 @@ def _components(db, claim, snapshot):
         ))
 
 
+def _guard_daily_service_claim(db, log):
+    """Reserve each provider-date once, including across imported overlapping logs."""
+    if log.work_type == "SERVICES":
+        db.query(Staff).filter_by(id=log.staff_id).with_for_update().one()
+        dates = [entry.entry_date for entry, _ in entries_with_measures(db, log.id)]
+        duplicate = (db.query(PaymentClaim.id)
+                     .join(WorkLog, WorkLog.id == PaymentClaim.work_log_id)
+                     .join(WorkLogEntry, WorkLogEntry.work_log_id == WorkLog.id)
+                     .filter(PaymentClaim.staff_id == log.staff_id, PaymentClaim.work_type == "SERVICES",
+                             PaymentClaim.work_log_id != log.id, PaymentClaim.status != claims.CANCELLED,
+                             WorkLogEntry.entry_date.in_(dates)).first())
+        if duplicate:
+            raise HTTPException(409, "A service payment claim already covers one of these dates. Record all same-day services together; only one daily service amount is payable.")
+
+
 def prepare_after_rpm(db, current, log):
     """Price verified work without choosing finance configuration or committing funds."""
+    _guard_daily_service_claim(db, log)
     if db.query(PaymentClaim).filter(
         PaymentClaim.work_log_id == log.id, PaymentClaim.status != claims.CANCELLED,
     ).with_for_update().first():
@@ -127,6 +150,7 @@ def prepare_after_rpm(db, current, log):
 def review(db, current, log, category_id):
     if not category_id:
         raise HTTPException(422, "Select the budget category for finance review")
+    _guard_daily_service_claim(db, log)
     pending = db.query(PaymentClaim).filter(
         PaymentClaim.work_log_id == log.id, PaymentClaim.status == claims.PENDING_FINANCE_REVIEW,
     ).with_for_update().first()

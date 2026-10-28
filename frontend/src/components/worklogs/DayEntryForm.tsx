@@ -7,6 +7,7 @@ import { ReturnFlag, WorkLogDetail, WorkLogEntry } from '../../types';
 import { Alert, Field } from '../ui';
 import { FieldLabel, flagFieldLabel } from './shared';
 import { GroupedIndicators } from './GroupedIndicators';
+import { AdditionalServices, ServiceDraft } from './AdditionalServices';
 
 export interface GpsFix {
   gps_lat: number;
@@ -110,6 +111,11 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
   const [measures, setMeasures] = useState<MeasureInput>(() => initialMeasures(log, entry));
   const [evidence, setEvidence] = useState(entry?.evidence_text || '');
   const [comment, setComment] = useState(entry?.comment || '');
+  const [additionalServices, setAdditionalServices] = useState<ServiceDraft[]>(() =>
+    (entry?.activity_snapshot?.additional_services || []).map(item => ({
+      activity_key: item.activity.key, activity_location: item.activity_location,
+      measures: Object.fromEntries(Object.entries(item.measures).map(([key, value]) => [key, typeof value === 'boolean' ? value : String(value)])),
+    })));
   const [gps, setGps] = useState<GpsFix | null>(null);
   const [gpsState, setGpsState] = useState<'idle' | 'busy' | 'ok' | 'failed'>('idle');
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -147,6 +153,13 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
       }
       return;
     }
+    for (const item of additionalServices) {
+      const activity = activities.find(candidate => candidate.key === item.activity_key);
+      if (!activity || (activity.required_fields || []).some(key => item.measures[key] === undefined || item.measures[key] === '')) {
+        setValidationError('Complete all required indicators for every additional service. Enter zero for none.');
+        return;
+      }
+    }
     setValidationError(null);
     const payload: Record<string, unknown> = {
       activity_key: activityKey,
@@ -157,6 +170,11 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
           .filter((f) => measures[f.key] !== undefined && measures[f.key] !== '')
           .map((f) => [f.key, f.field_type === 'BOOLEAN' ? measures[f.key] === true : Number(measures[f.key])]),
       ),
+      ...(log.work_type === 'SERVICES' ? { additional_services: additionalServices.map(item => ({
+        ...item,
+        measures: Object.fromEntries(Object.entries(item.measures).filter(([, value]) => value !== '').map(([key, value]) =>
+          [key, typeof value === 'boolean' ? value : Number(value)])),
+      })) } : {}),
     };
     if (direct) payload.hours_worked = Number(hours);
     else {
@@ -238,7 +256,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
                 : 'Weekend Clinics only for now. Your Regional Technical Officer can add other services.')
               : lang === 'sw' ? 'Chagua shughuli ili kuonyesha viashiria vyake.' : 'Select an activity to show its specific indicators.'}
         >
-          <select required value={activityKey} onChange={(e) => setActivityKey(e.target.value)}>
+          <select required value={activityKey} onChange={(e) => { setActivityKey(e.target.value); setAdditionalServices(items => items.filter(item => item.activity_key !== e.target.value)); }}>
             {isHcp && <option value="">— {lang === 'sw' ? 'Chagua shughuli' : 'Select an activity'} —</option>}
             {activities.map((activity) => (
               <option key={activity.key} value={activity.key}>
@@ -295,6 +313,10 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
         />
       )}
 
+      {log.workflow_version >= 2 && log.work_type === 'SERVICES' && <AdditionalServices
+        activities={activities} fields={log.cadre.fields} primaryKey={activityKey}
+        value={additionalServices} onChange={setAdditionalServices} lang={lang}
+      />}
       {!hidesEvidence && (
         <>
           <p className="notice" role="note">{t('evidenceWarning')}</p>

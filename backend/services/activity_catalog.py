@@ -117,6 +117,10 @@ def catalog_for_log(db, log) -> list[dict]:
         if entry.activity_snapshot and entry.activity_key not in keys:
             result.append(deepcopy(entry.activity_snapshot))
             keys.add(entry.activity_key)
+        for extra in (entry.activity_snapshot or {}).get("additional_services", []):
+            if extra["activity"]["key"] not in keys:
+                result.append(deepcopy(extra["activity"]))
+                keys.add(extra["activity"]["key"])
     if log.work_type == "PAYROLL":
         result = [attendance_only(item) for item in result]
         if not any(item["key"] == "daily_attendance" for item in result):

@@ -84,6 +84,7 @@ export interface PayPeriod {
   region_id?: number | null;
   region_name?: string | null;
   can_manage?: boolean;
+  can_delete?: boolean;
 }
 
 export interface ProviderPaymentDetails {
@@ -188,6 +189,7 @@ export interface ChannelResponse {
 }
 
 export interface WorkLogEntry {
+  activity_snapshot?: { additional_services?: { activity: { key: string; label_en: string; label_sw: string }; measures: Record<string, number | boolean>; activity_location?: string | null }[] };
   id: number;
   entry_date: string;
   activity_key: string | null;

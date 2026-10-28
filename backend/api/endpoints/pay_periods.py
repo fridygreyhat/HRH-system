@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ...core import audit
-from ...core.roles import CENTRAL_ADMIN, FHI360_FINANCE, TECHNICAL_OFFICER
+from ...core.roles import CENTRAL_ADMIN, FHI360_FINANCE, TECHNICAL_OFFICER, SUPER_ADMIN
 from ...core.security import CurrentUser, get_current_user, require_roles
 from ...core.serialize import to_dict
 from ...db.session import get_db
@@ -52,7 +52,31 @@ def can_manage(current, region_id):
 
 def period_out(db, current, period):
     return {**to_dict(period), "region_name": db.get(Region, period.region_id).name if period.region_id else None,
-            "can_manage": can_manage(current, period.region_id)}
+            "can_manage": can_manage(current, period.region_id),
+            "can_delete": SUPER_ADMIN in current.roles and not period_in_use(db, period.id)}
+
+
+def period_in_use(db, period_id):
+    return any(db.query(model.id).filter(model.period_id == period_id).first()
+               for model in (WorkLog, PaymentClaim, BudgetLine))
+
+
+@router.delete("/pay-periods/{period_id}")
+def delete_period(period_id: int, db: Session = Depends(get_db),
+                  current: CurrentUser = Depends(require_roles(SUPER_ADMIN))):
+    period = db.query(PayPeriod).filter_by(id=period_id).with_for_update().first()
+    if not period:
+        raise HTTPException(404, "Pay period not found")
+    if period_in_use(db, period_id):
+        raise HTTPException(409, "This period has work logs, claims or budget lines. Close it instead; its records cannot be deleted.")
+    audit.record(db, current, "pay-periods", period.id, "delete", before=to_dict(period))
+    db.delete(period)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "This period is now in use and cannot be deleted.")
+    return {"deleted": True, "id": period_id}
 
 
 @router.get("/pay-period-regions")

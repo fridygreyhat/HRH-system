@@ -406,6 +406,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
           )}
           {log.workflow_version === 2 && log.financial_preview && (log.work_type !== 'PAYROLL' || hasRole('REGIONAL_FINANCE')) && (
             <Section title="Financial preview">
+              {log.work_type === 'SERVICES' && <p className="notice notice-info">Fixed daily services: only the highest service amount on each date is payable. Recording several services does not add their amounts together. Historical entries retain their original saved payment rules.</p>}
               <p className="muted small">Indicative only until finance review. Historical paid records retain their original snapshot.</p>
               {log.financial_preview.exceptions.length > 0 && (
                 <div className="alert alert-warn"><strong>Exceptions</strong><ul>{log.financial_preview.exceptions.map((exception, i) => <li key={`${exception}-${i}`}>{exception}</li>)}</ul></div>

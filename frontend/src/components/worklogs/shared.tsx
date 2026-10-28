@@ -102,6 +102,10 @@ export function EntriesView({ log, lang, flags = [] }: { log: WorkLogDetail; lan
                 <td className={`num${isFlagged(flags, e.entry_date, 'hours') ? ' flagged' : ''}`}>{num(e.hours_worked)}</td>
                 <td>
                   <strong>{activityFor(e.activity_key)?.[lang === 'sw' ? 'label_sw' : 'label_en'] || '—'}</strong>
+                  {(e.activity_snapshot?.additional_services || []).map(service => <div key={service.activity.key} className="small">
+                    <strong>+ {service.activity[lang === 'sw' ? 'label_sw' : 'label_en']}</strong>
+                    {Object.entries(service.measures).map(([key, value]) => <div key={key}>{log.cadre.fields.find(field => field.key === key)?.[lang === 'sw' ? 'label_sw' : 'label_en'] || key}: {typeof value === 'boolean' ? (value ? 'Yes' : 'No') : value}</div>)}
+                  </div>)}
                    {(() => {
                      const activity = activityFor(e.activity_key);
                      const visible = fieldsFor(e.activity_key).filter((field) => e.measures[field.key] !== undefined);
@@ -160,6 +164,11 @@ export function EntriesView({ log, lang, flags = [] }: { log: WorkLogDetail; lan
                 <>
                   <dt>Activity</dt>
                   <dd>{activityFor(e.activity_key)?.[lang === 'sw' ? 'label_sw' : 'label_en']}</dd>
+                  {(e.activity_snapshot?.additional_services || []).map(service => <React.Fragment key={service.activity.key}>
+                    <dt>Additional service</dt><dd><strong>{service.activity[lang === 'sw' ? 'label_sw' : 'label_en']}</strong>
+                      {Object.entries(service.measures).map(([key, value]) => <div key={key}>{log.cadre.fields.find(field => field.key === key)?.[lang === 'sw' ? 'label_sw' : 'label_en'] || key}: {typeof value === 'boolean' ? (value ? 'Yes' : 'No') : value}</div>)}
+                    </dd>
+                  </React.Fragment>)}
                 </>
               )}
               {fieldsFor(e.activity_key).map((f) => (

@@ -69,8 +69,10 @@ def create_rate(body: RateIn, db: Session = Depends(get_db), current=Depends(req
         raise HTTPException(403, "Activity rates are restricted to your assigned Region × Cadre")
     if not db.get(Cadre, body.cadre_id) or not db.get(Region, body.region_id):
         raise HTTPException(422, "Unknown cadre or region")
-    if body.item_type == "PAYROLL" and (body.form_mode != "SINGLE" or body.unit_type != "PER_HOUR"):
-        raise HTTPException(422, "Payroll uses a single hours input and a per-hour rate")
+    if body.item_type == "PAYROLL":
+        raise HTTPException(422, "Payroll timesheet rates have been removed. Configure fixed daily Services amounts instead.")
+    if body.unit_type != "PER_DAY":
+        raise HTTPException(422, "Services use a fixed amount per service per day (PER_DAY).")
     key = "activity_" + uuid.uuid4().hex[:24]
     fields, hours_input, billable = [], body.item_type == "PAYROLL", None
     if body.template_key:
@@ -93,6 +95,8 @@ def create_rate(body: RateIn, db: Session = Depends(get_db), current=Depends(req
         billable = fields[index]["key"]
     if body.unit_type == "PER_UNIT" and not billable:
         raise HTTPException(422, "A per-unit rate requires a count indicator")
+    if body.unit_type == "PER_DAY":
+        billable = None
     row = ActivityRate(**body.model_dump(exclude={"template_key", "form_mode", "billable_index"}), key=key, source_key=body.template_key, form_mode=mode,
                        field_definitions=fields, hours_input=hours_input, billable_field=billable, created_by=current.id)
     db.add(row)
@@ -107,6 +111,8 @@ def revise_rate(rate_id: int, body: RevisionIn, db: Session = Depends(get_db), c
     old = db.query(ActivityRate).filter(ActivityRate.id == rate_id).with_for_update().first()
     if not old:
         raise HTTPException(404, "Activity rate not found")
+    if old.item_type == "PAYROLL":
+        raise HTTPException(422, "Payroll timesheet rates have been removed; historical rates are read-only.")
     if not may_manage(current, old.region_id, old.cadre_id):
         raise HTTPException(403, "Activity rate is outside your Region × Cadre")
     if not old.is_active:
@@ -118,6 +124,8 @@ def revise_rate(rate_id: int, body: RevisionIn, db: Session = Depends(get_db), c
         "label_en", "label_sw", "cadre_id", "region_id", "item_type", "form_mode",
         "field_definitions", "hours_input", "currency", "unit_type", "billable_field", "source_key",
     )}
+    values["unit_type"] = "PER_DAY"
+    values["billable_field"] = None
     row = ActivityRate(**values, key="activity_" + uuid.uuid4().hex[:24], rate_value=body.rate_value,
                        effective_start_date=body.effective_start_date, created_by=current.id, supersedes_id=old.id)
     db.add(row)

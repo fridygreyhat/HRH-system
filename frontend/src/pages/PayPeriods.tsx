@@ -116,6 +116,12 @@ export function PayPeriods() {
   const regions = useApi<Named[]>('/admin/pay-period-regions');
   const [editing, setEditing] = useState<PayPeriod | null | undefined>(undefined);
   const [notice, setNotice] = useState<string | null>(null);
+  const deletion = useAction();
+  const removePeriod = async (period: PayPeriod) => {
+    if (!window.confirm(`Delete ${period.period_label || `${period.start_date} – ${period.end_date}`}? This cannot be undone. Periods with work logs, claims or budget lines cannot be deleted.`)) return;
+    const result = await deletion.run(() => api.del(`/admin/pay-periods/${period.id}`));
+    if (result) { setNotice('Unused pay period deleted.'); await periods.reload(); }
+  };
   const technicalOnly = hasRole('TECHNICAL_OFFICER') && !hasRole('CENTRAL_ADMIN', 'FHI360_FINANCE', 'SUPER_ADMIN');
   const canCreate = technicalOnly ? (regions.data?.length || 0) > 0 : hasRole('CENTRAL_ADMIN', 'FHI360_FINANCE', 'SUPER_ADMIN');
   const sortedPeriods = [...(periods.data || [])].sort((a, b) => b.end_date.localeCompare(a.end_date) || a.start_date.localeCompare(b.start_date));
@@ -139,7 +145,7 @@ export function PayPeriods() {
         <strong>Regional schedules are independent.</strong> A period created for one region does not replace or change another region’s schedule.
         {technicalOnly && <div className="small" style={{ marginTop: '.35rem' }}>You can create and edit periods only for your assigned region(s). Existing global periods are visible for reference and remain read-only.</div>}
       </div>
-      <Alert>{periods.error || regions.error}</Alert>
+      <Alert>{periods.error || regions.error || deletion.error}</Alert>
       {(periods.error || regions.error) && (
         <div className="row">
           {periods.error && <button type="button" className="btn btn-secondary btn-sm" onClick={periods.reload}>Retry periods</button>}
@@ -175,13 +181,16 @@ export function PayPeriods() {
                     <td className="nowrap">{dateOnly(period.start_date)} – {dateOnly(period.end_date)}</td>
                     <td>{period.region_id == null ? <span className="badge badge-neutral">Global schedule</span> : period.region_name || 'Regional schedule'}</td>
                     <td><StatusBadge status={period.status} /></td>
-                    <td className="num">{period.can_manage && <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setNotice(null); setEditing(period); }}>Edit</button>}</td>
+                    <td className="num">
+                      {period.can_manage && <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setNotice(null); setEditing(period); }}>Edit</button>}
+                      {hasRole('SUPER_ADMIN') && <button type="button" className="btn btn-danger btn-sm" disabled={!period.can_delete || deletion.busy} title={period.can_delete ? 'Delete unused period' : 'In use: close this period instead'} onClick={() => removePeriod(period)}>Delete</button>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className="muted small">No periods are deleted. Close a period when it should no longer accept work logs.</p>
+          <p className="muted small">Super Admin can delete unused periods. Periods containing work logs, claims or budget lines must be closed instead, preserving their history.</p>
         </section>
       )}
       {editing !== undefined && (

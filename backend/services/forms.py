@@ -110,6 +110,11 @@ def totals(db: Session, log: WorkLog) -> dict:
     for _, measures in rows:
         for key, value in measures.items():
             measure_totals[key] = measure_totals.get(key, Decimal(0)) + value
+    for entry, _ in rows:
+        for service in (entry.activity_snapshot or {}).get("additional_services", []):
+            for key, value in service["measures"].items():
+                number = Decimal(int(value)) if isinstance(value, bool) else Decimal(str(value))
+                measure_totals[key] = measure_totals.get(key, Decimal(0)) + number
     return {
         "days": len(rows),
         "hours": sum((e.hours_worked for e, _ in rows), Decimal(0)),
@@ -231,6 +236,13 @@ def monthly_provider_totals(db: Session, log: WorkLog, current=None) -> list[dic
         month = months[entry.entry_date.strftime("%Y-%m")]
         month["dates"].add(entry.entry_date)
         month["hours"] += entry.hours_worked
+        for service in (entry.activity_snapshot or {}).get("additional_services", []):
+            key = service["activity"]["key"]
+            activity_rules[key] = service["activity"].get("cascade_pairs", [])
+            for field, value in service["measures"].items():
+                number = Decimal(int(value)) if isinstance(value, bool) else Decimal(str(value))
+                month["metrics"][field] += number
+                month["activities"][key][field] += number
     for measure in measures:
         entry = by_id[measure.entry_id]
         month = months[entry.entry_date.strftime("%Y-%m")]

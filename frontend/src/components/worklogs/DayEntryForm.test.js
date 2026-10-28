@@ -32,6 +32,37 @@ const renderForm = (code, entry) => {
 };
 const button = text => Array.from(container.querySelectorAll('button')).find(b => b.textContent === text);
 
+test('Services can save two activities on one date with one daily hours total', async () => {
+  const log = logFor('CHW');
+  log.workflow_version = 2;
+  log.cadre.hours_mode = 'DIRECT';
+  log.cadre.fields = [
+    { key: 'first_count', label_en: 'First service clients', field_type: 'INTEGER' },
+    { key: 'second_count', label_en: 'Second service clients', field_type: 'INTEGER' },
+  ];
+  log.cadre.activities = [
+    { key: 'first', label_en: 'First service', item_type: 'SERVICES', fields: ['first_count'], required_fields: ['first_count'] },
+    { key: 'second', label_en: 'Second service', item_type: 'SERVICES', fields: ['second_count'], required_fields: ['second_count'] },
+  ];
+  act(() => root.render(<DayEntryForm log={log} date="2026-10-23"
+    flags={[]} captureOnEntry={false} onSaved={jest.fn()} onClose={jest.fn()} />));
+  const add = Array.from(container.querySelectorAll('select')).find(select => select.textContent.includes('Choose another service'));
+  act(() => Simulate.change(add, { target: { value: 'second' } }));
+  const inputs = container.querySelectorAll('input[type="number"]');
+  act(() => {
+    Simulate.change(inputs[0], { target: { value: '4' } });
+    Simulate.change(inputs[1], { target: { value: '3' } });
+    Simulate.change(inputs[2], { target: { value: '7' } });
+  });
+  expect(container.textContent).toContain('only the highest fixed daily service amount');
+  await captureGps();
+  await submitDay();
+  expect(api.put.mock.calls[0][1]).toMatchObject({
+    activity_key: 'first', hours_worked: 4, measures: { first_count: 3 },
+    additional_services: [{ activity_key: 'second', measures: { second_count: 7 } }],
+  });
+});
+
 test.each(['CHW', 'HCP', 'DATA_CLERK'])('%s Payroll hides indicator parameters and shows eight-hour limit', code => {
   const log = logFor(code);
   log.work_type = 'PAYROLL';
