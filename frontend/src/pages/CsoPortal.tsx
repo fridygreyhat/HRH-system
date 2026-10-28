@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { ApprovalFinanceGuide } from '../components/worklogs/ApprovalFinanceGuide';
 import { api, qs, saveBlob } from '../api';
 import { useAuth } from '../AuthContext';
 import { PAYMENT_STATUS_LABELS, ageSince, dateTime, label, money, num } from '../format';
@@ -264,6 +265,7 @@ export function CsoPortal() {
 
   return (
     <div className="stack-lg">
+      <ApprovalFinanceGuide />
       <div className="page-header">
         <div>
           <h1>CSO payments{names.length ? ` — ${names.join(', ')}` : ''}</h1>

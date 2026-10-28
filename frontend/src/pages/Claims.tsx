@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ApprovalFinanceGuide } from '../components/worklogs/ApprovalFinanceGuide';
 import { qs } from '../api';
 import { useAuth } from '../AuthContext';
 import { ClaimDrawer } from '../components/claims/ClaimDrawer';
@@ -25,6 +26,7 @@ export function Claims() {
 
   return (
     <div className="stack-lg">
+      <ApprovalFinanceGuide />
       <header className="page-header">
         <div>
           <h1>{onlyProvider ? 'My payment claims' : 'Payment claims'}</h1>

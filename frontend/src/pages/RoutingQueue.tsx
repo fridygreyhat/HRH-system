@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ApprovalFinanceGuide } from '../components/worklogs/ApprovalFinanceGuide';
 import { qs } from '../api';
 import { Alert, AsyncState, Field, StatusBadge } from '../components/ui';
 import { WorkLogDrawer } from '../components/worklogs/WorkLogDrawer';
@@ -15,6 +16,7 @@ export function RoutingQueue() {
 
   return (
     <div className="stack-lg">
+      <ApprovalFinanceGuide />
       <header className="page-header">
         <div>
           <p className="routing-eyebrow">Finance · assignment verification</p>

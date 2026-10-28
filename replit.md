@@ -350,6 +350,15 @@ from the real bootstrap password.
   reviewers and providers still receive current status and the latest correction
   note/flags, not the complete audit history.
   **Why:** the user requested removing audit-trail access from CTC, Technical and Finance.
+- Services and Payroll remain separate review lists and separately confirmed
+  approval actions for CTC, Technical and RM. Regional Finance receives
+  RM-authorized records, reviews their amounts/budgets, then routes Services
+  to FHI360 and Payroll to the assigned CSO. Do not describe an authorized or
+  routed record as paid. Missing pricing or Region × Cadre assignments must
+  remain explicit blockers; do not grant broad finance access to hide them.
+  **Why:** the user requested confirmation of the separate approval paths and
+  an explanation of Regional, CSO and Central Finance views. “Central Finance”
+  means FHI360 Finance here, not the Central Admin configuration role.
 - RPM operational authority covers **every cadre within its assigned regions**,
   without needing cadre grants. Technical, Regional Finance and new channel-finance records enforce
   **Region × Cadre** scopes. Configure reviewer cadres and region scopes for

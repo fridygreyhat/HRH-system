@@ -3,6 +3,7 @@ import { qs } from '../api';
 import { useAuth } from '../AuthContext';
 import { AsyncState, Field, StatusBadge, Tabs } from '../components/ui';
 import { WorkLogDrawer } from '../components/worklogs/WorkLogDrawer';
+import { ApprovalFinanceGuide } from '../components/worklogs/ApprovalFinanceGuide';
 import { dateTime, hoursAge, num, WORKLOG_STATUS_LABELS, WORKLOG_STATUSES } from '../format';
 import { useApi } from '../hooks';
 import { Cadre, PayPeriod, WorkLogSummary } from '../types';
@@ -115,6 +116,7 @@ export function ReviewWorkLogs() {
         </div>
       </header>
 
+      <ApprovalFinanceGuide />
       <p className="notice notice-info">
         {tab === 'queue'
           ? 'Waiting on me shows only records at your approval stage. Use All visible logs to track records at other stages within your assigned scope.'
