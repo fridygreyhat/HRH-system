@@ -1,23 +1,79 @@
 """The v2 regional finance gate: snapshot → validate amount → route → payable claim."""
 from decimal import Decimal, ROUND_HALF_UP
+from copy import deepcopy
+from types import SimpleNamespace
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
+from sqlalchemy import or_
 
 from ..core.roles import REGIONAL_FINANCE, RPM
-from ..models import ClaimCategory, ClaimComponent, Organization, PaymentClaim, PayPeriod, Staff, StaffAssignment, WorkLog, WorkLogEntry, utcnow
+from ..models import ActivityRate, ClaimCategory, ClaimComponent, Organization, PaymentClaim, PayPeriod, Staff, StaffAssignment, WorkLog, WorkLogEntry, utcnow
 from . import budgets, claims, cso_regions
 from .forms import entries_with_measures
 
 
+def _quote_missing_daily_amount(db, log, activity, day):
+    """Fill absent terms only, using exact service identity and work-date scope."""
+    if activity.get("rate_value") is not None:
+        return activity, None
+    assignment = db.get(StaffAssignment, log.assignment_id)
+    keys = {key for key in (activity.get("key"), activity.get("source_key")) if key}
+    if not keys:
+        return activity, None
+    candidates = db.query(ActivityRate).filter(
+        ActivityRate.cadre_id == log.cadre_id, ActivityRate.region_id == assignment.region_id,
+        ActivityRate.item_type == "SERVICES", ActivityRate.unit_type == "PER_DAY",
+        ActivityRate.effective_start_date <= day,
+        or_(ActivityRate.key.in_(keys), ActivityRate.source_key.in_(keys)),
+    ).order_by(ActivityRate.effective_start_date.desc(), ActivityRate.id.desc()).all()
+    eligible = []
+    for row in candidates:
+        successor = db.query(ActivityRate).filter(ActivityRate.supersedes_id == row.id).first()
+        if successor and day >= successor.effective_start_date:
+            continue
+        if not row.is_active and not successor:
+            continue
+        eligible.append(row)
+    if not eligible:
+        return activity, None
+    latest = [row for row in eligible if row.effective_start_date == eligible[0].effective_start_date]
+    if len(latest) != 1:
+        return activity, f"{day}: {activity.get('label_en', 'Service')} has conflicting approved daily amounts. Resolve the rate configuration before payment."
+    row = latest[0]
+    return {**activity, "id": row.id, "rate_value": str(row.rate_value),
+            "currency": row.currency, "unit_type": "PER_DAY",
+            "rate_effective_start_date": str(row.effective_start_date)}, None
+
+
 def preview(db, log) -> dict:
+    # A finance claim is an immutable financial proposal/history. Later rate
+    # setup must never silently reprice it, including completed payments.
+    frozen = db.query(PaymentClaim).filter(
+        PaymentClaim.work_log_id == log.id, PaymentClaim.status != claims.CANCELLED,
+    ).order_by(PaymentClaim.id.desc()).first()
+    snapshot = frozen.calculation_snapshot if frozen else None
+    if snapshot and all(key in snapshot for key in ("lines", "total", "currency", "exceptions")):
+        return deepcopy({key: snapshot[key] for key in ("lines", "total", "currency", "exceptions")})
     lines, exceptions, currencies = [], [], set()
     total = Decimal(0)
     for entry, measures in entries_with_measures(db, log.id):
-        activity = entry.activity_snapshot or {}
+        activity = deepcopy(entry.activity_snapshot or {})
+        if log.workflow_version >= 2 and log.work_type == "SERVICES":
+            activity, quote_error = _quote_missing_daily_amount(db, log, activity, entry.entry_date)
+            quote_errors = [quote_error] if quote_error else []
+            for extra in activity.get("additional_services", []):
+                extra["activity"], quote_error = _quote_missing_daily_amount(db, log, extra["activity"], entry.entry_date)
+                if quote_error:
+                    quote_errors.append(quote_error)
+            if quote_errors:
+                exceptions.extend(quote_errors)
+                continue
         if log.work_type == "SERVICES" and (activity.get("unit_type") == "PER_DAY" or activity.get("additional_services")):
             from .daily_services import fixed_daily_lines
-            selected, errors = fixed_daily_lines(entry, measures)
+            priced_entry = SimpleNamespace(activity_snapshot=activity, entry_date=entry.entry_date,
+                                          activity_location=entry.activity_location)
+            selected, errors = fixed_daily_lines(priced_entry, measures)
             exceptions.extend(errors)
             if not selected:
                 continue
@@ -45,6 +101,7 @@ def preview(db, log) -> dict:
             "entry_id": entry.id, "date": str(entry.entry_date), "activity": name,
             "activity_key": activity.get("key", entry.activity_key), "activity_rate_id": activity.get("id"),
             "unit_type": unit_type, "measure_key": activity.get("billable_field"),
+            "rate_effective_start_date": activity.get("rate_effective_start_date"),
             "units": str(units), "rate": str(rate), "amount": str(amount), "currency": currency,
         })
         total += amount
@@ -123,11 +180,10 @@ def prepare_after_rpm(db, current, log):
         raise HTTPException(409, "This work log already has a live claim")
     amount = preview(db, log)
     if amount["exceptions"]:
-        if log.work_type == "PAYROLL":
-            # Attendance approval does not assert a payable salary. Finance must
-            # resolve pricing before a claim can be created, routed or paid.
-            return None
-        raise HTTPException(422, "Cannot prepare a claim: " + " ".join(amount["exceptions"]))
+        # RM approves the work, not missing financial terms. Both work types
+        # must reach Regional Finance without inventing a zero-value claim.
+        # Finance still cannot prepare, route or pay until all pricing is valid.
+        return None
     snapshot = jsonable_encoder({
         **amount, "operationally_approved_by": current.id,
         "operationally_approved_at": utcnow(),
@@ -156,6 +212,9 @@ def review(db, current, log, category_id):
     ).with_for_update().first()
     amount = pending.calculation_snapshot if pending else preview(db, log)
     if amount["exceptions"]:
+        missing_rates = any("no configured" in error for error in amount["exceptions"])
+        if missing_rates:
+            raise HTTPException(422, "Payment setup is incomplete: approved amounts/rates are missing for recorded work dates. Configure the missing amounts listed in Payment estimate before Finance prepares the claim.")
         raise HTTPException(422, " ".join(amount["exceptions"]))
     category, owner, line, route, channel = _context(db, log, category_id)
     if line.currency != amount["currency"]:

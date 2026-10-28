@@ -1,4 +1,5 @@
 import { ApprovalStepper } from './ApprovalStepper';
+import { PaymentSetupNotice } from './PaymentSetupNotice';
 import { AdminAudit } from '../AdminAudit';
 import React, { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../api';
@@ -408,16 +409,14 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
             </Section>
           )}
 
-          {log.work_type === 'PAYROLL' && (
-            <p className="notice notice-info">Payroll approval confirms attendance and hours. Missing payment rates do not block RM approval. Finance must validate the payable amount and payment configuration before any payment.</p>
+          {log.workflow_version >= 2 && (
+            <p className="notice notice-info">RM approval confirms the recorded work. Missing payment amounts do not block this approval for Services or Payroll. Regional Finance must validate pricing and payment setup before any payment.</p>
           )}
           {log.workflow_version === 2 && log.financial_preview && (log.work_type !== 'PAYROLL' || hasRole('REGIONAL_FINANCE')) && (
-            <Section title="Financial preview">
-              {log.work_type === 'SERVICES' && <p className="notice notice-info">Fixed daily services: only the highest service amount on each date is payable. Recording several services does not add their amounts together. Historical entries retain their original saved payment rules.</p>}
-              <p className="muted small">Indicative only until finance review. Historical paid records retain their original snapshot.</p>
-              {log.financial_preview.exceptions.length > 0 && (
-                <div className="alert alert-warn"><strong>Exceptions</strong><ul>{log.financial_preview.exceptions.map((exception, i) => <li key={`${exception}-${i}`}>{exception}</li>)}</ul></div>
-              )}
+            <Section title="Payment estimate">
+              {log.work_type === 'SERVICES' && <p className="notice notice-info">Only the highest service amount on each date is payable. Unpriced work uses approved amounts effective on its work date; already priced work keeps its saved payment rules.</p>}
+              <p className="muted small">Finance confirms the final payable amount. Later rate changes do not alter completed payments.</p>
+              <PaymentSetupNotice exceptions={log.financial_preview.exceptions} workType={log.work_type} />
               <div className="table-wrap">
                 <table>
                   <thead><tr><th>Date</th><th>Activity</th><th className="num">Units</th><th className="num">Rate</th><th className="num">Amount</th></tr></thead>

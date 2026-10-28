@@ -189,9 +189,12 @@ def test_unpriced_work_blocks_finance_and_manual_claim_bypass(api, db, period, v
     assert log["financial_preview"]["exceptions"]
     api.post(f"/worklogs/{log['id']}/actions/authorize", "rpm1", {
         "review_confirmed": True, "review_type": "SERVICES",
-    }, expect=422)
+    })
     unchanged = api.get(f"/worklogs/{log['id']}", "chw1")
-    assert unchanged["status"] == "PENDING_RPM_AUTHORIZATION" and not unchanged["claims"]
+    assert unchanged["status"] == "PENDING_FINANCE_REVIEW" and not unchanged["claims"]
+    api.post(f"/worklogs/{log['id']}/actions/finance_review", v22["finance"], {
+        "review_confirmed": True, "review_type": "SERVICES", "category_id": category_id(db, "A"),
+    }, expect=422)
     api.post("/claims", "csofin1", {
         "staff_id": v22["staff_id"], "period_id": period["id"], "category_id": category_id(db, "C"),
         "declared_units": {"PER_DAY": 1}, "evidence_text": "Standalone claims cannot bypass the new finance gate",

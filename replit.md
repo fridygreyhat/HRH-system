@@ -460,3 +460,16 @@ from the real bootstrap password.
   empty months and made approval controls unusable. An audited data correction
   should preserve period/work-log IDs, actual entries and financial history;
   do not delete work or weaken the normal used-period date locks to repair it.
+
+### Operational approval versus payment pricing
+- RM may authorize both Services and Payroll when approved payment amounts are
+  missing. Such records go to Regional Finance without a zero-value claim.
+  Finance must resolve every pricing exception before creating or routing payment.
+- Only absent Services financial terms may be quoted from an exact matching
+  Region × Cadre × service rate effective on the work date. Conflicting rates
+  fail explicitly. Keep the highest service amount once per provider-date.
+- Preserve original clinical entry snapshots, saved positive financial terms,
+  and frozen claim calculations, including completed payments. New rate setup
+  must never silently recalculate existing claims.
+- **Why:** missing finance setup must not prevent operational work approval, but
+  operational approval is not evidence that a payment amount or budget is valid.

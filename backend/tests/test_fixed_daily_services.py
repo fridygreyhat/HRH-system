@@ -98,7 +98,11 @@ def test_missing_or_invalid_additional_service_cannot_create_a_payable_claim(api
     api.post(f"/worklogs/{log['id']}/actions/submit", "chw1", {"attest": True})
     api.post(f"/worklogs/{log['id']}/actions/verify", "supervisor1", review)
     api.post(f"/worklogs/{log['id']}/actions/endorse", "tofficer1", review)
-    api.post(f"/worklogs/{log['id']}/actions/authorize", "rpm1", review, expect=422)
+    authorized = api.post(f"/worklogs/{log['id']}/actions/authorize", "rpm1", review)
+    assert authorized["status"] == "PENDING_FINANCE_REVIEW"
+    from .conftest import category_id
+    api.post(f"/worklogs/{log['id']}/actions/finance_review", v22["finance"],
+             {**review, "category_id": category_id(db, "A")}, expect=422)
     assert not api.get(f"/worklogs/{log['id']}", "chw1")["claims"]
 
 

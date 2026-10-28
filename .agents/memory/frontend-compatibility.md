@@ -17,3 +17,13 @@ the production build after dependency changes. Preserve security floors in
 both workspace and standalone manifests. Jest's abstract jsdom environment has
 a broad peer range that can retain an old installed jsdom despite a Jest
 upgrade; keep its peer resolution aligned with the main Jest environment.
+
+### Server-rendered component tests under jsdom
+Use React DOM's Node server entry point for static rendering in jsdom tests,
+without adding a browser polyfill or changing application dependencies.
+
+**Why:** Jest's jsdom conditions select the browser server bundle by default;
+that bundle expects a global TextEncoder which this test environment lacks.
+
+**How to apply:** For tests that only need static markup, select the Node server
+entry point explicitly. Leave browser application imports unchanged.
