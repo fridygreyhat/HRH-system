@@ -6,6 +6,7 @@ import { useAction, useApi } from '../../hooks';
 import { AdminUser, Cadre, RoleInfo, UserScope } from '../../types';
 import { Alert, AsyncState, Drawer, Facts, Field, StatusBadge, Tabs } from '../../components/ui';
 import { Row, matches, nameMap, refName, useLookups } from './common';
+import { StaffRecordAccess } from './StaffRecordAccess';
 import {
   HealthWorkerFields,
   HealthWorkerValue,
@@ -505,7 +506,9 @@ function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleIn
         ]}
       />
 
-      {!user.staff_id && user.is_active && <LinkStaff user={user} onChanged={onChanged} />}
+      <StaffRecordAccess key={user.id} user={user}>
+        <LinkStaff user={user} onChanged={onChanged} />
+      </StaffRecordAccess>
 
       <form className="stack card" onSubmit={saveRoles}>
         <RoleChecks roles={roles} value={userRoles} onChange={setUserRoles} disabled={rolesAction.busy} />
