@@ -227,6 +227,7 @@ export function EditStaffModal({
   csoRequest,
   onClose,
   onSaved,
+  onPlacement,
 }: {
   staff: StaffDetail;
   cadres: Cadre[];
@@ -234,6 +235,7 @@ export function EditStaffModal({
   csoRequest: boolean;
   onClose: () => void;
   onSaved: (message: string) => void;
+  onPlacement?: () => void;
 }) {
   const showPayment = 'payment_method' in staff;
   const initial: Record<EditKey, string> = {
@@ -288,6 +290,10 @@ export function EditStaffModal({
   return (
     <Modal title={`Edit ${staff.legal_name}`} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
+        {onPlacement && <div className="notice notice-info">
+          <p>Facility and placement are separate from identity and payment details.</p>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onPlacement}>Change facility / placement</button>
+        </div>}
         {csoRequest && (
           <div className="notice notice-info">
             Changes to payment-critical fields — cadre, salary scale, payment method, provider and account, verified phone and status — are not applied
@@ -381,9 +387,12 @@ export function RotateModal({ staff, cadres, onClose, onDone }: { staff: StaffDe
     if (updated) onDone(updated);
   };
   return (
-    <Modal title={`Rotate ${staff.legal_name}`} onClose={onClose}>
+    <Modal title={`Change facility / placement · ${staff.legal_name}`} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
-        <p className="muted small">The current assignment ends the day before the effective date and the new one starts on it. History is kept.</p>
+        <p className="muted small">
+          Choose the provider’s new facility and the date the change takes effect. The current placement ends the day before
+          and its history is kept. A correction on the original start date is allowed only if that placement has no work logs.
+        </p>
         <div className="grid-2">
           <Field label="Effective date (required)">
             <input type="date" value={effective} onChange={(e) => setEffective(e.target.value)} required />

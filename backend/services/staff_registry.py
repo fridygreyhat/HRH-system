@@ -84,7 +84,18 @@ def request_change(db: Session, current: CurrentUser, staff: Staff, changes: dic
 
 def rotate(db: Session, current: CurrentUser, staff: Staff, new: dict, effective: date, reason: str) -> StaffAssignment:
     """End the open assignment the day before `effective` and start a new one. History is preserved."""
-    open_rows = db.query(StaffAssignment).filter(StaffAssignment.staff_id == staff.id, StaffAssignment.end_date.is_(None)).all()
+    open_rows = db.query(StaffAssignment).filter(StaffAssignment.staff_id == staff.id, StaffAssignment.end_date.is_(None)).with_for_update().all()
+    if len(open_rows) == 1 and open_rows[0].start_date == effective:
+        from ..models import WorkLog
+        assignment = open_rows[0]
+        if db.query(WorkLog.id).filter_by(assignment_id=assignment.id).first():
+            raise HTTPException(409, "This placement already has work logs. Choose a later effective date to change facility without rewriting its history.")
+        before = to_dict(assignment)
+        for key, value in new.items():
+            setattr(assignment, key, value)
+        system_audit.record(db, current, "staff_assignment", assignment.id, "correct_unused_placement",
+                            before=before, after=to_dict(assignment), reason=reason)
+        return assignment
     for row in open_rows:
         if row.start_date >= effective:
             raise HTTPException(status_code=422, detail=f"The current assignment starts on {row.start_date}; the rotation must be later")

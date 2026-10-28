@@ -61,7 +61,7 @@ function errorMessage(body: unknown, fallback: string): string {
 
 type Payload = unknown | FormData | URLSearchParams | undefined;
 
-async function send(method: string, path: string, body?: Payload): Promise<Response> {
+async function send(method: string, path: string, body?: Payload, options?: { signal?: AbortSignal }): Promise<Response> {
   const headers: Record<string, string> = {};
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -74,7 +74,7 @@ async function send(method: string, path: string, body?: Payload): Promise<Respo
   }
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, { method, headers, body: data });
+    res = await fetch(`${API_URL}${path}`, { method, headers, body: data, ...options });
   } catch {
     throw new ApiError(0, 'Cannot reach the server. Check your connection and try again.');
   }
@@ -93,8 +93,8 @@ async function send(method: string, path: string, body?: Payload): Promise<Respo
   return res;
 }
 
-async function json<T>(method: string, path: string, body?: Payload): Promise<T> {
-  const res = await send(method, path, body);
+async function json<T>(method: string, path: string, body?: Payload, options?: { signal?: AbortSignal }): Promise<T> {
+  const res = await send(method, path, body, options);
   if (res.status === 204) return undefined as unknown as T;
   const type = res.headers.get('content-type') || '';
   return (type.includes('application/json') ? res.json() : res.text()) as Promise<T>;
@@ -131,7 +131,7 @@ export function qs(params: Record<string, string | number | boolean | null | und
 }
 
 export const api = {
-  get: <T,>(path: string) => json<T>('GET', path),
+  get: <T,>(path: string, options?: { signal?: AbortSignal }) => json<T>('GET', path, undefined, options),
   post: <T,>(path: string, body: unknown = {}) => json<T>('POST', path, body),
   put: <T,>(path: string, body: unknown) => json<T>('PUT', path, body),
   patch: <T,>(path: string, body: unknown) => json<T>('PATCH', path, body),

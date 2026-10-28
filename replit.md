@@ -112,6 +112,22 @@ explicit option; never silently backdate placements or alter later rotations.
 Do not exclude recorded workdays, change submitted placement dates, or bypass
 regional authority. These corrections require a reason and an administrator audit.
 
+Provider facility changes are separate from identity/payment edits. HRH admins
+can open the staff record from Administration → Users or Staff registry, then
+use Change facility / placement. A correction on the original placement start
+date is allowed only when no work log references it; otherwise use an effective-
+dated transfer and retain the old placement and work-log assignment references.
+Central/Super Admin can rename a shared facility with an explicit reason and
+warning that it affects all linked staff. Renaming must not overwrite its other
+configuration or move individual providers.
+
+**Why:** The user reported being unable to edit provider placements or facilities.
+Existing work and payment history must not be silently reassigned.
+
+Print view uses bounded, retryable authenticated loading and one selected calendar
+month per table, with totals for that month rather than the full reporting period.
+Do not disable authentication or restore non-admin audit access to make printing work.
+
 ## Data Clerk forms
 
 Use the supplied Data Clerk roles document for roles 1–18: 18 numeric

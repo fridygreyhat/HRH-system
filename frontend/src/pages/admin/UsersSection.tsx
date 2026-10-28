@@ -8,6 +8,7 @@ import { AdminUser, Cadre, RoleInfo, UserScope } from '../../types';
 import { Alert, AsyncState, Drawer, Facts, Field, StatusBadge, Tabs } from '../../components/ui';
 import { Row, matches, nameMap, refName, useLookups } from './common';
 import { StaffRecordAccess } from './StaffRecordAccess';
+import { StaffDrawer } from '../../components/staff/StaffDrawer';
 import {
   HealthWorkerFields,
   HealthWorkerValue,
@@ -387,6 +388,9 @@ function LinkStaff({ user, onChanged }: { user: AdminUser; onChanged: (u: AdminU
 
 function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleInfo[] | null; onChanged: (u: AdminUser) => void }) {
   const { me } = useAuth();
+  const [editingStaff, setEditingStaff] = useState(false);
+  const staffCadres = useApi<Cadre[]>(editingStaff ? '/admin/cadres' : null);
+  const canManageStaff = me?.roles.some(role => ['CENTRAL_ADMIN', 'REGIONAL_ADMIN', 'SUPER_ADMIN'].includes(role));
   const { lists, maps, error: lookupError } = useScopeMaps();
   const [userRoles, setUserRoles] = useState<string[]>(user.roles);
   const [rolesReason, setRolesReason] = useState('');
@@ -510,6 +514,14 @@ function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleIn
       <StaffRecordAccess key={user.id} user={user}>
         <LinkStaff user={user} onChanged={onChanged} />
       </StaffRecordAccess>
+      {!!user.staff_id && canManageStaff && <section className="card stack">
+        <h3>Provider staff record and facility</h3>
+        <p>Change staff details, start date or facility placement here. Account roles and access scopes below do not move a provider to a different facility.</p>
+        <button type="button" className="btn btn-secondary" onClick={() => setEditingStaff(true)}>Edit provider / facility placement</button>
+        <Alert>{staffCadres.error}</Alert>
+      </section>}
+      {editingStaff && !!user.staff_id && canManageStaff && <StaffDrawer staffId={user.staff_id}
+        cadres={staffCadres.data || []} onClose={() => setEditingStaff(false)} onChanged={() => {}} />}
 
       <form className="stack card" onSubmit={saveRoles}>
         <RoleChecks roles={roles} value={userRoles} onChange={setUserRoles} disabled={rolesAction.busy} />

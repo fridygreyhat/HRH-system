@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { Alert } from '../components/ui';
 import { dateOnly, dateTime, datesBetween, dayOfMonth, num, timeShort, weekday } from '../format';
@@ -39,7 +39,15 @@ function SignBox({ titleSw, titleEn, row, name, at }: { titleSw: string; titleEn
 /** Print-optimised mirror of the paper work-log form: dates as columns, rows for hours and each form field. */
 export function PrintWorkLog({ logId }: { logId: number }) {
   const { me } = useAuth();
-  const { data: log, error, loading } = useApi<WorkLogDetail>(`/worklogs/${logId}`);
+  const validId = Number.isSafeInteger(logId) && logId > 0;
+  const { data: log, error, loading, reload } = useApi<WorkLogDetail>(validId ? `/worklogs/${logId}` : null, { timeoutMs: 20000 });
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const allDates = log ? datesBetween(log.period.start_date, log.period.end_date) : [];
+  const months = Array.from(new Set(allDates.map(date => date.slice(0, 7))));
+  const month = months.includes(selectedMonth) ? selectedMonth : months[0];
+  const monthLabel = (value: string) => new Intl.DateTimeFormat('en-GB', {
+    month: 'long', year: 'numeric', timeZone: 'UTC',
+  }).format(new Date(`${value}-01T00:00:00Z`));
 
   const toolbar = (
     <div className="print-toolbar no-print">
@@ -49,6 +57,13 @@ export function PrintWorkLog({ logId }: { logId: number }) {
       <button className="btn btn-primary btn-sm" onClick={() => window.print()} disabled={!log}>
         Print
       </button>
+      {log && <label className="row">
+        Print month
+        <select aria-label="Print month" value={month} onChange={event => setSelectedMonth(event.target.value)}>
+          {months.map(value => <option key={value} value={value}>{monthLabel(value)}</option>)}
+        </select>
+      </label>}
+      {error && <button type="button" className="btn btn-secondary btn-sm" onClick={reload}>Retry</button>}
       <span className="muted small">Landscape A4 is recommended.</span>
     </div>
   );
@@ -57,15 +72,19 @@ export function PrintWorkLog({ logId }: { logId: number }) {
     return (
       <div>
         {toolbar}
-        {error ? <Alert>{error}</Alert> : loading ? <p className="muted">Loading…</p> : null}
+        {!validId ? <Alert>Invalid work-log number. Open Print view from a work log.</Alert>
+          : error ? <Alert>{error}</Alert> : loading ? <p className="muted">Loading…</p>
+          : <Alert>The work log could not be loaded. Open it again from your work-log list.</Alert>}
       </div>
     );
 
-  const dates = datesBetween(log.period.start_date, log.period.end_date);
-  const byDate = new Map(log.entries.map((e) => [e.entry_date, e]));
+  const dates = allDates.filter(date => date.startsWith(`${month}-`));
+  const entries = log.entries.filter(entry => dates.includes(entry.entry_date));
+  const byDate = new Map(entries.map((e) => [e.entry_date, e]));
+  const measureTotal = (key: string) => entries.reduce((sum, entry) => sum + (Number(entry.measures[key]) || 0), 0);
   const direct = log.cadre.hours_mode === 'DIRECT';
   const a = log.assignment;
-  const comments = log.entries.filter((e) => e.comment);
+  const comments = entries.filter((e) => e.comment);
 
   const rows: { sw: string; en: string; cell: (d: string) => string; total: string }[] = [];
   if (!direct) {
@@ -88,7 +107,7 @@ export function PrintWorkLog({ logId }: { logId: number }) {
     sw: 'Masaa uliyofanya kazi',
     en: 'Hours worked',
     cell: (d) => (byDate.has(d) ? num(byDate.get(d)?.hours_worked) : ''),
-    total: num(log.totals.hours),
+    total: num(entries.reduce((sum, entry) => sum + Number(entry.hours_worked || 0), 0)),
   });
   log.cadre.fields.forEach((f) => {
     rows.push({
@@ -99,7 +118,7 @@ export function PrintWorkLog({ logId }: { logId: number }) {
         if (v === undefined || v === null) return '';
         return f.field_type === 'BOOLEAN' ? (Number(v) ? 'Ndiyo' : 'Hapana') : num(v);
       },
-      total: f.field_type === 'BOOLEAN' ? `${num(log.totals.measures[f.key] ?? 0)} Ndiyo` : num(log.totals.measures[f.key] ?? 0),
+      total: f.field_type === 'BOOLEAN' ? `${num(measureTotal(f.key))} Ndiyo` : num(measureTotal(f.key)),
     });
   });
 
@@ -123,6 +142,7 @@ export function PrintWorkLog({ logId }: { logId: number }) {
       {toolbar}
       <article className="paper" aria-label="Printable work log">
         <h1>{log.cadre.form_title || log.cadre.name}</h1>
+        <h2>{monthLabel(month)}</h2>
         <div className="paper-header">
           {header.map(([sw, en, v]) => (
             <div key={en}>
@@ -165,7 +185,7 @@ export function PrintWorkLog({ logId }: { logId: number }) {
               {dates.map((d) => (
                 <td key={d}>{byDate.has(d) ? '✓' : ''}</td>
               ))}
-              <td className="total">{num(log.totals.days)}</td>
+              <td className="total">{num(entries.length)}</td>
             </tr>
           </tbody>
         </table>

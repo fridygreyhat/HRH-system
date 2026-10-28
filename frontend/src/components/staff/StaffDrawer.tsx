@@ -6,8 +6,9 @@ import { Cadre, Organization, StaffDetail } from '../../types';
 import { Alert, AsyncState, Drawer, Facts, Section, StatusBadge } from '../ui';
 import { EditStaffModal, ExitDialog, LoginModal, RotateModal } from './StaffForms';
 import { StaffStartDateModal } from './StaffStartDateModal';
+import { FacilityNameModal } from './FacilityNameModal';
 
-type Dialog = 'edit' | 'start-date' | 'rotate' | 'exit' | 'login' | null;
+type Dialog = 'edit' | 'start-date' | 'rotate' | 'facility-name' | 'exit' | 'login' | null;
 
 export function StaffDrawer({ staffId, cadres, onClose, onChanged }: { staffId: number; cadres: Cadre[]; onClose: () => void; onChanged: () => void }) {
   const { hasRole } = useAuth();
@@ -39,6 +40,7 @@ export function StaffDrawer({ staffId, cadres, onClose, onChanged }: { staffId: 
           const hasExplicitProfile = hasBankProfile || hasMobileProfile;
           const showLegacyPayment = !hasExplicitProfile && ('payment_method' in s || 'payment_provider' in s || 'payment_account' in s);
           const cadre = cadres.find((c) => c.id === s.cadre_id);
+          const placement = s.assignments.find(a => !a.end_date) || s.assignments[0];
           return (
             <div className="stack-lg">
               <div className="row">
@@ -58,10 +60,15 @@ export function StaffDrawer({ staffId, cadres, onClose, onChanged }: { staffId: 
                       Edit start date
                     </button>
                   )}
+                  {hasRole('CENTRAL_ADMIN', 'SUPER_ADMIN') && placement?.facility_id && (
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDialog('facility-name')}>
+                      Edit facility name
+                    </button>
+                  )}
                   {isAdmin && s.status === 'ACTIVE' && (
                     <>
                       <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDialog('rotate')}>
-                        Rotate assignment
+                        Change facility / placement
                       </button>
                       <button type="button" className="btn btn-danger btn-sm" onClick={() => setDialog('exit')}>
                         Exit
@@ -167,10 +174,15 @@ export function StaffDrawer({ staffId, cadres, onClose, onChanged }: { staffId: 
                 )}
               </Section>
               {dialog === 'edit' && (
-                <EditStaffModal staff={s} cadres={cadres} csoRequest={isCso} onClose={() => setDialog(null)} onSaved={(msg) => done(msg)} />
+                <EditStaffModal staff={s} cadres={cadres} csoRequest={isCso} onClose={() => setDialog(null)} onSaved={(msg) => done(msg)}
+                  onPlacement={isAdmin && s.status === 'ACTIVE' ? () => setDialog('rotate') : undefined} />
               )}
               {dialog === 'start-date' && isAdmin && (
                 <StaffStartDateModal staff={s} onClose={() => setDialog(null)} onSaved={() => done('Staff start date updated.')} />
+              )}
+              {dialog === 'facility-name' && placement?.facility_id && hasRole('CENTRAL_ADMIN', 'SUPER_ADMIN') && (
+                <FacilityNameModal facilityId={placement.facility_id} initialName={placement.facility || ''}
+                  onClose={() => setDialog(null)} onSaved={() => done('Facility name updated for all linked staff.')} />
               )}
               {dialog === 'rotate' && (
                 <RotateModal staff={s} cadres={cadres} onClose={() => setDialog(null)} onDone={(u) => done('Assignment rotated.', u)} />

@@ -126,6 +126,35 @@ _crud("clusters", Cluster, (CENTRAL_ADMIN,), Cluster.name)
 _crud("districts", District, (CENTRAL_ADMIN,), District.name)
 _crud("wards", Ward, (CENTRAL_ADMIN,), Ward.name)
 _crud("facilities", Facility, (CENTRAL_ADMIN,), Facility.name)
+
+
+class FacilityNameIn(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+@router.patch("/facilities/{facility_id}/name")
+def rename_facility(facility_id: int, body: FacilityNameIn, db: Session = Depends(get_db),
+                    current: CurrentUser = Depends(require_roles(CENTRAL_ADMIN))):
+    name = " ".join(body.name.split())
+    if not name or len(body.reason.strip()) < 3:
+        raise HTTPException(422, "Give the facility name and a reason for the correction.")
+    facility = db.query(Facility).filter_by(id=facility_id).with_for_update().first()
+    if not facility:
+        raise HTTPException(404, "Facility not found")
+    from sqlalchemy import func
+    if db.query(Facility.id).filter(
+        Facility.ward_id == facility.ward_id, Facility.id != facility.id, func.lower(Facility.name) == name.lower()
+    ).first():
+        raise HTTPException(409, "Another facility in this ward already has that name. Change the provider placement instead of renaming it.")
+    before = {"name": facility.name}
+    facility.name = name
+    system_audit.record(db, current, "facilities", facility.id, "rename", before=before,
+                        after={"name": name}, reason=body.reason.strip())
+    _commit(db)
+    return to_dict(facility)
+
+
 _crud("community-areas", CommunityArea, (CENTRAL_ADMIN,), CommunityArea.name)
 _crud("sections", Section, (CENTRAL_ADMIN,), Section.code, pk="code")
 from .pay_periods import router as pay_periods_router
