@@ -46,6 +46,20 @@ Follow the README's first-time setup sequence to configure the organization and 
 The bootstrap secret is only used to create the account. Changing it later does
 not reset the password of an existing account.
 
+### Account recovery
+
+Super Admin can use Administration → Users to reset an individual password,
+review failed sign-in reasons, or explicitly reset all non-Super-Admin accounts.
+Bulk recovery excludes every account granted SUPER_ADMIN, clears lockouts,
+revokes previous sessions and requires each affected user to choose a new
+password. Deactivated accounts stay deactivated; passwords are never included
+in audit records. The confirmation shows the environment hostname and total
+account count, independent of table filters.
+
+**Why:** The user requested recovery for failed sign-ins while keeping all
+Super Admin accounts unchanged. Live resets must be deliberately run by an
+authenticated Super Admin on the published app, never during startup or deploy.
+
 ## CHW daily timesheets and services
 
 The user approved five colour-coded groups for the uploaded CHW daily sheet:

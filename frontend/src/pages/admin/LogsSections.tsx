@@ -105,6 +105,7 @@ export function OutboxSection() {
 }
 
 const ENTITY_TYPES = [
+  'auth',
   'user',
   'user_roles',
   'user_scopes',

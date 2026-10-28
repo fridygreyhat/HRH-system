@@ -357,6 +357,59 @@ class PasswordReset(BaseModel):
     new_password: str = Field(min_length=8, max_length=72)
 
 
+class BulkPasswordReset(PasswordReset):
+    confirmation: str = Field(pattern=r"^RESET NON-SUPER-ADMIN PASSWORDS$")
+    expected_count: int = Field(ge=0)
+    reason: str = Field(min_length=10, max_length=500)
+
+
+@router.post("/user-password-reset")
+def reset_non_super_admin_passwords(body: BulkPasswordReset, db: Session = Depends(get_db),
+                                    current: CurrentUser = Depends(require_roles(SUPER_ADMIN))):
+    users = db.query(User).order_by(User.id).with_for_update().all()
+    protected = {uid for (uid,) in db.query(UserRole.user_id).join(Role, Role.id == UserRole.role_id)
+                 .filter(Role.name == SUPER_ADMIN)}
+    targets = [user for user in users if user.id not in protected]
+    if len(targets) != body.expected_count:
+        raise HTTPException(status_code=409, detail="The account list changed. Refresh Users and review the reset again.")
+    for user in targets:
+        user.hashed_password = hash_password(body.new_password)
+        user.must_change_password = True
+        user.password_changed_at = utcnow()
+        user.failed_login_count, user.locked_until = 0, None
+        # Keep deactivated accounts deactivated. Never include credentials in audit data.
+        system_audit.record(db, current, "user", user.id, "reset_password",
+                            after={"bulk": True}, reason=body.reason)
+    system_audit.record(db, current, "user", None, "bulk_password_reset",
+                        after={"reset_count": len(targets), "super_admins_unchanged": len(protected)}, reason=body.reason)
+    _commit(db)
+    return {"reset_count": len(targets), "super_admins_unchanged": len(protected)}
+
+
+@router.get("/login-failures")
+def login_failures(username: Optional[str] = None, limit: int = 100, db: Session = Depends(get_db),
+                   _: CurrentUser = Depends(require_roles(SUPER_ADMIN))):
+    query = db.query(AuditEvent).filter(AuditEvent.entity_type == "auth",
+                                       AuditEvent.action.in_(("login_failed", "login_blocked")))
+    if username and username.strip():
+        query = query.filter(AuditEvent.after["username"].astext == username.strip())
+    messages = {
+        "unknown_user": "Username not found. Check the spelling or register the account.",
+        "bad_password": "Incorrect password. Reset the password if needed.",
+        "inactive": "Account is deactivated. Review the account before reactivating it.",
+        "locked": "Account temporarily locked after repeated failed sign-ins. Reset the password or unlock it.",
+    }
+    rows = query.order_by(AuditEvent.id.desc()).limit(max(1, min(limit, 500))).all()
+    return [{
+        "id": row.id, "created_at": row.created_at, "username": (row.after or {}).get("username", ""),
+        "reason": "locked" if row.action == "login_blocked" or (row.after or {}).get("locked")
+                  else (row.after or {}).get("reason", "unknown"),
+        "message": messages.get(
+            "locked" if row.action == "login_blocked" or (row.after or {}).get("locked")
+            else (row.after or {}).get("reason"), "Sign-in failed. Review this account."),
+    } for row in rows]
+
+
 def _user_out(db: Session, user: User) -> dict:
     cu = load_current_user(db, user)
     return {

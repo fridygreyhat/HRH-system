@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { AccountRecovery } from './AccountRecovery';
 import { api } from '../../api';
 import { useAuth } from '../../AuthContext';
 import { dateTime, roleLabel } from '../../format';
@@ -606,6 +607,7 @@ function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleIn
 }
 
 export function UsersSection() {
+  const { hasRole } = useAuth();
   const { data, error, loading, reload, setData } = useApi<AdminUser[]>('/admin/users');
   const { data: roles, error: rolesError } = useApi<RoleInfo[]>('/admin/roles');
   const { maps } = useScopeMaps();
@@ -640,6 +642,7 @@ export function UsersSection() {
       </div>
       <Alert kind="success">{notice}</Alert>
       <Alert>{rolesError}</Alert>
+      {hasRole(SUPER_ADMIN) && <AccountRecovery users={data} onReset={() => reload()} />}
       <div className="filters">
         <Field label="Search">
           <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name, username, phone" />
