@@ -342,12 +342,9 @@ from the real bootstrap password.
 - Only Super Admin may delete a pay period, and only if no work logs, claims
   or budget lines reference it. Audit the deletion and catch concurrent use.
   Used periods must be closed, never cascade-deleted.
-  The explicitly requested October 2026 fresh start is a separate Super Admin
-  action: clear active entries and return existing work logs to empty drafts,
-  keeping October's budget, ledger, immutable audit records and pre-reset snapshots.
-  Never disable append-only triggers or run this reset automatically at startup,
-  migration or publish. It must be explicitly confirmed in the signed-in live
-  app, with a fresh preview; claims or committed/spent funds block the action.
+  The October 2026 work-record clearing feature has been removed from both
+  the UI and API. Do not reintroduce a special reset or clear existing records.
+  **Why:** the user explicitly requested removing “Clear October 2026 work records.”
 - Audit trails are visible only to Super Admin, System Admin and Central Admin.
   Enforce this in APIs as well as UI; do not delete audit records. Operational
   reviewers and providers still receive current status and the latest correction

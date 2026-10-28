@@ -5,7 +5,6 @@ import { dateOnly } from '../format';
 import { useAction, useApi } from '../hooks';
 import { Named, PayPeriod } from '../types';
 import { Alert, Field, Modal, StatusBadge } from '../components/ui';
-import { OctoberWorkReset } from './OctoberWorkReset';
 
 interface PayPeriodPayload {
   start_date: string;
@@ -117,7 +116,6 @@ export function PayPeriods() {
   const regions = useApi<Named[]>('/admin/pay-period-regions');
   const [editing, setEditing] = useState<PayPeriod | null | undefined>(undefined);
   const [notice, setNotice] = useState<string | null>(null);
-  const [resetPeriod, setResetPeriod] = useState<number | null>(null);
   const deletion = useAction();
   const removePeriod = async (period: PayPeriod) => {
     if (!window.confirm(`Delete ${period.period_label || `${period.start_date} – ${period.end_date}`}? This cannot be undone. Periods with work logs, claims or budget lines cannot be deleted.`)) return;
@@ -186,7 +184,6 @@ export function PayPeriods() {
                     <td className="num">
                       {period.can_manage && <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setNotice(null); setEditing(period); }}>Edit</button>}
                       {hasRole('SUPER_ADMIN') && <button type="button" className="btn btn-danger btn-sm" disabled={!period.can_delete || deletion.busy} title={period.can_delete ? 'Delete unused period' : 'In use: close this period instead'} onClick={() => removePeriod(period)}>Delete</button>}
-                      {hasRole('SUPER_ADMIN') && period.start_date === '2026-10-01' && period.end_date === '2026-10-31' && !period.region_id && <button type="button" className="btn btn-danger btn-sm" onClick={() => setResetPeriod(period.id)}>Clear October work</button>}
                     </td>
                   </tr>
                 ))}
@@ -206,11 +203,6 @@ export function PayPeriods() {
           onSaved={refresh}
         />
       )}
-      {resetPeriod !== null && <OctoberWorkReset periodId={resetPeriod} onClose={() => setResetPeriod(null)} onDone={() => {
-        setResetPeriod(null);
-        setNotice('October work records cleared. The pay period, budget and audit history were preserved. Providers can start again.');
-        periods.reload();
-      }} />}
     </div>
   );
 }
