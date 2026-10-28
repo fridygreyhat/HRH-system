@@ -13,7 +13,7 @@ from ...core.security import CurrentUser, get_current_user, hash_password, requi
 from ...core.serialize import mask_phone, to_dict
 from ...core.timeutil import local_today
 from ...db.session import get_db
-from ...models import Cadre, District, Facility, Role, RosterImport, Section, Staff, StaffAssignment, StaffChangeRequest, User, UserRole, Ward
+from ...models import Cadre, District, Facility, Role, RosterImport, Section, Staff, StaffAssignment, StaffChangeRequest, User, UserRole, Ward, WorkLog, WorkLogEntry
 from ...services import staff_registry as reg
 from ...services.forms import assignment_out
 from ...services.scope import current_assignment, staff_visibility
@@ -53,6 +53,11 @@ class StaffCreate(BaseModel):
 
 class StaffUpdate(BaseModel):
     changes: dict
+    reason: str = Field(min_length=3, max_length=1000)
+
+class StartDateCorrection(BaseModel):
+    start_date: date
+    update_initial_assignment: bool = False
     reason: str = Field(min_length=3, max_length=1000)
 
 
@@ -266,6 +271,55 @@ def get_staff(staff_id: int, db: Session = Depends(get_db), current: CurrentUser
         system_audit.record(db, current, "staff", staff.id, "view_payment_details")
         db.commit()
     return out
+
+
+@router.patch("/{staff_id}/start-date")
+def correct_start_date(staff_id: int, body: StartDateCorrection, db: Session = Depends(get_db),
+                       current: CurrentUser = Depends(require_roles(*ADMINS))):
+    if len(body.reason.strip()) < 3:
+        raise HTTPException(422, "Give a reason of at least three non-padding characters.")
+    staff = _get(db, current, staff_id)
+    _check_admin_for_staff(db, current, staff)
+    # Match the log -> staff lock order used when saving provider work.
+    db.query(WorkLog).filter_by(staff_id=staff.id).with_for_update().all()
+    db.query(Staff).filter_by(id=staff.id).populate_existing().with_for_update().one()
+    assignments = db.query(StaffAssignment).filter_by(staff_id=staff.id).order_by(
+        StaffAssignment.start_date, StaffAssignment.id
+    ).with_for_update().all()
+    first = assignments[0] if assignments else None
+    if staff.employment_end_date and body.start_date > staff.employment_end_date:
+        raise HTTPException(422, "The employment start date cannot be after the employment end date.")
+    if db.query(WorkLogEntry.id).join(WorkLog, WorkLog.id == WorkLogEntry.work_log_id).filter(
+        WorkLog.staff_id == staff.id, WorkLogEntry.entry_date < body.start_date
+    ).first():
+        raise HTTPException(409, "This start date would exclude an existing workday. Choose a date on or before the first recorded workday.")
+    if first and not body.update_initial_assignment and body.start_date > first.start_date:
+        raise HTTPException(422, "The employment start date cannot be after the initial placement start date. Select the option to correct both dates.")
+    if body.update_initial_assignment:
+        if not first:
+            raise HTTPException(422, "There is no initial placement to update.")
+        if not _admin_region_ok(current, first.region_id):
+            raise HTTPException(403, "The initial placement is outside your administrative region.")
+        if first.end_date and body.start_date > first.end_date:
+            raise HTTPException(422, "The initial placement start cannot be after its end date.")
+        if any(a.id != first.id and a.start_date <= body.start_date for a in assignments):
+            raise HTTPException(422, "This date would overlap a later placement. Use Rotate assignment for changes of placement.")
+        # An approved/paid log must retain the historical placement used at submission.
+        if first.start_date != body.start_date and db.query(WorkLog.id).filter(
+            WorkLog.assignment_id == first.id, WorkLog.status != "DRAFT"
+        ).first():
+            raise HTTPException(409, "Submitted work records use the initial placement. Its dates are protected; leave the placement option unchecked to correct employment only.")
+    before = {"employment_start_date": staff.employment_start_date,
+              "initial_assignment_start": first.start_date if first else None}
+    staff.employment_start_date = body.start_date
+    if body.update_initial_assignment:
+        first.start_date = body.start_date
+    system_audit.record(db, current, "staff", staff.id, "correct_start_date", before=before,
+                        after={"employment_start_date": staff.employment_start_date,
+                               "initial_assignment_start": first.start_date if first else None},
+                        reason=body.reason.strip())
+    db.commit()
+    return {"applied": True}
 
 
 @router.patch("/{staff_id}")

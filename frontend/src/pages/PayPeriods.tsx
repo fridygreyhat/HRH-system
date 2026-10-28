@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { api, ApiError } from '../api';
+import { api } from '../api';
 import { useAuth } from '../AuthContext';
 import { dateOnly } from '../format';
 import { useAction, useApi } from '../hooks';
@@ -31,9 +31,10 @@ function PayPeriodForm({
   const [endDate, setEndDate] = useState(period?.end_date || '');
   const [label, setLabel] = useState(period?.period_label || '');
   const [status, setStatus] = useState(period?.status || 'OPEN');
-  const [regionId, setRegionId] = useState(period?.region_id ? String(period.region_id) : '');
+  const [regionId, setRegionId] = useState(period ? (period.region_id == null ? 'global' : String(period.region_id)) : '');
   const [formError, setFormError] = useState<string | null>(null);
   const { busy, error, run } = useAction();
+  const datesLocked = period?.can_edit_dates === false;
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -54,15 +55,8 @@ function PayPeriodForm({
       region_id: regionId === 'global' ? null : Number(regionId),
     };
     const saved = await run(async () => {
-      try {
-        if (period) await api.put(`/admin/pay-periods/${period.id}`, body);
-        else await api.post('/admin/pay-periods', body);
-      } catch (cause) {
-        if (cause instanceof ApiError && cause.status === 409) {
-          throw new Error('This date span is already in use and cannot be changed. Keep the original dates; the period label and status can still be updated.');
-        }
-        throw cause;
-      }
+      if (period) await api.put(`/admin/pay-periods/${period.id}`, body);
+      else await api.post('/admin/pay-periods', body);
       return true;
     });
     if (saved) onSaved();
@@ -72,21 +66,22 @@ function PayPeriodForm({
     <Modal title={period ? 'Edit pay period' : 'Set up pay period'} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
         <p className="muted small">
-          Period dates are protected once work records use them. You can still update a period label or open/closed status.
+          Edit the label and open/closed status after creation. Dates can also be corrected for unused or draft-only periods, provided every saved workday remains inside the period.
         </p>
+        {datesLocked && <Alert kind="info">{period?.date_lock_reason || 'Submitted records, claims or budgets protect these dates. You can still edit the label and status.'}</Alert>}
         <div className="grid-2">
           <Field label="Start date">
-            <input type="date" required value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+            <input type="date" required disabled={datesLocked} value={startDate} onChange={(event) => setStartDate(event.target.value)} />
           </Field>
           <Field label="End date">
-            <input type="date" required value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+            <input type="date" required disabled={datesLocked} value={endDate} onChange={(event) => setEndDate(event.target.value)} />
           </Field>
         </div>
         <Field label="Period label" hint="A short name staff and finance teams will recognize.">
           <input required maxLength={100} value={label} onChange={(event) => setLabel(event.target.value)} placeholder="e.g. October 2026" />
         </Field>
         <Field label="Region" hint={technicalOnly ? 'Technical Officers can manage periods only for their assigned regions.' : 'A regional period is separate from the global schedule.'}>
-          <select required value={regionId} disabled={technicalOnly && !!period} onChange={(event) => setRegionId(event.target.value)}>
+          <select required value={regionId} disabled={!!period} onChange={(event) => setRegionId(event.target.value)}>
             <option value="">Choose a region…</option>
             {!technicalOnly && <option value="global">Global schedule</option>}
             {regions.map((region) => <option key={region.id} value={region.id}>{region.name}</option>)}

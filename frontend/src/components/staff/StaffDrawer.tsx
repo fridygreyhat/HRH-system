@@ -5,8 +5,9 @@ import { dateOnly, humanize } from '../../format';
 import { Cadre, Organization, StaffDetail } from '../../types';
 import { Alert, AsyncState, Drawer, Facts, Section, StatusBadge } from '../ui';
 import { EditStaffModal, ExitDialog, LoginModal, RotateModal } from './StaffForms';
+import { StaffStartDateModal } from './StaffStartDateModal';
 
-type Dialog = 'edit' | 'rotate' | 'exit' | 'login' | null;
+type Dialog = 'edit' | 'start-date' | 'rotate' | 'exit' | 'login' | null;
 
 export function StaffDrawer({ staffId, cadres, onClose, onChanged }: { staffId: number; cadres: Cadre[]; onClose: () => void; onChanged: () => void }) {
   const { hasRole } = useAuth();
@@ -50,6 +51,11 @@ export function StaffDrawer({ staffId, cadres, onClose, onChanged }: { staffId: 
                   {canEdit && (
                     <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDialog('edit')}>
                       {isCso ? 'Edit / request change' : 'Edit'}
+                    </button>
+                  )}
+                  {isAdmin && (
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setDialog('start-date')}>
+                      Edit start date
                     </button>
                   )}
                   {isAdmin && s.status === 'ACTIVE' && (
@@ -162,6 +168,9 @@ export function StaffDrawer({ staffId, cadres, onClose, onChanged }: { staffId: 
               </Section>
               {dialog === 'edit' && (
                 <EditStaffModal staff={s} cadres={cadres} csoRequest={isCso} onClose={() => setDialog(null)} onSaved={(msg) => done(msg)} />
+              )}
+              {dialog === 'start-date' && isAdmin && (
+                <StaffStartDateModal staff={s} onClose={() => setDialog(null)} onSaved={() => done('Staff start date updated.')} />
               )}
               {dialog === 'rotate' && (
                 <RotateModal staff={s} cadres={cadres} onClose={() => setDialog(null)} onDone={(u) => done('Assignment rotated.', u)} />

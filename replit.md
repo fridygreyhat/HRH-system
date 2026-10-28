@@ -97,8 +97,20 @@ Technical Officers can create and manage pay periods only in their assigned
 regions. Existing global schedules remain global and read-only for Technical;
 Central Admin and FHI360 Finance retain global management. Regional periods
 take precedence for new entry dates, including closed periods, so a global
-open schedule cannot bypass a regional closure. Do not change a used period's
-dates or regional ownership; historical financial records must remain intact.
+open schedule cannot bypass a regional closure. Regional ownership cannot be changed.
+Dates may be corrected for unused or draft-only periods, but every saved workday
+must remain within the new range. Submitted records, payment claims and budget
+lines lock dates; labels and open/closed status remain editable. Show the actual
+conflict reason, including overlaps, rather than a generic “already in use” message.
+
+**Why:** The user requested post-creation period editing and staff start-date
+correction without losing existing work or financial history.
+
+HRH administrators can correct staff employment start dates through Staff registry
+→ staff member → Edit start date. Correcting the initial placement is a separate,
+explicit option; never silently backdate placements or alter later rotations.
+Do not exclude recorded workdays, change submitted placement dates, or bypass
+regional authority. These corrections require a reason and an administrator audit.
 
 ## Data Clerk forms
 

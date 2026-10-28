@@ -57,10 +57,13 @@ def test_regional_dates_may_match_global_but_not_overlap_own_region(api, period,
     assert created["id"] in {p["id"] for p in api.get("/admin/pay-periods", "chw1")}
 
 
-def test_used_period_dates_and_region_are_immutable_but_status_is_editable(api, period, regions):
+def test_submitted_period_dates_and_region_are_immutable_but_status_is_editable(api, db, period, regions):
+    from backend.models import WorkLog
     own, other = regions
     created = api.post("/admin/pay-periods", "tofficer1", body_for(period, own))
-    api.post("/worklogs", "chw1", {"period_id": created["id"]})
+    log = api.post("/worklogs", "chw1", {"period_id": created["id"]})
+    db.get(WorkLog, log["id"]).status = "PENDING_TECHNICAL_REVIEW"
+    db.commit()
     api.put(f"/admin/pay-periods/{created['id']}", "tofficer1", body_for(
         period, own, end_date=str(date.fromisoformat(period["end_date"]) - timedelta(days=1)),
     ), expect=409)

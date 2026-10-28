@@ -13,7 +13,7 @@ from ...core.roles import CENTRAL_ADMIN, FHI360_FINANCE, TECHNICAL_OFFICER, SUPE
 from ...core.security import CurrentUser, get_current_user, require_roles
 from ...core.serialize import to_dict
 from ...db.session import get_db
-from ...models import BudgetLine, PaymentClaim, PayPeriod, Region, StaffAssignment, WorkLog
+from ...models import BudgetLine, PaymentClaim, PayPeriod, Region, StaffAssignment, WorkLog, WorkLogEntry
 from ...services.scope import assignments_in_role_scope
 from ...services.v22_scope import regions_for
 
@@ -51,9 +51,21 @@ def can_manage(current, region_id):
 
 
 def period_out(db, current, period):
+    date_lock_reason = period_date_lock_reason(db, period.id)
     return {**to_dict(period), "region_name": db.get(Region, period.region_id).name if period.region_id else None,
             "can_manage": can_manage(current, period.region_id),
+            "can_edit_dates": can_manage(current, period.region_id) and date_lock_reason is None,
+            "date_lock_reason": date_lock_reason,
             "can_delete": SUPER_ADMIN in current.roles and not period_in_use(db, period.id)}
+
+def period_date_lock_reason(db, period_id):
+    if db.query(PaymentClaim.id).filter_by(period_id=period_id).first():
+        return "Payment claims already use this period. Its dates are protected; its label and status can still be edited."
+    if db.query(BudgetLine.id).filter_by(period_id=period_id).first():
+        return "Budget lines already use this period. Its dates are protected; its label and status can still be edited."
+    if db.query(WorkLog.id).filter(WorkLog.period_id == period_id, WorkLog.status != "DRAFT").first():
+        return "Submitted work records already use this period. Its dates are protected; its label and status can still be edited."
+    return None
 
 
 def period_in_use(db, period_id):
@@ -108,9 +120,17 @@ def validate(db, current, body, existing=None):
     if existing and existing.region_id != body.region_id:
         raise HTTPException(409, "A pay period cannot be moved to another region")
     if existing and (existing.start_date, existing.end_date) != (body.start_date, body.end_date):
-        if any(db.query(model.id).filter(model.period_id == existing.id).first()
-               for model in (WorkLog, PaymentClaim, BudgetLine)):
-            raise HTTPException(409, "This period is already in use; only its label and open/closed status may change")
+        # Serialize with draft entry saves and submission, which lock their work-log row.
+        db.query(WorkLog).filter_by(period_id=existing.id).with_for_update().all()
+        reason = period_date_lock_reason(db, existing.id)
+        if reason:
+            raise HTTPException(409, reason)
+        outside = db.query(WorkLogEntry).join(WorkLog, WorkLog.id == WorkLogEntry.work_log_id).filter(
+            WorkLog.period_id == existing.id,
+            or_(WorkLogEntry.entry_date < body.start_date, WorkLogEntry.entry_date > body.end_date),
+        ).first()
+        if outside:
+            raise HTTPException(409, f"A saved workday ({outside.entry_date}) would fall outside these dates. Keep every saved workday inside the period.")
     # Lock regional setup against concurrent overlapping schedules.
     if body.region_id:
         db.query(Region).filter_by(id=body.region_id).with_for_update().one()
