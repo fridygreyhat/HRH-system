@@ -34,3 +34,12 @@ test('technical officers retain their actionable queue and both work types', () 
   expect(html).toContain('Payroll');
   expect(html).toContain('Waiting on me shows only records at your approval stage');
 });
+
+test('finance-only work-log view links monthly reporting and scopes daily review to Services', () => {
+  mockRoles = ['REGIONAL_FINANCE'];
+  const html = renderToStaticMarkup(<ReviewWorkLogs />);
+  expect(useApi.mock.calls.map(([path]) => path)).toContain('/worklogs?queue=true&work_type=SERVICES');
+  expect(html).toContain('Monthly work report');
+  expect(html).toContain('Finance does not price, budget-review or approve Payroll.');
+  expect(html).not.toContain('Payroll · approval workflow');
+});

@@ -273,6 +273,12 @@ from the real bootstrap password.
 
 ## New-record financial workflow (v2.2)
 
+**Current Payroll policy:** Payroll now ends at RM work approval and is reported
+as monthly indicator/hour totals, without finance approval, pricing or budget
+requirements. Payroll payment-routing descriptions in this historical section
+apply only to retained financial history; see “Operational approval versus
+payment pricing” below for the current policy. Services remains payable.
+
 - Budget projections and payment ceilings are separate. `estimated_amount` is
   nullable (unknown, not zero) and warns when committed + spent exposure reaches
   it; `allocated_amount` remains the enforceable hard cap. Historical estimates
@@ -462,14 +468,23 @@ from the real bootstrap password.
   do not delete work or weaken the normal used-period date locks to repair it.
 
 ### Operational approval versus payment pricing
-- RM may authorize both Services and Payroll when approved payment amounts are
-  missing. Such records go to Regional Finance without a zero-value claim.
-  Finance must resolve every pricing exception before creating or routing payment.
+- Payroll is a work report only: CTC verification → Technical review → RM approval.
+  It has no activity-rate requirement, budget gate, finance approval or payment routing.
+  Finance sees calendar-month indicator and hour totals across all assigned cadres
+  on one page, respecting region, cadre and CSO scope. Totals use actual entry dates,
+  not whole pay-period spans; indicator sums are activity counts, not unique clients.
+  **Why:** the user explicitly chose to keep work approvals only for Payroll.
+- Services remains payable: RM may authorize work with missing payment amounts,
+  but Finance must resolve pricing and budget requirements before routing payment.
+  Never create a zero-value claim merely to advance an operational approval.
 - Only absent Services financial terms may be quoted from an exact matching
   Region × Cadre × service rate effective on the work date. Conflicting rates
   fail explicitly. Keep the highest service amount once per provider-date.
 - Preserve original clinical entry snapshots, saved positive financial terms,
   and frozen claim calculations, including completed payments. New rate setup
   must never silently recalculate existing claims.
-- **Why:** missing finance setup must not prevent operational work approval, but
+- Preserve committed and paid historical Payroll financial records. Only
+  uncommitted proposals may be retired when applying the reporting-only policy,
+  retaining RM approval and recording append-only system history.
+- **Why:** missing Services finance setup must not prevent operational work approval, but
   operational approval is not evidence that a payment amount or budget is valid.

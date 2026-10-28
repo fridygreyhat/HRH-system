@@ -7,8 +7,11 @@ import { ApprovalFinanceGuide } from '../components/worklogs/ApprovalFinanceGuid
 import { dateTime, hoursAge, num, WORKLOG_STATUS_LABELS, WORKLOG_STATUSES } from '../format';
 import { useApi } from '../hooks';
 import { Cadre, PayPeriod, WorkLogSummary } from '../types';
+import { navigate } from '../nav';
 
 const REVIEWER_ROLES = ['SUPERVISOR', 'FACILITY_IN_CHARGE', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE'];
+const OPERATIONAL_APPROVER_ROLES = ['SUPERVISOR', 'FACILITY_IN_CHARGE', 'TECHNICAL_OFFICER', 'RPM'];
+const FINANCE_ROLES = ['REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'SUPER_ADMIN'];
 
 function LogTable({ rows, queue, onOpen }: { rows: WorkLogSummary[]; queue: boolean; onOpen: (id: number) => void }) {
   return (
@@ -73,14 +76,17 @@ function LogTable({ rows, queue, onOpen }: { rows: WorkLogSummary[]; queue: bool
 export function ReviewWorkLogs() {
   const { hasRole } = useAuth();
   const isReviewer = hasRole(...REVIEWER_ROLES);
+  const isFinance = hasRole(...FINANCE_ROLES);
+  const canReviewPayroll = hasRole(...OPERATIONAL_APPROVER_ROLES);
   const [tab, setTab] = useState<'queue' | 'all'>(hasRole('RPM') || !isReviewer ? 'all' : 'queue');
   const [status, setStatus] = useState('');
   const [periodId, setPeriodId] = useState('');
   const [cadre, setCadre] = useState('');
   const [workType, setWorkType] = useState<'SERVICES' | 'PAYROLL' | 'LEGACY'>('SERVICES');
+  const visibleWorkType = canReviewPayroll ? workType : 'SERVICES';
   const periods = useApi<PayPeriod[]>(tab === 'all' ? '/admin/pay-periods' : null);
   const cadres = useApi<Cadre[]>(tab === 'all' ? '/admin/cadres' : null);
-  const path = tab === 'queue' ? `/worklogs${qs({ queue: true, work_type: workType })}` : `/worklogs${qs({ status, period_id: periodId, cadre, work_type: workType })}`;
+  const path = tab === 'queue' ? `/worklogs${qs({ queue: true, work_type: visibleWorkType })}` : `/worklogs${qs({ status, period_id: periodId, cadre, work_type: visibleWorkType })}`;
   const logs = useApi<WorkLogSummary[]>(path);
   const [openId, setOpenId] = useState<number | null>(null);
 
@@ -89,7 +95,7 @@ export function ReviewWorkLogs() {
       <header className="page-header">
         <div>
           <h1>Work logs</h1>
-          <p className="muted small">Use Services and Payroll to view each type separately. Open a record to review its details and available approval actions.</p>
+          <p className="muted small">Review and endorse work logs within your assigned approval scope.</p>
         </div>
         <div className="row">
           {isReviewer && (
@@ -113,10 +119,12 @@ export function ReviewWorkLogs() {
           <button className="btn btn-secondary" onClick={logs.reload} disabled={logs.loading}>
             Refresh
           </button>
+          {isFinance && <button type="button" className="btn btn-primary" onClick={() => navigate('finance-monthly')}>Monthly work report</button>}
         </div>
       </header>
 
-      <ApprovalFinanceGuide />
+      {!isFinance && <ApprovalFinanceGuide />}
+      {isFinance && <p className="notice notice-info">Payroll is reported by calendar month only after CTC, Technical and RM authorization. Finance does not price, budget-review or approve Payroll. <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate('finance-monthly')}>Open monthly report</button></p>}
       <p className="notice notice-info">
         {tab === 'queue'
           ? 'Waiting on me shows only records at your approval stage. Use All visible logs to track records at other stages within your assigned scope.'
@@ -125,8 +133,8 @@ export function ReviewWorkLogs() {
       {tab === 'all' && (
         <div className="filters" role="search">
           <Field label="Work type">
-            <select value={workType} onChange={(e) => setWorkType(e.target.value as typeof workType)}>
-              <option value="SERVICES">Services</option><option value="PAYROLL">Payroll</option><option value="LEGACY">Legacy</option>
+            <select value={visibleWorkType} onChange={(e) => setWorkType(e.target.value as typeof workType)}>
+              <option value="SERVICES">Services</option>{canReviewPayroll && <option value="PAYROLL">Payroll · approval workflow</option>}<option value="LEGACY">Legacy</option>
             </select>
           </Field>
           <Field label="Status">

@@ -27,7 +27,7 @@ import { EntriesView, FLAG_GENERAL_FIELDS, FlagsList, TotalsPanel } from './shar
 const ACTION_HELP: Record<string, string> = {
   verify: 'Confirms the work occurred and freezes the current content as a new version.',
   endorse: 'Technical endorsement of the verified version.',
-  authorize: 'Final program and budget authorization. Approval is not payment.',
+  authorize: 'Final authorization of the recorded work. Approval is not payment.',
   return: 'Send back to the provider for correction. Resubmission restarts the whole review chain.',
   return_to_reviewer: 'Send back to the previous review stage.',
   reject: 'Final rejection of this work log.',
@@ -174,6 +174,8 @@ function snapshotCategoryId(log: WorkLogDetail): string {
 export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; onClose: () => void; onChanged?: () => void }) {
   const { hasRole } = useAuth();
   const isRpmWithoutFinanceRole = hasRole('RPM') && !hasRole('REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE');
+  const financeSummaryOnly = hasRole('REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE')
+    && !hasRole('SUPER_ADMIN', 'SYSTEM_ADMIN', 'CENTRAL_ADMIN', 'REGIONAL_ADMIN', 'SUPERVISOR', 'TECHNICAL_OFFICER', 'RPM');
   const { data: log, error, loading, setData, reload } = useApi<WorkLogDetail>(`/worklogs/${logId}`);
   const [action, setAction] = useState<string | null>(null);
   const [flags, setFlags] = useState<ReturnFlag[]>([]);
@@ -353,10 +355,10 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
             {log.period_comment && <p className="small">Period comment: “{log.period_comment}”</p>}
           </Section>
 
-          <Section title={`Daily entries (${log.entries.length})`}>
+          {!financeSummaryOnly && <Section title={`Daily entries (${log.entries.length})`}>
             <EntriesView log={log} lang="en" />
             {!log.gps_visible && <p className="muted small">GPS coordinates are not shown for your role; only the location status is.</p>}
-          </Section>
+          </Section>}
 
           <TotalsPanel log={log} lang="en" title="Totals (server-calculated)" />
 
@@ -377,7 +379,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
             </Section>
           )}
 
-          <Section title="Versions">
+          {!financeSummaryOnly && <Section title="Versions">
             {log.versions.length ? (
               <div className="row">
                 {log.versions.map((v) => (
@@ -389,7 +391,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
             ) : (
               <p className="muted">No frozen versions yet (created at CTC verification).</p>
             )}
-          </Section>
+          </Section>}
 
           {log.claims.length > 0 && (
             <Section title="Linked claims">
@@ -410,21 +412,23 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
           )}
 
           {log.workflow_version >= 2 && (
-            <p className="notice notice-info">RM approval confirms the recorded work. Missing payment amounts do not block this approval for Services or Payroll. Regional Finance must validate pricing and payment setup before any payment.</p>
+            <p className="notice notice-info">{log.work_type === 'PAYROLL'
+              ? 'Payroll is a monthly work report. CTC verification, Technical review and RM approval remain required. No activity rate, budget, finance approval or payment routing is required.'
+              : 'RM approval confirms the recorded work. Regional Finance validates Services amounts and budgets before payment routing.'}</p>
           )}
-          {log.workflow_version === 2 && log.financial_preview && (log.work_type !== 'PAYROLL' || hasRole('REGIONAL_FINANCE')) && (
+          {log.workflow_version === 2 && log.work_type !== 'PAYROLL' && log.financial_preview && (
             <Section title="Payment estimate">
               {log.work_type === 'SERVICES' && <p className="notice notice-info">Only the highest service amount on each date is payable. Unpriced work uses approved amounts effective on its work date; already priced work keeps its saved payment rules.</p>}
               <p className="muted small">Finance confirms the final payable amount. Later rate changes do not alter completed payments.</p>
               <PaymentSetupNotice exceptions={log.financial_preview.exceptions} workType={log.work_type} />
-              <div className="table-wrap">
+              {!financeSummaryOnly && <div className="table-wrap">
                 <table>
                   <thead><tr><th>Date</th><th>Activity</th><th className="num">Units</th><th className="num">Rate</th><th className="num">Amount</th></tr></thead>
                   <tbody>{log.financial_preview.lines.map((line) => (
                     <tr key={line.entry_id}><td>{dateOnly(line.date)}</td><td>{line.activity}</td><td className="num">{line.units}</td><td className="num">{line.rate == null ? <span className="badge badge-warn">Rate missing</span> : `${line.rate}${line.currency ? ` ${line.currency}` : ''}`}</td><td className="num">{line.amount == null ? '—' : `${line.amount}${line.currency ? ` ${line.currency}` : ''}`}</td></tr>
                   ))}</tbody>
                 </table>
-              </div>
+              </div>}
               <p><strong>Total: {log.financial_preview.total} {log.financial_preview.currency || ''}</strong></p>
             </Section>
           )}
@@ -449,7 +453,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
                           : 'Not selected yet';
                 return <>
                   <p><strong>Finance category:</strong> {category}</p>
-                  {lines.length > 0 && <div className="table-wrap"><table>
+                  {!financeSummaryOnly && lines.length > 0 && <div className="table-wrap"><table>
                     <thead><tr><th>Date</th><th>Activity / component</th><th className="num">Units</th><th className="num">Rate</th><th className="num">Amount</th></tr></thead>
                     <tbody>{lines.map((line, index) => <tr key={String(line.entry_id ?? line.id ?? index)}>
                       <td>{String(line.date ?? '—')}</td>
@@ -462,7 +466,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
                   {snapshot.total !== undefined && <p><strong>Saved total:</strong> {String(snapshot.total)} {String(snapshot.currency || '')}</p>}
                 </>;
               })()}
-              <details><summary className="small">View full saved snapshot</summary><pre className="small" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: 0 }}>{JSON.stringify(log.finance_snapshot, null, 2)}</pre></details>
+              {!financeSummaryOnly && <details><summary className="small">View full saved snapshot</summary><pre className="small" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: 0 }}>{JSON.stringify(log.finance_snapshot, null, 2)}</pre></details>}
             </Section>
           )}
 
@@ -481,7 +485,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
           {log.available_actions.length > 0 && (
             <Section title="Review and decide">
               <p className="muted small">
-                Review the monthly summary, flags, and all daily entries above before recording your decision.
+                {financeSummaryOnly ? 'Review the monthly totals and payment setup above before recording your Services decision.' : 'Review the monthly summary, flags, and all daily entries above before recording your decision.'}
               </p>
               {!reviewReached && <p className="notice notice-info">Scroll through the full work-log detail before confirming your review.</p>}
               {log.workflow_version === 2 && log.available_actions.includes('finance_review') && (
@@ -494,7 +498,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
               )}
               <label className="row">
                 <input type="checkbox" checked={reviewConfirmed} disabled={!reviewReached} onChange={(e) => setReviewConfirmed(e.target.checked)} />
-                <span>I have cross-checked all entries and the monthly summary.</span>
+                <span>{financeSummaryOnly ? 'I have cross-checked the monthly summary and Services payment setup.' : 'I have cross-checked all entries and the monthly summary.'}</span>
               </label>
               <div className="row">
                 {log.available_actions.filter((a) => !isRpmWithoutFinanceRole || !['route_fhi360', 'route_cso', 'paid'].includes(a)).map((a) => (

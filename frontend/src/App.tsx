@@ -12,6 +12,7 @@ import { Claims } from './pages/Claims';
 import { CommunityClaims } from './pages/CommunityClaims';
 import { CsoPortal } from './pages/CsoPortal';
 import { Dashboard } from './pages/Dashboard';
+import { FinanceMonthlyReport } from './pages/FinanceMonthlyReport';
 import { ChangePasswordForm, ForcedPasswordChange } from './pages/ChangePassword';
 import { Login } from './pages/Login';
 import { MyWorkLogs } from './pages/MyWorkLogs';
@@ -56,6 +57,7 @@ const PAGES: Page[] = [
   { key: 'rates', label: 'Rates', description: 'Scoped activity rates and immutable revisions', icon: 'receipt', group: 'Finance', roles: ['TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'OVERSIGHT', 'SUPER_ADMIN'], render: () => <Rates /> },
   { key: 'pay-periods', label: 'Pay periods', description: 'Set regional work and pay schedules', icon: 'calendar', group: 'Finance', roles: ['TECHNICAL_OFFICER', 'CENTRAL_ADMIN', 'FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <PayPeriods /> },
   { key: 'routing-queue', label: 'Routing queue', description: 'Verify the assignment, then choose the organization that should pay', icon: 'route', group: 'Finance', roles: ['REGIONAL_FINANCE', 'SUPER_ADMIN'], render: () => <RoutingQueue /> },
+  { key: 'finance-monthly', label: 'Monthly work report', description: 'Calendar-month approved work totals and activity indicators across cadres', icon: 'calendar', group: 'Finance', roles: ['REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'SUPER_ADMIN'], render: () => <FinanceMonthlyReport /> },
   { key: 'review-cadres', label: 'Review assignments', description: 'Manage reviewer cadre and geographic scope', icon: 'users', group: 'System', roles: ['TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'SUPER_ADMIN'], render: () => <ReviewCadres /> },
   {
     key: 'worklogs',

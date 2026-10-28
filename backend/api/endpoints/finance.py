@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ...core import audit
-from ...core.roles import REGIONAL_FINANCE
+from ...core.roles import REGIONAL_FINANCE, FHI360_FINANCE, CSO_FINANCE
 from ...core.security import require_roles
 from ...db.session import get_db
 from ...models import Cadre, Facility, PaymentClaim, PayPeriod, Region, Staff, StaffAssignment, WorkLog
@@ -54,8 +54,20 @@ def _payors(db, log):
         return {"eligible_payors": [], "routing_exception": error.detail}
 
 
+@router.get("/monthly-summary")
+def monthly_summary(
+    month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    region_id: Optional[int] = Query(default=None, gt=0),
+    work_type: Literal["SERVICES", "PAYROLL"] = "PAYROLL",
+    db: Session = Depends(get_db),
+    current=Depends(require_roles(REGIONAL_FINANCE, FHI360_FINANCE, CSO_FINANCE)),
+):
+    from ...services.finance_reports import monthly_summary as report
+    return report(db, current, month, region_id, work_type)
+
+
 @router.get("/regions")
-def regions(db: Session = Depends(get_db), current=Depends(require_roles(REGIONAL_FINANCE))):
+def regions(db: Session = Depends(get_db), current=Depends(require_roles(REGIONAL_FINANCE, FHI360_FINANCE, CSO_FINANCE))):
     query = db.query(Region)
     if not current.unrestricted:
         query = query.filter(Region.id.in_(regions_for(current)))
@@ -75,7 +87,7 @@ def pending_routing(
     stage: Optional[Literal["PENDING_FINANCE_REVIEW", "FINANCE_REVIEWED", "BUDGET_HOLD"]] = None,
     db: Session = Depends(get_db), current=Depends(require_roles(REGIONAL_FINANCE)),
 ):
-    query = _visible(db, current).filter(WorkLog.status.in_([wf.PENDING_FINANCE, wf.FINANCE_REVIEWED, wf.BUDGET_HOLD]))
+    query = _visible(db, current).filter(WorkLog.work_type == "SERVICES", WorkLog.status.in_([wf.PENDING_FINANCE, wf.FINANCE_REVIEWED, wf.BUDGET_HOLD]))
     if stage:
         query = query.filter(WorkLog.status == stage)
     if region_id:
@@ -123,6 +135,8 @@ def channel(body: ChannelIn, db: Session = Depends(get_db), current=Depends(requ
     if not log_id:
         raise HTTPException(422, "Provide claim_id or work_log_id")
     log = _log(db, current, log_id, lock=True)
+    if log.work_type == "PAYROLL":
+        raise HTTPException(409, "Payroll is report-only; no finance approval or payment channel is required.")
     if log.status not in {wf.FINANCE_REVIEWED, wf.BUDGET_HOLD} or not log.finance_snapshot:
         raise HTTPException(409, "The amount must be reviewed by Regional Finance before channeling")
     action = "release" if log.status == wf.BUDGET_HOLD else ("route_fhi360" if log.work_type == "SERVICES" else "route_cso")

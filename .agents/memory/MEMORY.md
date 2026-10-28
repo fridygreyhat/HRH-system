@@ -4,3 +4,4 @@
 - [Activity types](activity-types.md) — user-facing activity types are Services and Payroll, not individual configured payment categories.
 - [Payment-detail access](payment-detail-access.md) — preserve the assigned-community mobile-money exception for CSO Finance, alongside payroll bank access.
 - [CTC review scope](ctc-review-scope.md) — CTC reviews facility cadres; do not confuse CTC verification with supplementary facility endorsement.
+- [Finance scope testing](finance-scope-testing.md) — isolate region, cadre and CSO boundaries; numbered users may be same-organization maker/checker pairs.

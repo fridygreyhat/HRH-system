@@ -91,7 +91,7 @@ export function ApprovalStepper({
   const { lang, me } = useAuth();
   const l = lang === 'sw' ? 'sw' : 'en';
   const otpSkipped = me?.client_settings.provider_otp_required === false;
-  if (workflowVersion === 2) {
+  if (workflowVersion === 2 && workType !== 'PAYROLL') {
     const routeAction = status === 'ROUTED_CSO' ? 'route_cso' : 'route_fhi360';
     const allV2Steps = [
       { action: 'submit', title: 'Submitted' },
@@ -187,7 +187,7 @@ export function ApprovalStepper({
           </span>
           <div className="step-text">
             <span className="step-title">{DONE_LABEL[l]}</span>
-            <span className="step-sub">{approved && by.authorize ? dateTime(by.authorize.timestamp) : l === 'sw' ? 'Si malipo bado' : 'Not yet a payment'}</span>
+            <span className="step-sub">{approved && by.authorize ? dateTime(by.authorize.timestamp) : workType === 'PAYROLL' ? (l === 'sw' ? 'Ripoti ya kazi ya mwezi' : 'Monthly work report') : l === 'sw' ? 'Si malipo bado' : 'Not yet a payment'}</span>
           </div>
         </li>
       </ol>

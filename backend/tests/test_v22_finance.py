@@ -79,7 +79,12 @@ def route_log(api, db, v22, log, route):
 
 
 def test_services_finance_gate_routing_and_actual_payment(api, db, period, v22):
-    activity = priced_activity(api, v22, period)
+    activity = api.post("/rates", "tofficer1", {
+        "label_en": "Test daily service", "label_sw": "Huduma ya siku",
+        "cadre_id": v22["cadre_id"], "region_id": v22["region_id"],
+        "item_type": "SERVICES", "form_mode": "SINGLE", "rate_value": 300,
+        "currency": "TZS", "unit_type": "PER_DAY", "effective_start_date": period["start_date"],
+    })
     log = entered_log(api, period, activity)
     assert log["workflow_version"] == 2 and log["work_type"] == "SERVICES"
     assert float(log["financial_preview"]["total"]) == 300
@@ -110,21 +115,14 @@ def test_services_finance_gate_routing_and_actual_payment(api, db, period, v22):
         api.put("/admin/settings/payment_requires_proof", "admin", {"value": True, "reason": "Restore proof requirement"})
 
 
-def test_payroll_is_paid_by_cso_without_legacy_fhi_handoff(api, db, period, v22):
-    activity = priced_activity(api, v22, period, kind="PAYROLL", rate=500)
-    log = entered_log(api, period, activity)
-    assert activity["hours_input"] and activity["fields"] == []
-    routed = route_log(api, db, v22, to_finance(api, log), "B")
-    assert routed["status"] == "ROUTED_CSO"
-    claim = api.get(f"/claims/{routed['claims'][0]['id']}", "csofin1")
-    assert claim["route_code"] == "B" and float(claim["amount"]) == 1000
-    assert claim["payor_name"] == claim["executor_name"] and "CSO" in claim["payor_name"]
-    api.get(f"/claims/{claim['id']}", "fhifin1", expect=404)
-    partial = api.post(f"/claims/{claim['id']}/payments", "csofin1", {
-        "amount": 500, "payment_reference": "TEST-V22-PAYROLL", "payment_date": period["start_date"], "status": "PARTIAL",
-    })
-    assert partial["payment_status"] == "PARTIALLY_RECORDED"
-    assert api.get(f"/worklogs/{log['id']}", "chw1")["status"] == "ROUTED_CSO"
+def test_payroll_is_work_report_without_finance_handoff(api, db, period, v22):
+    from .test_finance_missing_rates import unpriced_log
+    log, _, _ = unpriced_log(db, period, "chw1", "PAYROLL")
+    approved = api.post(f"/worklogs/{log.id}/actions/authorize", "rpm1",
+                        {"review_confirmed": True, "review_type": "PAYROLL"})
+    assert approved["status"] == "APPROVED"
+    assert approved["financial_preview"] is None and approved["claims"] == []
+    assert not any(row["work_log_id"] == log.id for row in api.get("/finance/pending-routing", v22["finance"]))
 
 
 def test_activity_revisions_do_not_reprice_existing_entries(api, period, v22):

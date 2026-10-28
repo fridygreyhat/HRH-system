@@ -9,6 +9,7 @@ Returns to the provider make the log editable again; resubmission restarts the w
 downstream decision is re-made on the corrected data. Reviewers may also return to the previous stage.
 """
 from typing import Optional
+from itertools import product
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
@@ -88,6 +89,10 @@ FACILITY_ENDORSE_STATUSES = {PENDING_OTP, PENDING_TECH}
 
 
 def transitions_for(log):
+    if getattr(log, "work_type", None) == "PAYROLL":
+        # Payroll ends with RM's operational approval. It is not a payable claim.
+        return {key: value for key, value in TRANSITIONS.items()
+                if key[1] not in {"hold", "release"}}
     if log.workflow_version < 2:
         return TRANSITIONS
     return {
@@ -174,13 +179,13 @@ def queue_condition(current: CurrentUser):
     conditions = []
     from types import SimpleNamespace
     from .v22_scope import record_condition
-    for version in (1, 2):
-        for (status, action), (_, role) in transitions_for(SimpleNamespace(workflow_version=version)).items():
+    for version, kind in product((1, 2), ("SERVICES", "PAYROLL", "LEGACY")):
+        for (status, action), (_, role) in transitions_for(SimpleNamespace(workflow_version=version, work_type=kind)).items():
             if role == PROVIDER or role not in current.roles or action in ("reopen",):
                 continue
             scope = assignments_in_role_scope(current, role)
             if scope is not None:
-                condition = (WorkLog.workflow_version == version) & (WorkLog.status == status) & WorkLog.assignment_id.in_(scope)
+                condition = (WorkLog.workflow_version == version) & (WorkLog.work_type == kind) & (WorkLog.status == status) & WorkLog.assignment_id.in_(scope)
                 if version >= 2 and role in {TECHNICAL_OFFICER, RPM, REGIONAL_FINANCE}:
                     condition &= record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id, role=role)
                 conditions.append(condition)

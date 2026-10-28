@@ -172,7 +172,9 @@ def _guard_daily_service_claim(db, log):
 
 
 def prepare_after_rpm(db, current, log):
-    """Price verified work without choosing finance configuration or committing funds."""
+    """Price verified Services without choosing configuration or committing funds."""
+    if log.work_type == "PAYROLL":
+        return None
     _guard_daily_service_claim(db, log)
     if db.query(PaymentClaim).filter(
         PaymentClaim.work_log_id == log.id, PaymentClaim.status != claims.CANCELLED,
@@ -180,8 +182,8 @@ def prepare_after_rpm(db, current, log):
         raise HTTPException(409, "This work log already has a live claim")
     amount = preview(db, log)
     if amount["exceptions"]:
-        # RM approves the work, not missing financial terms. Both work types
-        # must reach Regional Finance without inventing a zero-value claim.
+        # RM approves the work, not missing financial terms. Services can
+        # reach Regional Finance without inventing a zero-value claim.
         # Finance still cannot prepare, route or pay until all pricing is valid.
         return None
     snapshot = jsonable_encoder({
@@ -204,6 +206,8 @@ def prepare_after_rpm(db, current, log):
 
 
 def review(db, current, log, category_id):
+    if log.work_type == "PAYROLL":
+        raise HTTPException(409, "Payroll is an approved work report; finance approval, pricing and budgets are not required.")
     if not category_id:
         raise HTTPException(422, "Select the budget category for finance review")
     _guard_daily_service_claim(db, log)
@@ -287,6 +291,8 @@ def cancel_pending(db, current, log, comment):
 
 
 def route(db, current, log, channel, target_payor_id=None):
+    if log.work_type == "PAYROLL":
+        raise HTTPException(409, "Payroll is report-only and cannot be routed as a payment claim.")
     snapshot = log.finance_snapshot
     expected = "FHI360" if log.work_type == "SERVICES" else "CSO"
     if channel != expected:

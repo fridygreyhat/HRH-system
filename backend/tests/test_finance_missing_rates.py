@@ -56,16 +56,23 @@ def test_rm_approves_unpriced_work_but_finance_cannot_prepare_payment(api, db, p
     result = api.post(f"/worklogs/{log.id}/actions/authorize", "rpm1", {
         "review_confirmed": True, "review_type": kind,
     })
-    assert result["status"] == "PENDING_FINANCE_REVIEW"
+    assert result["status"] == ("APPROVED" if kind == "PAYROLL" else "PENDING_FINANCE_REVIEW")
     assert result["approved_at"]
     assert result["claims"] == []
-    # The shared finance fixture initially covers CHW only. Explicitly assign
-    # this cadre, as done for Jonas; never weaken application scope checks.
+    # Scope must still be explicit even though Payroll itself needs no finance action.
     finance = db.query(User).filter_by(username=v22["finance"]).one()
     if not db.get(UserReviewCadre, (finance.id, log.cadre_id)):
         assert log.id not in {item["id"] for item in api.get(f"/worklogs?queue=true&work_type={kind}", v22["finance"])}
         db.add(UserReviewCadre(user_id=finance.id, cadre_id=log.cadre_id))
         db.commit()
+    if kind == "PAYROLL":
+        assert result["financial_preview"] is None
+        assert "hold" not in result["available_actions"]
+        assert log.id not in {item["id"] for item in api.get("/worklogs?queue=true&work_type=PAYROLL", v22["finance"])}
+        api.post(f"/worklogs/{log.id}/actions/finance_review", v22["finance"], {
+            "review_confirmed": True, "review_type": kind,
+        }, expect=403)
+        return
     queue = api.get(f"/worklogs?queue=true&work_type={kind}", v22["finance"])
     assert log.id in {item["id"] for item in queue}
     wrong = "PAYROLL" if kind == "SERVICES" else "SERVICES"

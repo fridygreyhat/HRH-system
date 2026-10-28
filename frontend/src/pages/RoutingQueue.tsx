@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { ApprovalFinanceGuide } from '../components/worklogs/ApprovalFinanceGuide';
 import { qs } from '../api';
 import { Alert, AsyncState, Field, StatusBadge } from '../components/ui';
 import { WorkLogDrawer } from '../components/worklogs/WorkLogDrawer';
@@ -7,21 +6,19 @@ import { useApi } from '../hooks';
 import { Named, RoutingQueueItem } from '../types';
 
 export function RoutingQueue() {
-  const [workType, setWorkType] = useState<'' | 'SERVICES' | 'PAYROLL'>('');
   const [regionId, setRegionId] = useState('');
   const [stage, setStage] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
   const regions = useApi<Named[]>('/finance/regions');
-  const queue = useApi<RoutingQueueItem[]>(`/finance/pending-routing${qs({ work_type: workType, region_id: regionId, stage })}`);
+  const queue = useApi<RoutingQueueItem[]>(`/finance/pending-routing${qs({ work_type: 'SERVICES', region_id: regionId, stage })}`);
 
   return (
     <div className="stack-lg">
-      <ApprovalFinanceGuide />
       <header className="page-header">
         <div>
-          <p className="routing-eyebrow">Finance · assignment verification</p>
-          <h1>Routing queue</h1>
-          <p className="muted small">Confirm who did the work and where they were assigned before choosing the paying organization.</p>
+          <p className="routing-eyebrow">Finance · services payment</p>
+          <h1>Services routing queue</h1>
+          <p className="muted small">Review approved service claims and select the eligible paying organization.</p>
         </div>
         <button type="button" className="btn btn-secondary" onClick={() => { queue.reload(); regions.reload(); }} disabled={queue.loading}>
           Refresh queue
@@ -30,17 +27,10 @@ export function RoutingQueue() {
 
       <section className="routing-principle" aria-label="Routing review principle">
         <span className="routing-principle-mark" aria-hidden="true">01</span>
-        <div><strong>Assignment first. Payor second.</strong><p>Open each log to review every daily entry and the provider’s monthly totals. The correct channel is determined by verified assignment—not guesswork.</p></div>
+        <div><strong>Services only. Assignment first.</strong><p>Payroll is not routed or financially approved here. Payroll work appears in the monthly report after CTC, Technical and RM authorization.</p></div>
       </section>
 
       <div className="filters routing-filters" role="search" aria-label="Filter routing queue">
-        <Field label="Work type">
-          <select value={workType} onChange={(event) => setWorkType(event.target.value as typeof workType)} aria-label="Filter by work type">
-            <option value="">Services + payroll</option>
-            <option value="SERVICES">Services</option>
-            <option value="PAYROLL">Payroll</option>
-          </select>
-        </Field>
         <Field label="Region">
           <select value={regionId} onChange={(event) => setRegionId(event.target.value)} aria-label="Filter by region">
             <option value="">All regions in my scope</option>
@@ -68,22 +58,23 @@ export function RoutingQueue() {
           data={queue.data}
           error={null}
           loading={queue.loading}
-          empty={<div className="routing-empty"><span aria-hidden="true">✓</span><strong>No work items need finance action</strong><p>Every RM-approved claim appears here for amount review, channel selection or budget-hold resolution. Older legacy records stay in their existing workflow.</p></div>}
+          isEmpty={(items) => items.every((item) => item.work_type !== 'SERVICES')}
+          empty={<div className="routing-empty"><span aria-hidden="true">✓</span><strong>No service claims need finance action</strong><p>RM-approved service claims appear here for payment review, channel selection or budget-hold resolution. Payroll is reported separately by calendar month.</p></div>}
         >
           {(items) => (
             <div className="table-wrap routing-table-wrap">
               <table className="routing-table">
                 <thead><tr>
-                  <th>Provider / cadre</th><th>Verified assignment</th><th>Period · type</th><th>Status</th><th className="num">Amount</th><th>Eligible payor</th><th><span className="sr-only">Review</span></th>
+                  <th>Provider / cadre</th><th>Verified assignment</th><th>Period</th><th>Status</th><th className="num">Amount</th><th>Eligible payor</th><th><span className="sr-only">Review</span></th>
                 </tr></thead>
-                <tbody>{items.map((item) => {
+                <tbody>{items.filter((item) => item.work_type === 'SERVICES').map((item) => {
                   const reviewAmount = item.finance_review_required || item.next_action === 'REVIEW_AMOUNT';
                   const resolveHold = item.next_action === 'RESOLVE_BUDGET_HOLD';
                   return (
                   <tr key={item.work_log_id}>
                     <td><strong>{item.provider_name}</strong><span className="routing-subline">{item.cadre_code} · {item.cadre_name}</span></td>
                     <td><strong>{item.facility_name || 'Facility not recorded'}</strong><span className="routing-subline">{item.region_name}</span></td>
-                    <td>{item.period_label}<span className="routing-subline"><span className={`type-mark type-${item.work_type.toLowerCase()}`}>{item.work_type === 'SERVICES' ? 'Services' : 'Payroll'}</span></span></td>
+                    <td>{item.period_label}<span className="routing-subline"><span className="type-mark type-services">Services</span></span></td>
                     <td><StatusBadge kind="log" status={item.status} bare /><span className="routing-subline">{reviewAmount ? 'Amount review required' : resolveHold ? 'Budget hold' : 'Channel selection'}</span></td>
                     <td className="num routing-amount">{item.amount === null || !item.currency ? <span className="muted">Not prepared</span> : `${item.currency} ${item.amount}`}</td>
                     <td>
@@ -99,7 +90,7 @@ export function RoutingQueue() {
           )}
         </AsyncState>
       )}
-      <p className="muted small routing-footnote">Every RM-approved claim appears here—not only claims already reviewed by Finance. Review its amount first, then choose the payment channel; budget holds stay visible until resolved.</p>
+      <p className="muted small routing-footnote">This queue retains Services payment review, routing and hold-resolution actions. Payroll has no pricing, budget check, finance approval or routing step; view RM-authorized work in the monthly report.</p>
       {openId !== null && <WorkLogDrawer logId={openId} onClose={() => setOpenId(null)} onChanged={queue.reload} />}
     </div>
   );

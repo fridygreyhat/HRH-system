@@ -178,7 +178,7 @@ def _detail(db: Session, current: CurrentUser, log: WorkLog) -> dict:
         "staff": {"id": staff.id, "name": staff.legal_name, "first_name": staff.first_name, "middle_name": staff.middle_name,
                   "last_name": staff.last_name, "salary_scale": staff.salary_scale},
         "cadre": log_cadre_out(db, log),
-        "financial_preview": finance_gate.preview(db, log) if log.workflow_version >= 2 else None,
+        "financial_preview": finance_gate.preview(db, log) if log.workflow_version >= 2 and log.work_type != "PAYROLL" else None,
         "assignment": assignment_out(db, db.get(StaffAssignment, log.assignment_id)),
         "period": to_dict(period),
         "backdate_access": provider_access(db, log.staff_id),
@@ -582,6 +582,8 @@ def perform_action(log_id: int, action: str, body: ActionIn = ActionIn(), db: Se
 def estimate(log_id: int, db: Session = Depends(get_db), current: CurrentUser = Depends(get_current_user)):
     """Estimated payout from active approved rates. Not an approved amount: the claim decides what is paid."""
     log = _get_log(db, current, log_id)
+    if log.work_type == "PAYROLL":
+        return {"lines": [], "totals": [], "exceptions": [], "report_only": True}
     if log.workflow_version >= 2:
         amount = finance_gate.preview(db, log)
         return {"lines": [{"category": log.work_type, "component": line["activity"], **line} for line in amount["lines"]],
