@@ -29,6 +29,34 @@ class PeriodIn(BaseModel):
     region_id: Optional[int] = None
 
 
+class ClearWorkIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirmation: str
+    preview_token: str = Field(min_length=64, max_length=64)
+    reason: str = Field(min_length=10, max_length=1000)
+
+
+@router.get("/pay-periods/{period_id}/work-reset-preview")
+def work_reset_preview(period_id: int, db: Session = Depends(get_db),
+                       current: CurrentUser = Depends(require_roles(SUPER_ADMIN))):
+    from ...services.period_work_reset import inspect_reset
+    preview, _, _ = inspect_reset(db, period_id)
+    return preview
+
+
+@router.post("/pay-periods/{period_id}/clear-work-records")
+def clear_work_records(period_id: int, body: ClearWorkIn, db: Session = Depends(get_db),
+                       current: CurrentUser = Depends(require_roles(SUPER_ADMIN))):
+    from ...services.period_work_reset import clear_work
+    try:
+        result = clear_work(db, current, period_id, **body.model_dump())
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Work records changed during reset. Reload the preview; nothing was cleared.")
+    return result
+
+
 def global_manager(current):
     return current.unrestricted or bool({CENTRAL_ADMIN, FHI360_FINANCE}.intersection(current.roles))
 

@@ -315,6 +315,12 @@ from the real bootstrap password.
 - Only Super Admin may delete a pay period, and only if no work logs, claims
   or budget lines reference it. Audit the deletion and catch concurrent use.
   Used periods must be closed, never cascade-deleted.
+  The explicitly requested October 2026 fresh start is a separate Super Admin
+  action: clear active entries and return existing work logs to empty drafts,
+  keeping October's budget, ledger, immutable audit records and pre-reset snapshots.
+  Never disable append-only triggers or run this reset automatically at startup,
+  migration or publish. It must be explicitly confirmed in the signed-in live
+  app, with a fresh preview; claims or committed/spent funds block the action.
 - RPM operational authority covers **every cadre within its assigned regions**,
   without needing cadre grants. Technical, Regional Finance and new channel-finance records enforce
   **Region × Cadre** scopes. Configure reviewer cadres and region scopes for
