@@ -55,7 +55,7 @@ CADRES = [
     },
     {
         "code": "HCP", "name": "Health Care Provider", "form_title": "EpiC Project Weekly Work Log-Sheet",
-        "hours_mode": "START_END", "uses_facility_geofence": True, "requires_facility_endorsement": True,
+        "hours_mode": "START_END", "uses_facility_geofence": True, "requires_facility_endorsement": False,
         "uses_section": True, "occupation_options": ["Nurse", "Clinician", "Lab Tech", "Other"],
         "technical_reviewer_title": "Senior Regional Technical Officer, Care & Treatment",
         "fields": [

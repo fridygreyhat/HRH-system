@@ -33,7 +33,7 @@ function CadreForm({ cadre, onDone, onCancel }: { cadre: Cadre; onDone: (c: Cadr
         name: form.name.trim(),
         form_title: form.form_title.trim() || null,
         uses_facility_geofence: form.uses_facility_geofence,
-        requires_facility_endorsement: form.requires_facility_endorsement,
+        requires_facility_endorsement: false,
         technical_reviewer_title: form.technical_reviewer_title.trim() || null,
         uses_section: form.uses_section,
         occupation_options: form.occupations
@@ -72,7 +72,6 @@ function CadreForm({ cadre, onDone, onCancel }: { cadre: Cadre; onDone: (c: Cadr
       <fieldset className="checks">
         <legend>Form behaviour</legend>
         {check('uses_facility_geofence', 'Check entries against the facility geofence')}
-        {check('requires_facility_endorsement', 'Requires Facility In-Charge endorsement')}
         {check('uses_section', 'Asks for the facility section')}
         {check('is_active', 'Cadre is active')}
       </fieldset>
@@ -237,7 +236,6 @@ export function CadresSection() {
                   ['Hours mode (read only)', HOURS_MODE_LABELS[c.hours_mode] || c.hours_mode],
                   ['Facility geofence', c.uses_facility_geofence ? 'Checked' : 'Not used'],
                   ['Technical reviewer', c.technical_reviewer_title],
-                  ['Facility In-Charge endorsement', c.requires_facility_endorsement ? 'Required' : 'Not required'],
                   ['Section', c.uses_section ? 'Asked' : 'Not asked'],
                   ['Occupation options', c.occupation_options.length ? c.occupation_options.join(', ') : null],
                 ]}

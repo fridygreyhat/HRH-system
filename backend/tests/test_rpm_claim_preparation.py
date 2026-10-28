@@ -29,8 +29,6 @@ def test_rpm_reviews_all_regional_cadres_without_cadre_grants(api, db, period, v
     log = api.post(f"/worklogs/{log['id']}/actions/submit", provider, {"attest": True})
     log = api.post(f"/worklogs/{log['id']}/actions/verify", "supervisor1", body)
     log = api.post(f"/worklogs/{log['id']}/otp/confirm", provider, {"code": log["otp"]["dev_otp"]})
-    if provider == "hcp1":
-        api.post(f"/worklogs/{log['id']}/actions/facility_endorse", "facilityic1", body)
     log = api.post(f"/worklogs/{log['id']}/actions/endorse", "tofficer1", body)
     assert not log["claims"]
     assert any(x["id"] == log["id"] for x in api.get("/worklogs?queue=true", "rpm1"))

@@ -134,8 +134,6 @@ def check_action(db: Session, current: CurrentUser, log: WorkLog, action: str) -
         expected = "route_fhi360" if log.work_type == "SERVICES" else "route_cso"
         if action != expected:
             return f"{log.work_type} requires {expected}"
-    if action == "endorse" and db.get(Cadre, log.cadre_id).requires_facility_endorsement and not _has_facility_endorsement(db, log):
-        return "The Facility In-Charge endorsement required by this cadre's form has not been recorded"
     if action == "reopen" and db.query(PaymentClaim).filter(PaymentClaim.work_log_id == log.id, PaymentClaim.status != "CANCELLED").count():
         return "Cancel the claims linked to this work log before reopening it"
     return None
@@ -151,17 +149,8 @@ def _has_facility_endorsement(db: Session, log: WorkLog) -> bool:
 
 
 def _check_facility_endorse(db: Session, current: CurrentUser, log: WorkLog) -> Optional[str]:
-    if FACILITY_IN_CHARGE not in current.roles:
-        return f"Requires the {FACILITY_IN_CHARGE} role"
-    if log.status not in FACILITY_ENDORSE_STATUSES:
-        return "Facility endorsement is recorded after CTC verification and before technical endorsement"
-    if _owns(current, log):
-        return "You cannot endorse your own work log"
-    if not assignment_in_role_scope(db, current, FACILITY_IN_CHARGE, log.assignment_id):
-        return "This work log is outside your assigned scope"
-    if _has_facility_endorsement(db, log):
-        return "Already endorsed for this version"
-    return None
+    # Retired workflow step; keep old endorsement rows for historical audit only.
+    return "Facility In-Charge endorsement has been removed from the approval workflow"
 
 
 def available_actions(db: Session, current: CurrentUser, log: WorkLog) -> list[str]:

@@ -84,11 +84,6 @@ def new_scenario(api, db, period, provider, kind, variant="happy_path"):
          "In this isolated test only, the mock gateway supplies the one-time code. No code is stored in this demo replay.",
          "The confirmation applies to the exact CTC-verified version; no real SMS is sent.")
     api.post(f"/worklogs/{log_id}/otp/confirm", provider["username"], {"code": verified["otp"]["dev_otp"]})
-    if cadre == "HCP":
-        snap("Facility endorsement", "FACILITY_IN_CHARGE", "Endorse facility work",
-             "HCP records require supplemental facility endorsement before technical approval.",
-             "The facility endorsement is recorded with its actor and version.")
-        act("facility_endorse", "FACILITY_IN_CHARGE", comment="DEMO: facility records match")
     snap("Cadre-specific technical review", "TECHNICAL_OFFICER", "Endorse",
          f"The {cadre} technical reviewer sees only their assigned cadres and regions.",
          "Technical approval confirms the work, not a payment.")

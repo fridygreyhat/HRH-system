@@ -216,7 +216,5 @@ def submit_and_verify(api: Api, provider: str, period: dict, supervisor: str = "
 def approved_log(api: Api, provider: str, period: dict) -> dict:
     log = submit_and_verify(api, provider, period)
     api.post(f"/worklogs/{log['id']}/otp/confirm", provider, {"code": log["otp"]["dev_otp"]})
-    if PROVIDER_CADRE[provider] == "HCP":
-        api.post(f"/worklogs/{log['id']}/actions/facility_endorse", "facilityic1", {"comment": "Facility records checked"})
     api.post(f"/worklogs/{log['id']}/actions/endorse", "tofficer1", {})
     return api.post(f"/worklogs/{log['id']}/actions/authorize", "rpm1", {})

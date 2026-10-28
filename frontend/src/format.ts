@@ -146,7 +146,7 @@ export const WORKLOG_ACTION_LABELS: Record<string, string> = {
   return: 'Return to provider',
   confirm_otp: 'Confirmed by SMS code',
   decline: 'Decline (report a problem)',
-  endorse: 'Technical endorsement',
+  endorse: 'Approve technical review',
   return_to_reviewer: 'Return to previous reviewer',
   reject: 'Reject',
   authorize: 'Authorize (RM)',

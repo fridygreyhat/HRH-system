@@ -48,7 +48,8 @@ def cadre_out(db: Session, cadre: Cadre, include_inactive: bool = False) -> dict
         "form_title": cadre.form_title,
         "hours_mode": cadre.hours_mode,
         "uses_facility_geofence": cadre.uses_facility_geofence,
-        "requires_facility_endorsement": cadre.requires_facility_endorsement,
+        # Compatibility field: historical configuration must not reinstate the retired step.
+        "requires_facility_endorsement": False,
         "technical_reviewer_title": cadre.technical_reviewer_title,
         "uses_section": cadre.uses_section,
         "occupation_options": cadre.occupation_options,

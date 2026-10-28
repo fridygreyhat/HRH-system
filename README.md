@@ -72,7 +72,7 @@ DRAFT → PENDING_CTC_VERIFICATION → PENDING_PROVIDER_OTP_CONFIRMATION → PEN
 - Reviewers can return a log to the provider with field-level flags, return it to the previous reviewer, or reject
   it. The RPM can place a log on budget hold, release it, or reopen an approved log (only when no live claims
   exist). Every return, reject, hold, release or reopen needs a reason.
-- The HCP form's Facility In-Charge endorsement is required before technical endorsement (configurable per cadre).
+- Facility In-Charge endorsement is no longer part of approval. After CTC verification, the assigned cadre Technical Officer approves, then the Regional Manager (RM) authorizes. Historical endorsement records are retained for audit.
 - GPS is sampled only at configured events (`gps_capture_events`). Facility staff are compared with the facility
   geofence. CHW samples go to the supervisor for review. Location exceptions never auto-reject work.
 

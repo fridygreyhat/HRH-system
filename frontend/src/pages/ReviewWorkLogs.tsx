@@ -72,7 +72,7 @@ function LogTable({ rows, queue, onOpen }: { rows: WorkLogSummary[]; queue: bool
 export function ReviewWorkLogs() {
   const { hasRole } = useAuth();
   const isReviewer = hasRole(...REVIEWER_ROLES);
-  const [tab, setTab] = useState<'queue' | 'all'>(isReviewer ? 'queue' : 'all');
+  const [tab, setTab] = useState<'queue' | 'all'>(hasRole('RPM') || !isReviewer ? 'all' : 'queue');
   const [status, setStatus] = useState('');
   const [periodId, setPeriodId] = useState('');
   const [cadre, setCadre] = useState('');
@@ -88,7 +88,7 @@ export function ReviewWorkLogs() {
       <header className="page-header">
         <div>
           <h1>Work logs</h1>
-          <p className="muted small">Each log is reviewed and decided individually. Overdue items are highlighted using the configured reviewer-reminder threshold.</p>
+          <p className="muted small">Use Services and Payroll to view each type separately. Open a record to review its details and available approval actions.</p>
         </div>
         <div className="row">
           {isReviewer && (
@@ -115,6 +115,11 @@ export function ReviewWorkLogs() {
         </div>
       </header>
 
+      <p className="notice notice-info">
+        {tab === 'queue'
+          ? 'Waiting on me shows only records at your approval stage. Use All visible logs to track records at other stages within your assigned scope.'
+          : 'All visible logs includes records at every stage within your assigned scope. Technical approval follows CTC verification; RM approval follows technical approval. Drafts cannot be approved.'}
+      </p>
       {tab === 'all' && (
         <div className="filters" role="search">
           <Field label="Work type">

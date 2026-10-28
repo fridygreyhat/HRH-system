@@ -63,15 +63,12 @@ def test_every_cadre_follows_the_same_pipeline(api, period, provider):
     log = api.post(f"/worklogs/{log['id']}/otp/confirm", provider, {"code": log["otp"]["dev_otp"]})
     assert log["status"] == "PENDING_TECHNICAL_REVIEW" and log["confirmed_version"] == 1
     api.post(f"/worklogs/{log['id']}/actions/authorize", "rpm1", expect=409)  # RPM cannot act before technical endorsement
-    if provider == "hcp1":  # the HCP form requires the Facility In-Charge endorsement
-        api.post(f"/worklogs/{log['id']}/actions/endorse", "tofficer1", expect=409)
-        api.post(f"/worklogs/{log['id']}/actions/facility_endorse", "facilityic1", {})
     log = api.post(f"/worklogs/{log['id']}/actions/endorse", "tofficer1")
     assert log["status"] == "PENDING_RPM_AUTHORIZATION"
     log = api.post(f"/worklogs/{log['id']}/actions/authorize", "rpm1")
     assert log["status"] == "APPROVED" and log["approved_at"]
     assert [a["action"] for a in log["audit"] if a["action"] not in ("opened", "edit_entry")] == (
-        ["create", "submit", "verify", "confirm_otp"] + (["facility_endorse"] if provider == "hcp1" else []) + ["endorse", "authorize"]
+        ["create", "submit", "verify", "confirm_otp", "endorse", "authorize"]
     )
 
 

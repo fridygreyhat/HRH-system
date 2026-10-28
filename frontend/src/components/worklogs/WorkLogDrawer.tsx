@@ -32,7 +32,6 @@ const ACTION_HELP: Record<string, string> = {
   hold: 'Place on budget hold until released.',
   release: 'Release the budget hold back to RM authorization.',
   reopen: 'Reopen an approved log for correction (linked claims must be cancelled first).',
-  facility_endorse: 'Record the Facility In-Charge endorsement required by this cadre form.',
 };
 
 function FlagEditor({ log, flags, onChange }: { log: WorkLogDetail; flags: ReturnFlag[]; onChange: (f: ReturnFlag[]) => void }) {
@@ -353,9 +352,8 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
 
           <TotalsPanel log={log} lang="en" title="Totals (server-calculated)" />
 
-          {(log.cadre.requires_facility_endorsement || log.endorsements.length > 0) && (
-            <Section title="Endorsements">
-              {log.cadre.requires_facility_endorsement && <p className="muted small">This cadre form requires a Facility In-Charge endorsement before technical review.</p>}
+          {log.endorsements.length > 0 && (
+            <Section title="Historical endorsements">
               {log.endorsements.length ? (
                 <ul className="small">
                   {log.endorsements.map((e) => (

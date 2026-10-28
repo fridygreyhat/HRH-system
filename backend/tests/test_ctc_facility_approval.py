@@ -35,6 +35,51 @@ def submitted_log(api, db, period, provider, work_type):
 
 @pytest.mark.parametrize("provider", ["chw1", "hcp1", "clerk1"])
 @pytest.mark.parametrize("work_type", ["SERVICES", "PAYROLL"])
+def test_technical_then_rm_approval_without_facility_endorsement(
+    api, db, period, monkeypatch, provider, work_type,
+):
+    from backend.core import workflow_policy
+    from backend.models import Cadre
+    monkeypatch.setattr(workflow_policy, "NEW_RECORD_WORKFLOW_VERSION", 2)
+    # Old databases may still carry the retired HCP flag: it must not block approval.
+    hcp = db.query(Cadre).filter_by(code="HCP").one()
+    previous = hcp.requires_facility_endorsement
+    hcp.requires_facility_endorsement = True
+    db.commit()
+    try:
+        log = submitted_log(api, db, period, provider, work_type)
+        body = {"review_confirmed": True, "review_type": work_type}
+        # RM can track both kinds before they reach the RM action queue.
+        assert log["id"] in {r["id"] for r in api.get(f"/worklogs?work_type={work_type}", "rpm1")}
+        assert log["id"] not in {r["id"] for r in api.get("/worklogs?queue=true", "rpm1")}
+        log = api.post(f"/worklogs/{log['id']}/actions/verify", "supervisor1", body)
+        assert log["status"] == "PENDING_TECHNICAL_REVIEW"
+        assert log["id"] in {r["id"] for r in api.get(f"/worklogs?queue=true&work_type={work_type}", "tofficer1")}
+        technical = api.get(f"/worklogs/{log['id']}", "tofficer1")
+        assert "endorse" in technical["available_actions"]
+        assert technical["cadre"]["requires_facility_endorsement"] is False
+        assert "facility_endorse" not in api.get(f"/worklogs/{log['id']}", "facilityic1")["available_actions"]
+        api.post(f"/worklogs/{log['id']}/actions/facility_endorse", "facilityic1", body, expect=403)
+        log = api.post(f"/worklogs/{log['id']}/actions/endorse", "tofficer1", body)
+        assert log["status"] == "PENDING_RPM_AUTHORIZATION"
+        assert log["id"] in {r["id"] for r in api.get(f"/worklogs?queue=true&work_type={work_type}", "rpm1")}
+        other_type = "PAYROLL" if work_type == "SERVICES" else "SERVICES"
+        assert log["id"] not in {r["id"] for r in api.get(f"/worklogs?queue=true&work_type={other_type}", "rpm1")}
+        assert log["id"] not in {r["id"] for r in api.get("/worklogs", "rpm2")}
+        rm = api.get(f"/worklogs/{log['id']}", "rpm1")
+        assert "authorize" in rm["available_actions"]
+        api.post(f"/worklogs/{log['id']}/actions/authorize", "rpm1",
+                 {**body, "review_type": other_type}, expect=422)
+        result = api.post(f"/worklogs/{log['id']}/actions/authorize", "rpm1", body)
+        assert result["status"] == "PENDING_FINANCE_REVIEW"
+        assert not result["endorsements"]
+    finally:
+        hcp.requires_facility_endorsement = previous
+        db.commit()
+
+
+@pytest.mark.parametrize("provider", ["chw1", "hcp1", "clerk1"])
+@pytest.mark.parametrize("work_type", ["SERVICES", "PAYROLL"])
 def test_ctc_sees_and_verifies_each_own_facility_cadre(api, db, period, monkeypatch, provider, work_type):
     from backend.core import workflow_policy
     monkeypatch.setattr(workflow_policy, "NEW_RECORD_WORKFLOW_VERSION", 2)
