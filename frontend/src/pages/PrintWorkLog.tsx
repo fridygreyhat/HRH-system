@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { Alert } from '../components/ui';
-import { dateOnly, dateTime, datesBetween, dayOfMonth, num, timeShort, weekday } from '../format';
+import { dateOnly, dateTime, datesBetween, dayOfMonth, num, periodDateError, timeShort, weekday } from '../format';
 import { useApi } from '../hooks';
 import { WorkLogAudit, WorkLogDetail } from '../types';
 
@@ -42,6 +42,7 @@ export function PrintWorkLog({ logId }: { logId: number }) {
   const validId = Number.isSafeInteger(logId) && logId > 0;
   const { data: log, error, loading, reload } = useApi<WorkLogDetail>(validId ? `/worklogs/${logId}` : null, { timeoutMs: 20000 });
   const [selectedMonth, setSelectedMonth] = useState('');
+  const dateError = log ? periodDateError(log.period.start_date, log.period.end_date) : null;
   const allDates = log ? datesBetween(log.period.start_date, log.period.end_date) : [];
   const months = Array.from(new Set(allDates.map(date => date.slice(0, 7))));
   const month = months.includes(selectedMonth) ? selectedMonth : months[0];
@@ -54,10 +55,10 @@ export function PrintWorkLog({ logId }: { logId: number }) {
       <button className="btn btn-ghost btn-sm" onClick={() => window.history.back()}>
         ← Back
       </button>
-      <button className="btn btn-primary btn-sm" onClick={() => window.print()} disabled={!log}>
+      <button className="btn btn-primary btn-sm" onClick={() => window.print()} disabled={!log || !!dateError}>
         Print
       </button>
-      {log && <label className="row">
+      {log && !dateError && <label className="row">
         Print month
         <select aria-label="Print month" value={month} onChange={event => setSelectedMonth(event.target.value)}>
           {months.map(value => <option key={value} value={value}>{monthLabel(value)}</option>)}
@@ -77,6 +78,8 @@ export function PrintWorkLog({ logId }: { logId: number }) {
           : <Alert>The work log could not be loaded. Open it again from your work-log list.</Alert>}
       </div>
     );
+
+  if (dateError) return <div>{toolbar}<Alert>{dateError} Contact an administrator to correct the pay period before printing.</Alert></div>;
 
   const dates = allDates.filter(date => date.startsWith(`${month}-`));
   const entries = log.entries.filter(entry => dates.includes(entry.entry_date));

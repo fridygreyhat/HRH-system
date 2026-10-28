@@ -3,7 +3,7 @@ import { AdminAudit } from '../AdminAudit';
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api';
 import { useAuth } from '../../AuthContext';
-import { datesBetween, dayOfMonth, money, num, todayLocal, WORKLOG_ACTION_LABELS, weekday } from '../../format';
+import { datesBetween, dayOfMonth, money, num, periodDateError, todayLocal, WORKLOG_ACTION_LABELS, weekday } from '../../format';
 import { useAction, useApi } from '../../hooks';
 import { navigate } from '../../nav';
 import { PayoutEstimateData, Section as SectionRow, WorkLogDetail } from '../../types';
@@ -137,6 +137,8 @@ export function DayCalendar({
   const preferredMonth = focusDate.slice(0, 7);
   const [visibleMonth, setVisibleMonth] = useState(preferredMonth);
   useEffect(() => setVisibleMonth(preferredMonth), [preferredMonth, log.id]);
+  const dateError = periodDateError(log.period.start_date, log.period.end_date);
+  if (dateError) return <div role="alert" className="alert alert-warn">{dateError} Contact an administrator to correct the pay period.</div>;
   const month = months.includes(visibleMonth) ? visibleMonth : preferredMonth;
   const monthIndex = months.indexOf(month);
   const visibleDates = dates.filter(date => date.startsWith(`${month}-`));

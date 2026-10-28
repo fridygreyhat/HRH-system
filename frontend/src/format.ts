@@ -47,8 +47,26 @@ export const todayLocal = (): string => {
   return `${get('year')}-${get('month')}-${get('day')}`;
 };
 
-/** Every date from start to end inclusive ("YYYY-MM-DD"). */
+/** Shared reporting-period guard. Never expand a mistyped year into centuries. */
+export function periodDateError(start: string, end: string): string | null {
+  const parsed = [start, end].map(value => new Date(`${value}T00:00:00Z`));
+  if ([start, end].some((value, index) =>
+    !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(parsed[index].getTime()) ||
+    parsed[index].toISOString().slice(0, 10) !== value)) {
+    return 'The pay period has an invalid date. Contact an administrator to correct it.';
+  }
+  if (parsed.some(date => date.getUTCFullYear() < 2000 || date.getUTCFullYear() > 2100)) {
+    return 'Pay-period dates must be between 2000 and 2100. Check the four-digit year.';
+  }
+  const days = (parsed[1].getTime() - parsed[0].getTime()) / 86400000;
+  if (days < 0) return 'The pay-period end date is before its start date.';
+  if (days >= 366) return 'A pay period must cover no more than 366 calendar days. Check its dates.';
+  return null;
+}
+
+/** Every date of a valid, bounded reporting period, inclusive ("YYYY-MM-DD"). */
 export function datesBetween(start: string, end: string): string[] {
+  if (periodDateError(start, end)) return [];
   const out: string[] = [];
   const d = new Date(`${start}T00:00:00Z`);
   const last = new Date(`${end}T00:00:00Z`);

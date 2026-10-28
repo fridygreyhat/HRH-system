@@ -165,6 +165,19 @@ def review_summary(db: Session, log: WorkLog, current=None) -> dict:
     limits = hour_limits(db, log.work_type)
     weekly_max = limits["weekly_hours"]
     period = db.get(PayPeriod, log.period_id)
+    from ..core.period_dates import period_date_error
+    date_error = period_date_error(period.start_date, period.end_date)
+    if date_error:
+        return {
+            "metrics": {key: str(value) for key, value in totals_by_key.items()},
+            "months": monthly_provider_totals(db, log, current),
+            "anomalies": [{
+                "code": "INVALID_PAY_PERIOD",
+                "message": f"{date_error} Recorded dates: {period.start_date.isoformat()} to {period.end_date.isoformat()}. Contact an administrator to correct the period before approval.",
+            }],
+            "limits": {**{key: str(value) for key, value in limits.items()}, "sunday_allowed": False,
+                       "backdate_grace_hours": get_setting(db, "backdate_grace_hours")},
+        }
     week_start = period.start_date - timedelta(days=period.start_date.weekday())
     week_end = period.end_date + timedelta(days=6 - period.end_date.weekday())
     week_hours: dict[object, Decimal] = defaultdict(Decimal)
@@ -212,28 +225,38 @@ def review_summary(db: Session, log: WorkLog, current=None) -> dict:
 def monthly_provider_totals(db: Session, log: WorkLog, current=None) -> list[dict]:
     """Calendar-month totals for this work type, including weekly pay periods."""
     from .scope import worklog_visibility
+    from ..core.period_dates import period_date_error
 
     period = db.get(PayPeriod, log.period_id)
+    invalid_period = period_date_error(period.start_date, period.end_date) is not None
     start = period.start_date.replace(day=1)
     end = period.end_date.replace(day=monthrange(period.end_date.year, period.end_date.month)[1])
     query = (
         db.query(WorkLogEntry).join(WorkLog, WorkLog.id == WorkLogEntry.work_log_id)
-        .filter(WorkLog.staff_id == log.staff_id, WorkLog.work_type == log.work_type,
-                WorkLogEntry.entry_date >= start, WorkLogEntry.entry_date <= end)
+        .filter(WorkLog.staff_id == log.staff_id, WorkLog.work_type == log.work_type)
     )
     if current is not None:
         query = query.filter(worklog_visibility(current))
+    if invalid_period:
+        # Historical bad dates must not expand into thousands of empty months,
+        # or accidentally aggregate this person's entire work history.
+        query = query.filter(WorkLog.id == log.id)
+    else:
+        query = query.filter(WorkLogEntry.entry_date >= start, WorkLogEntry.entry_date <= end)
     entries = query.all()
     by_id = {entry.id: entry for entry in entries}
     activity_rules = {entry.activity_key: (entry.activity_snapshot or {}).get("cascade_pairs", CASCADES.get(entry.activity_key, [])) for entry in entries}
     measures = db.query(WorkLogMeasure).filter(WorkLogMeasure.entry_id.in_(by_id)).all() if by_id else []
     months = {}
     cursor = start
-    while cursor <= end:
+    while not invalid_period and cursor <= end:
         months[cursor.strftime("%Y-%m")] = {"dates": set(), "hours": Decimal(0), "metrics": defaultdict(Decimal), "activities": defaultdict(lambda: defaultdict(Decimal))}
         cursor = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
     for entry in entries:
-        month = months[entry.entry_date.strftime("%Y-%m")]
+        month = months.setdefault(entry.entry_date.strftime("%Y-%m"), {
+            "dates": set(), "hours": Decimal(0), "metrics": defaultdict(Decimal),
+            "activities": defaultdict(lambda: defaultdict(Decimal)),
+        })
         month["dates"].add(entry.entry_date)
         month["hours"] += entry.hours_worked
         for service in (entry.activity_snapshot or {}).get("additional_services", []):
@@ -249,7 +272,7 @@ def monthly_provider_totals(db: Session, log: WorkLog, current=None) -> list[dic
         month["metrics"][measure.field_key] += measure.value
         month["activities"][entry.activity_key][measure.field_key] += measure.value
     result = []
-    for month_key, month in months.items():
+    for month_key, month in sorted(months.items()):
         anomalies = []
         for activity_key, values in month["activities"].items():
             for lower, upper, description in activity_rules.get(activity_key, []):

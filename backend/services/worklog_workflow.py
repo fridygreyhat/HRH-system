@@ -119,6 +119,15 @@ def check_action(db: Session, current: CurrentUser, log: WorkLog, action: str) -
     role = transition[1]
     if role not in current.roles:
         return f"Requires the {role} role"
+    # A corrupt period may be returned/rejected/reopened for correction, but
+    # must not advance at any approval stage (including Regional Finance).
+    if action not in {"return", "reject", "reopen", "return_to_reviewer"}:
+        from ..core.period_dates import period_date_error
+        from ..models import PayPeriod
+        period = db.get(PayPeriod, log.period_id)
+        date_error = period_date_error(period.start_date, period.end_date)
+        if date_error:
+            return f"{date_error} Contact an administrator to correct the pay period before approval."
     if role == PROVIDER:
         return None if _owns(current, log) else "Only the provider who owns this work log can do this"
     if _owns(current, log):

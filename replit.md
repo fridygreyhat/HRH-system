@@ -449,3 +449,14 @@ from the real bootstrap password.
 - Schema migrations and seeding are intentionally not part of normal startup.
   For managed production PostgreSQL, use Replit's Publish schema flow rather
   than running development migrations on production.
+
+### Pay-period date safeguards
+- Reporting periods use years 2000–2100 and at most 366 inclusive calendar days.
+  Apply the same limits to API creation/editing and frontend calendar expansion.
+- Existing corrupt periods must render a clear warning and only actual recorded
+  months, not an unbounded list of empty months. Block submission/approval until
+  dates are corrected; retain normal scope and approval checks.
+- **Why:** a mistyped four-digit year caused review pages to expand centuries of
+  empty months and made approval controls unusable. An audited data correction
+  should preserve period/work-log IDs, actual entries and financial history;
+  do not delete work or weaken the normal used-period date locks to repair it.

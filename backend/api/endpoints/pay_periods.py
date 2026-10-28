@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ...core import audit
+from ...core.period_dates import period_date_error
 from ...core.roles import CENTRAL_ADMIN, FHI360_FINANCE, TECHNICAL_OFFICER, SUPER_ADMIN
 from ...core.security import CurrentUser, get_current_user, require_roles
 from ...core.serialize import to_dict
@@ -113,8 +114,9 @@ def validate(db, current, body, existing=None):
         raise HTTPException(403, "You may only manage pay periods in your assigned regions")
     if not can_manage(current, body.region_id):
         raise HTTPException(403, "Choose a region assigned to you; global periods require Central Admin or FHI360 Finance")
-    if body.end_date < body.start_date:
-        raise HTTPException(422, "The end date is before the start date")
+    date_error = period_date_error(body.start_date, body.end_date)
+    if date_error:
+        raise HTTPException(422, date_error)
     if body.region_id is not None and not db.get(Region, body.region_id):
         raise HTTPException(422, "Unknown region")
     if existing and existing.region_id != body.region_id:

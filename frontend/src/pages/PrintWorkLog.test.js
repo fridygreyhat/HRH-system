@@ -61,6 +61,17 @@ test.each(['CHW', 'HCP', 'DATA_CLERK'])('%s print loads and prints the selected 
   expect(print).toHaveBeenCalledTimes(1);
 });
 
+test('corrupt legacy dates show a correction message instead of crashing or expanding centuries', async () => {
+  const log = record();
+  log.period.start_date = '0206-10-01';
+  api.get.mockResolvedValue(log);
+  await act(async () => root.render(<PrintWorkLog logId={19} />));
+  expect(container.textContent).toContain('four-digit year');
+  expect(container.querySelector('select')).toBeNull();
+  expect(container.querySelector('article')).toBeNull();
+  expect([...container.querySelectorAll('button')].find(button => button.textContent === 'Print').disabled).toBe(true);
+});
+
 test('print request times out instead of loading forever, and Retry can recover', async () => {
   jest.useFakeTimers();
   api.get.mockImplementationOnce((path, { signal }) => new Promise((resolve, reject) => {
