@@ -29,6 +29,15 @@ def attendance_only(activity):
     return result
 
 
+def chw_daily_fields(db, activity, cadre_id):
+    """Restore the daily reporting form, retaining any immutable financial terms."""
+    result = deepcopy(activity)
+    daily = next(item for item in builtins(db, cadre_id) if item["key"] == "chw_daily_timesheet")
+    for key in ("fields", "required_fields", "field_definitions", "groups", "form_mode", "hours_input"):
+        result[key] = deepcopy(daily[key])
+    return result
+
+
 def definition_out(row: ActivityRate) -> dict:
     fields = row.field_definitions
     result = {
@@ -97,8 +106,12 @@ def builtins(db, cadre_id: int) -> list[dict]:
 
 
 def catalog_for_log(db, log) -> list[dict]:
+    chw_payroll = log.work_type == "PAYROLL" and db.get(Cadre, log.cadre_id).code == "CHW"
     if log.workflow_version < 2:
-        return deepcopy(ACTIVITIES.get(db.get(Cadre, log.cadre_id).code, []))
+        result = deepcopy(ACTIVITIES.get(db.get(Cadre, log.cadre_id).code, []))
+        if chw_payroll:
+            result.insert(0, next(item for item in builtins(db, log.cadre_id) if item["key"] == "chw_daily_timesheet"))
+        return result
     assignment = db.get(StaffAssignment, log.assignment_id)
     result = [item for item in builtins(db, log.cadre_id) if item["item_type"] == log.work_type]
     rows = db.query(ActivityRate).filter(
@@ -122,17 +135,30 @@ def catalog_for_log(db, log) -> list[dict]:
                 result.append(deepcopy(extra["activity"]))
                 keys.add(extra["activity"]["key"])
     if log.work_type == "PAYROLL":
-        result = [attendance_only(item) for item in result]
-        if not any(item["key"] == "daily_attendance" for item in result):
-            result.insert(0, payroll_attendance(log.cadre_id))
+        if chw_payroll:
+            result = [chw_daily_fields(db, item, log.cadre_id)
+                      if item["key"] in {"daily_attendance", "chw_daily_timesheet"} else item for item in result]
+        else:
+            result = [attendance_only(item) for item in result]
+            if not any(item["key"] == "daily_attendance" for item in result):
+                result.insert(0, payroll_attendance(log.cadre_id))
     return result
 
 
 def resolve_activity(db, log, key: str, day, existing=None) -> dict:
+    chw_payroll = log.work_type == "PAYROLL" and db.get(Cadre, log.cadre_id).code == "CHW"
+    if chw_payroll and key in {"daily_attendance", "chw_daily_timesheet"}:
+        if existing and existing.activity_key == key and existing.activity_snapshot:
+            activity = existing.activity_snapshot
+        elif key == "daily_attendance":
+            activity = payroll_attendance(log.cadre_id)
+        else:
+            activity = next(item for item in builtins(db, log.cadre_id) if item["key"] == key)
+        return chw_daily_fields(db, activity, log.cadre_id)
     if log.workflow_version >= 2 and log.work_type == "PAYROLL" and key == "daily_attendance":
         return payroll_attendance(log.cadre_id)
     activity = _resolve_activity(db, log, key, day, existing)
-    return attendance_only(activity) if log.work_type == "PAYROLL" else activity
+    return attendance_only(activity) if log.work_type == "PAYROLL" and not chw_payroll else activity
 
 
 def _resolve_activity(db, log, key: str, day, existing=None) -> dict:

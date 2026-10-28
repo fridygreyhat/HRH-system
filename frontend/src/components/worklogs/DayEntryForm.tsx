@@ -89,7 +89,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
   const hidesEvidence = isHcp || isChw || isDataClerk;
   const defaultChwActivity = applicableActivities.find((activity) => activity.key === 'chw_daily_timesheet');
   const defaultClerkActivity = applicableActivities.find((activity) => activity.key === 'data_clerk_daily_timesheet');
-  const attendance = log.work_type === 'PAYROLL' ? applicableActivities.find((activity) => activity.key === 'daily_attendance') : undefined;
+  const attendance = log.work_type === 'PAYROLL' ? (isChw ? defaultChwActivity : undefined) || applicableActivities.find((activity) => activity.key === 'daily_attendance') : undefined;
   const [activityKey, setActivityKey] = useState(entry?.activity_key || attendance?.key || (isHcp ? '' : (isChw ? defaultChwActivity : isDataClerk ? defaultClerkActivity : undefined)?.key || applicableActivities[0]?.key || allActivities[0]?.key || ''));
   const selectedActivity = activities.find((activity) => activity.key === activityKey);
   const activityType = selectedActivity?.item_type || log.work_type;
@@ -99,7 +99,8 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
     || selectedActivity?.groups?.[0];
   const requiresLocation = Boolean(selectedActivity?.requires_location || activityKey === 'secondary_facility');
   const direct = log.cadre.hours_mode === 'DIRECT' || Boolean(selectedActivity?.hours_input);
-  const visibleFields = log.work_type === 'PAYROLL' || (!isHcp && !isChw && !isDataClerk && selectedActivity?.item_type === 'PAYROLL')
+  const attendanceOnly = log.work_type === 'PAYROLL' && !isChw;
+  const visibleFields = attendanceOnly || (!isHcp && !isChw && !isDataClerk && selectedActivity?.item_type === 'PAYROLL')
     ? []
     : selectedActivity
       ? selectedActivity.fields.flatMap((key) => log.cadre.fields.filter((field) => field.key === key))
@@ -139,7 +140,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
       setValidationError(lang === 'sw' ? 'Nasa mahali ulipo kabla ya kuhifadhi siku hii.' : 'Capture your current location before saving this day.');
       return;
     }
-    const missing = (log.work_type === 'PAYROLL' ? [] : selectedActivity?.required_fields || []).filter((key) => measures[key] === undefined || measures[key] === '');
+    const missing = (attendanceOnly ? [] : selectedActivity?.required_fields || []).filter((key) => measures[key] === undefined || measures[key] === '');
     if (missing.length) {
       if (isGroupedIndicators) {
         const firstIncompleteGroup = selectedActivity?.groups?.find((group) => group.fields.some((key) => missing.includes(key)));
@@ -237,7 +238,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
         </div>
       )}
 
-      {activities.length > 0 && log.work_type !== 'PAYROLL' && (
+      {activities.length > 0 && (log.work_type !== 'PAYROLL' || (isChw && activities.length > 1)) && (
         <Field
           label={isHcp
             ? activityType === 'PAYROLL' ? (lang === 'sw' ? 'Mahudhurio ya kila siku' : 'Daily attendance')

@@ -5,6 +5,9 @@ import pytest
 
 from .conftest import category_id
 from .test_ctc_facility_approval import no_provider_sms
+from backend.services.chw_forms import CHW_GROUPS
+
+CHW_COUNTS = {key: 0 for group in CHW_GROUPS for key in group["fields"]}
 
 
 def test_october_restart_preserves_budget_history_and_rejects_unsafe_requests(api, db, period, monkeypatch):
@@ -35,12 +38,12 @@ def test_october_restart_preserves_budget_history_and_rejects_unsafe_requests(ap
     ledger_before = [(r.id, r.kind, r.amount) for r in db.query(BudgetTransaction).filter_by(budget_line_id=line.id)]
     other = api.post("/worklogs", "chw1", {"period_id": period["id"], "work_type": "PAYROLL"})
     other = api.put(f"/worklogs/{other['id']}/entries/{period['start_date']}", "chw1", {
-        "activity_key": "daily_attendance", "hours_worked": 8, "measures": {},
+        "activity_key": "daily_attendance", "hours_worked": 8, "measures": CHW_COUNTS,
     })
     log = api.post("/worklogs", "chw1", {"period_id": october["id"], "work_type": "PAYROLL"})
     path = f"/worklogs/{log['id']}"
     log = api.put(path + "/entries/2026-10-01", "chw1", {
-        "activity_key": "daily_attendance", "hours_worked": 8, "measures": {},
+        "activity_key": "daily_attendance", "hours_worked": 8, "measures": CHW_COUNTS,
     })
     review = {"review_confirmed": True, "review_type": "PAYROLL"}
     api.post(path + "/actions/submit", "chw1", {"attest": True})
@@ -125,7 +128,7 @@ def test_october_restart_preserves_budget_history_and_rejects_unsafe_requests(ap
     api.post(root + "/clear-work-records", "admin", body, expect=409)
     # The same retained work log is ready for a completely fresh entry.
     fresh = api.put(path + "/entries/2026-10-01", "chw1", {
-        "activity_key": "daily_attendance", "hours_worked": 8, "measures": {},
+        "activity_key": "daily_attendance", "hours_worked": 8, "measures": CHW_COUNTS,
     })
     assert fresh["totals"]["hours"] == 8
 

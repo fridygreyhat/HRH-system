@@ -115,7 +115,7 @@ export function HeaderForm({ log, onSaved }: { log: WorkLogDetail; onSaved: (l: 
 }
 
 /** Mobile-first day picker for the period: tap a day to open its entry form. */
-function DayCalendar({
+export function DayCalendar({
   log,
   selected,
   flaggedDates,
@@ -130,6 +130,10 @@ function DayCalendar({
   const today = todayLocal();
   const dates = datesBetween(log.period.start_date, log.period.end_date);
   const byDate = new Map(log.entries.map((e) => [e.entry_date, e]));
+  const chwPayroll = log.cadre.code === 'CHW' && log.work_type === 'PAYROLL';
+  const sundayOff = !log.review_summary.limits.sunday_allowed;
+  const missingDates = dates.filter(d => d <= today && !byDate.has(d) &&
+    !(sundayOff && new Date(`${d}T00:00:00Z`).getUTCDay() === 0));
   // Monday-first grid: pad the first week.
   const firstDow = (new Date(`${dates[0]}T00:00:00Z`).getUTCDay() + 6) % 7;
   return (
@@ -141,6 +145,20 @@ function DayCalendar({
         </span>
       </div>
       <p className="muted small">{log.can_edit ? t('calendarHint') : t('locked')}</p>
+      {chwPayroll && <div className="notice notice-info stack">
+        <strong>{lang === 'sw' ? 'Jaza daftari la mwezi mzima' : 'Complete your monthly CHW timesheet'}</strong>
+        <p>{lang === 'sw'
+          ? 'Chagua kila tarehe uliyofanya kazi. Jaza makundi yote matano, weka 0 ikiwa hakukuwa na shughuli, na nasa mahali ulipo kabla ya kuhifadhi.'
+          : 'Choose each date you actually worked. Complete all five activity groups, enter 0 where no activity occurred, and capture your location before saving.'}</p>
+        <p className="small">{lang === 'sw'
+          ? `Tarehe zilizopita bila rekodi: ${missingDates.length}. Hii haimaanishi ulifanya kazi siku zote.`
+          : `${missingDates.length} past eligible dates have no entry. This does not mean you worked on every date.`}
+          {' '}{lang === 'sw' ? 'Tarehe zijazo hazijafunguliwa.' : 'Future dates remain unavailable.'}
+          {sundayOff && (lang === 'sw' ? ' Jumapili haziruhusiwi.' : ' Sundays are excluded.')}</p>
+        {log.can_edit && missingDates.length > 0 && <button type="button" className="btn btn-secondary btn-sm" onClick={() => onSelect(missingDates[0])}>
+          {lang === 'sw' ? 'Fungua tarehe inayofuata bila rekodi' : 'Open next date without an entry'}
+        </button>}
+      </div>}
       <div className="calendar" role="grid" aria-label={t('calendar')}>
         {(lang === 'sw' ? WEEK_SW : WEEK_EN).map((d) => (
           <div key={d} className="calendar-head" role="columnheader">
@@ -153,9 +171,10 @@ function DayCalendar({
         {dates.map((d) => {
           const entry = byDate.get(d);
           const future = d > today;
-          const disabled = future || (!log.can_edit && !entry);
+          const sunday = sundayOff && new Date(`${d}T00:00:00Z`).getUTCDay() === 0;
+          const disabled = future || (!log.can_edit && !entry) || (chwPayroll && sunday && !entry);
           const classes = ['day', entry ? 'has-entry' : '', flaggedDates.has(d) ? 'is-flagged' : '', selected === d ? 'is-selected' : ''].filter(Boolean).join(' ');
-          const state = future ? t('future') : flaggedDates.has(d) ? t('flagged') : entry ? `${t('recorded')}: ${num(entry.hours_worked)} h` : '';
+          const state = future ? t('future') : chwPayroll && sunday && !entry ? (lang === 'sw' ? 'Jumapili hairuhusiwi' : 'Sunday excluded') : flaggedDates.has(d) ? t('flagged') : entry ? `${t('recorded')}: ${num(entry.hours_worked)} h` : '';
           return (
             <button
               key={d}

@@ -411,7 +411,7 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
     if not requires_location and body.activity_location:
         raise HTTPException(status_code=422, detail="A secondary-facility name is only valid for that activity.")
     allowed_fields = set(activity["fields"])
-    if cadre.code in {"HCP", "CHW", "DATA_CLERK"} and log.workflow_version >= 2:
+    if cadre.code in {"HCP", "CHW", "DATA_CLERK"} and (log.workflow_version >= 2 or (cadre.code == "CHW" and activity.get("groups"))):
         missing = set(activity.get("required_fields", [])) - set(body.measures)
         if missing:
             raise HTTPException(status_code=422, detail=f"Complete all selected cascade indicators (enter zero for none): {sorted(missing)}")

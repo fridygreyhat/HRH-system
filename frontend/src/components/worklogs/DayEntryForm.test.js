@@ -63,7 +63,7 @@ test('Services can save two activities on one date with one daily hours total', 
   });
 });
 
-test.each(['CHW', 'HCP', 'DATA_CLERK'])('%s Payroll hides indicator parameters and shows eight-hour limit', code => {
+test.each(['HCP', 'DATA_CLERK'])('%s Payroll hides indicator parameters and shows eight-hour limit', code => {
   const log = logFor(code);
   log.work_type = 'PAYROLL';
   log.cadre.hours_mode = 'DIRECT';
@@ -81,6 +81,47 @@ test.each(['CHW', 'HCP', 'DATA_CLERK'])('%s Payroll hides indicator parameters a
   expect(container.textContent).toContain('up to 8 hours per day');
   expect(container.textContent).toContain('Payroll and Services on the same date');
   expect(container.querySelector('input[type="number"]').max).toBe('8');
+});
+
+test('CHW Payroll restores all five groups, validates every group and saves daily figures', async () => {
+  const log = logFor('CHW');
+  log.work_type = 'PAYROLL';
+  log.workflow_version = 2;
+  log.cadre.hours_mode = 'DIRECT';
+  log.review_summary.limits.daily_hours = 8;
+  const groups = [
+    { key: 'hiv', label_en: 'HIV testing and linkage', fields: ['counselled', 'eligible', 'positive', 'art', 'escort', 'lcm'], color: 'teal' },
+    { key: 'tb', label_en: 'TB screening', fields: ['tb_screened', 'tb_symptoms'], color: 'amber' },
+    { key: 'appointments', label_en: 'Appointment follow-up', fields: ['calls', 'attended', 'missap'], color: 'blue' },
+    { key: 'lab', label_en: 'HVL / DBS follow-up', fields: ['hvl', 'dbs'], color: 'violet' },
+    { key: 'self', label_en: 'HIV self-testing', fields: ['self_tests'], color: 'rose' },
+  ];
+  const keys = groups.flatMap(group => group.fields);
+  log.cadre.fields = keys.map(key => ({ key, label_en: key, field_type: 'INTEGER' }));
+  const sheet = { label_en: 'Daily CHW timesheet', item_type: 'PAYROLL', fields: keys, required_fields: keys, groups, hours_input: true };
+  log.cadre.activities = [{ ...sheet, key: 'chw_daily_timesheet' }, { ...sheet, key: 'daily_attendance' }];
+  act(() => root.render(<DayEntryForm log={log} date="2026-10-23"
+    entry={{ activity_key: 'daily_attendance', hours_worked: 8, measures: { counselled: 9 } }}
+    flags={[]} captureOnEntry={false} onSaved={jest.fn()} onClose={jest.fn()} />));
+  const groupSelect = () => Array.from(container.querySelectorAll('select')).find(select => select.options.length === 5);
+  expect(groupSelect().options).toHaveLength(5);
+  expect(container.querySelectorAll('input[type="number"]')[1].value).toBe('9');
+  expect(container.querySelector('input[type="number"]').max).toBe('8');
+  await captureGps();
+  await submitDay();
+  expect(api.put).not.toHaveBeenCalled();
+  for (const group of groups) {
+    act(() => Simulate.change(groupSelect(), { target: { value: group.key } }));
+    const countInputs = Array.from(container.querySelectorAll('input[type="number"]')).slice(1);
+    expect(countInputs).toHaveLength(group.fields.length);
+    countInputs.forEach(input => act(() => Simulate.change(input, { target: { value: '1' } })));
+  }
+  await submitDay();
+  expect(api.put.mock.calls[0][1]).toMatchObject({
+    activity_key: 'daily_attendance', hours_worked: 8,
+    measures: Object.fromEntries(keys.map(key => [key, 1])),
+  });
+  expect(container.textContent).not.toContain('Evidence of work');
 });
 
 test.each(['CHW', 'HCP', 'DATA_CLERK'])('%s cannot save until location is captured, even with optional capture disabled', async code => {
@@ -153,17 +194,17 @@ const submitDay = async () => {
   await act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
 };
 
-test('CHW Payroll hides all five historical indicator groups', () => {
+test('CHW Payroll shows the five daily indicator groups without evidence or comments', () => {
   renderGroupedChw();
-  expect(groupDropdown()).toBeUndefined();
-  expect(container.querySelectorAll('fieldset')).toHaveLength(0);
-  expect(container.querySelectorAll('input[type="number"]')).toHaveLength(1);
+  expect(groupDropdown().options).toHaveLength(5);
+  expect(container.querySelectorAll('fieldset')).toHaveLength(1);
+  expect(container.querySelectorAll('input[type="number"]')).toHaveLength(7);
   expect(container.querySelectorAll('textarea')).toHaveLength(0);
   expect(container.textContent).not.toContain('evidenceWarning');
   expect(button('saveDay').disabled).toBe(true);
 });
 
-test('CHW Payroll saves attendance without resending historical indicators', async () => {
+test('CHW Payroll saves explicit zero counts across every activity group', async () => {
   const values = Object.fromEntries([
     ...Array.from({ length: 6 }, (_, i) => [`hiv_${i}`, 0]),
     ...['tb', 'laboratory'].flatMap(group => [0, 1].map(i => [`${group}_${i}`, 0])),
@@ -174,21 +215,21 @@ test('CHW Payroll saves attendance without resending historical indicators', asy
   await captureGps();
   await submitDay();
   expect(api.put).toHaveBeenCalledTimes(1);
-  expect(api.put.mock.calls[0][1].measures).toEqual({});
+  expect(api.put.mock.calls[0][1].measures).toEqual(values);
 });
 
-test('missing historical CHW counts no longer block Payroll saving', async () => {
+test('missing CHW counts block saving and open the incomplete group', async () => {
   const values = Object.fromEntries([
     ...Array.from({ length: 6 }, (_, i) => [`hiv_${i}`, 0]),
     ...['tb', 'laboratory'].flatMap(group => [0, 1].map(i => [`${group}_${i}`, 0])),
     ...[0, 1, 2].map(i => [`appointments_${i}`, 0]),
   ]);
   renderGroupedChw(values);
-  expect(groupDropdown()).toBeUndefined();
+  expect(groupDropdown()).toBeDefined();
   await captureGps();
   await submitDay();
-  expect(api.put).toHaveBeenCalledTimes(1);
-  expect(api.put.mock.calls[0][1].measures).toEqual({});
+  expect(api.put).not.toHaveBeenCalled();
+  expect(groupDropdown().value).toBe('self_testing');
 });
 
 const renderClerk = (kind = 'PAYROLL', missingKey) => {

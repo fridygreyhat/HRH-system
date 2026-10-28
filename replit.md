@@ -300,8 +300,11 @@ from the real bootstrap password.
   Unpriced Services cannot pass RM approval. Payroll attendance can pass RM
   approval without a rate; no claim is created until a valid amount is available.
   Finance pricing, routing and payment guards remain required. Rate revisions
-  do not silently reprice recorded work. Payroll has no daily indicator fields,
-  allows at most eight weekday hours (40 Monday–Friday), and its hour totals
+  do not silently reprice recorded work. CHW Payroll restores the five daily
+  activity groups and all 14 reporting counts, including editable older
+  attendance-only entries; HCP and Data Clerk Payroll remain attendance-only.
+  **Why:** the user asked to recover CHW activities and complete monthly sheets.
+  Payroll allows at most eight weekday hours (40 Monday–Friday), and its hour totals
   are independent of Services, which may be recorded on the same date.
 - Service payment setup uses **fixed amounts per service per day** only. When
   several services are recorded for one provider-date, pay the **highest fixed
