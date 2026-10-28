@@ -406,6 +406,9 @@ td.flagged, .flagged-field { outline: 2px solid var(--warn-fg); outline-offset: 
 
 /* Provider day calendar */
 .calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.35rem; }
+.calendar-navigation { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; }
+.calendar-navigation select { min-width: 0; width: 100%; text-align: center; font-weight: 600; }
+.calendar-navigation .btn { min-width: 2.5rem; font-size: 1.2rem; }
 .calendar-head { font-size: 0.72rem; text-align: center; color: var(--muted); font-weight: 600; }
 .day {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.1rem;

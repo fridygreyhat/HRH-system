@@ -115,7 +115,7 @@ export function HeaderForm({ log, onSaved }: { log: WorkLogDetail; onSaved: (l: 
   );
 }
 
-/** Mobile-first day picker for the period: tap a day to open its entry form. */
+/** One correctly aligned calendar month at a time, within the reporting period. */
 export function DayCalendar({
   log,
   selected,
@@ -129,19 +129,33 @@ export function DayCalendar({
 }) {
   const { t, lang } = useAuth();
   const today = todayLocal();
-  const dates = datesBetween(log.period.start_date, log.period.end_date);
+  const dates = useMemo(() => datesBetween(log.period.start_date, log.period.end_date),
+    [log.period.start_date, log.period.end_date]);
+  const months = useMemo(() => Array.from(new Set(dates.map(date => date.slice(0, 7)))), [dates]);
+  const focusDate = selected && selected >= log.period.start_date && selected <= log.period.end_date
+    ? selected : today >= log.period.start_date && today <= log.period.end_date ? today : log.period.start_date;
+  const preferredMonth = focusDate.slice(0, 7);
+  const [visibleMonth, setVisibleMonth] = useState(preferredMonth);
+  useEffect(() => setVisibleMonth(preferredMonth), [preferredMonth, log.id]);
+  const month = months.includes(visibleMonth) ? visibleMonth : preferredMonth;
+  const monthIndex = months.indexOf(month);
+  const visibleDates = dates.filter(date => date.startsWith(`${month}-`));
+  const monthLabel = (value: string) => new Intl.DateTimeFormat(lang === 'sw' ? 'sw-TZ' : 'en-GB', {
+    month: 'long', year: 'numeric', timeZone: 'UTC',
+  }).format(new Date(`${value}-01T00:00:00Z`));
   const byDate = new Map(log.entries.map((e) => [e.entry_date, e]));
   const chwPayroll = ['CHW', 'HCP', 'DATA_CLERK'].includes(log.cadre.code) && log.work_type === 'PAYROLL';
   const sundayOff = !log.review_summary.limits.sunday_allowed;
   const missingDates = dates.filter(d => d <= today && !byDate.has(d) &&
     !(sundayOff && new Date(`${d}T00:00:00Z`).getUTCDay() === 0));
-  // Monday-first grid: pad the first week.
-  const firstDow = (new Date(`${dates[0]}T00:00:00Z`).getUTCDay() + 6) % 7;
+  // Restart Monday-first padding for each month, including partial periods.
+  const firstDow = visibleDates.length ? (new Date(`${visibleDates[0]}T00:00:00Z`).getUTCDay() + 6) % 7 : 0;
   return (
     <section className="card stack" aria-labelledby="cal-title">
       <div className="row-between">
         <h3 id="cal-title">{t('calendar')}</h3>
         <span className="muted small">
+          {lang === 'sw' ? 'Jumla ya kipindi' : 'Period total'} ·{' '}
           {num(log.entries.length)} {t('days').toLowerCase()} · {num(log.totals.hours)} {t('hours').toLowerCase()}
         </span>
       </div>
@@ -160,7 +174,20 @@ export function DayCalendar({
           {lang === 'sw' ? 'Fungua tarehe inayofuata bila rekodi' : 'Open next date without an entry'}
         </button>}
       </div>}
-      <div className="calendar" role="grid" aria-label={t('calendar')}>
+      <nav className="calendar-navigation" aria-label={lang === 'sw' ? 'Chagua mwezi wa kalenda' : 'Calendar month navigation'}>
+        <button type="button" className="btn btn-secondary btn-sm"
+          aria-label={lang === 'sw' ? 'Mwezi uliotangulia' : 'Previous month'}
+          disabled={monthIndex <= 0} onClick={() => setVisibleMonth(months[monthIndex - 1])}>‹</button>
+        <select aria-label={lang === 'sw' ? 'Mwezi wa kalenda' : 'Calendar month'} value={month}
+          onChange={event => setVisibleMonth(event.target.value)}>
+          {months.map(value => <option key={value} value={value}>{monthLabel(value)}</option>)}
+        </select>
+        <button type="button" className="btn btn-secondary btn-sm"
+          aria-label={lang === 'sw' ? 'Mwezi unaofuata' : 'Next month'}
+          disabled={monthIndex < 0 || monthIndex >= months.length - 1}
+          onClick={() => setVisibleMonth(months[monthIndex + 1])}>›</button>
+      </nav>
+      <div className="calendar" role="grid" aria-label={`${t('calendar')} · ${monthLabel(month)}`}>
         {(lang === 'sw' ? WEEK_SW : WEEK_EN).map((d) => (
           <div key={d} className="calendar-head" role="columnheader">
             {d}
@@ -169,7 +196,7 @@ export function DayCalendar({
         {Array.from({ length: firstDow }, (_, i) => (
           <div key={`pad-${i}`} aria-hidden />
         ))}
-        {dates.map((d) => {
+        {visibleDates.map((d) => {
           const entry = byDate.get(d);
           const future = d > today;
           const sunday = sundayOff && new Date(`${d}T00:00:00Z`).getUTCDay() === 0;
