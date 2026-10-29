@@ -9,6 +9,11 @@ from fastapi.staticfiles import StaticFiles
 from .main import app as api
 
 BUILD_DIR = Path(__file__).resolve().parent.parent / "frontend" / "build"
+HTML_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/api", api)
@@ -21,8 +26,8 @@ def frontend(path: str):
     if not requested.is_relative_to(BUILD_DIR):
         raise HTTPException(status_code=404)
     if requested.is_file():
-        return FileResponse(requested)
+        return FileResponse(requested, headers=HTML_HEADERS if requested.suffix == ".html" else None)
     # Browser routes belong to React; missing asset requests should not return HTML.
     if Path(path).suffix:
         raise HTTPException(status_code=404)
-    return FileResponse(BUILD_DIR / "index.html", headers={"Cache-Control": "no-cache"})
+    return FileResponse(BUILD_DIR / "index.html", headers=HTML_HEADERS)
