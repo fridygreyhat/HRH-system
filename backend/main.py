@@ -10,6 +10,7 @@ from .api.endpoints import admin, auth, batches, budgets, claims, dashboard, dem
 from .core import config
 from .db.session import get_db
 from .api.endpoints import backdate_access, organizations, community_claims, provider_payment_details, cso_finance
+from .api.endpoints import setup_transfer
 
 logging.basicConfig(level=logging.INFO)
 
@@ -51,6 +52,7 @@ app.include_router(provider_payment_details.router, prefix="/provider-details", 
 app.include_router(cso_finance.router, prefix="/cso-finance", tags=["CSO Finance"])
 app.include_router(staff.router, prefix="/staff", tags=["Staff registry"])
 app.include_router(admin.router, prefix="/admin", tags=["Administration"])
+app.include_router(setup_transfer.router, prefix="/admin/setup-transfer", tags=["Super Admin setup transfer"])
 app.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
 
 

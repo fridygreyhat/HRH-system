@@ -6,6 +6,7 @@ import { AuditSection, OutboxSection } from './admin/LogsSections';
 import { RateRulesSection } from './admin/RateRulesSection';
 import { SettingsSection } from './admin/SettingsSection';
 import { SmsTemplatesSection } from './admin/SmsTemplatesSection';
+import { SetupTransfer } from './admin/SetupTransfer';
 import { UsersSection } from './admin/UsersSection';
 
 const ADMIN_AREA = ['SYSTEM_ADMIN', 'CENTRAL_ADMIN', 'FHI360_FINANCE', 'CSO_FINANCE', 'RPM', 'OVERSIGHT'];
@@ -26,6 +27,7 @@ const SECTIONS: AdminSection[] = [
   { key: 'sms', label: 'SMS templates', roles: ['RPM', 'OVERSIGHT', 'SYSTEM_ADMIN'], render: () => <SmsTemplatesSection /> },
   { key: 'outbox', label: 'SMS outbox', roles: ['SYSTEM_ADMIN', 'OVERSIGHT'], render: () => <OutboxSection /> },
   { key: 'audit', label: 'Audit events', roles: ['SYSTEM_ADMIN', 'SUPER_ADMIN', 'CENTRAL_ADMIN'], render: () => <AuditSection /> },
+  { key: 'setup-transfer', label: 'Setup transfer', roles: ['SUPER_ADMIN'], render: () => <SetupTransfer /> },
 ];
 
 export function Admin() {
