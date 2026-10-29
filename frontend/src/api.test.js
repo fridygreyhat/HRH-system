@@ -58,3 +58,17 @@ test('a late unauthorized response from an old session cannot sign out a newer s
   expect(getToken()).toBe('synthetic-new-session');
   expect(expired).not.toHaveBeenCalled();
 });
+
+test('API reads, downloads and sign-in bypass the browser response cache', async () => {
+  global.fetch = jest.fn().mockResolvedValue({
+    ok: true, status: 200, headers: { get: () => 'application/json' },
+    json: async () => ({}), blob: async () => new Blob(['test']),
+  });
+  await api.get('/finance/monthly');
+  await api.blob('/finance/export');
+  await api.login('synthetic-user', 'synthetic-password');
+  expect(fetch).toHaveBeenCalledTimes(3);
+  for (const [, options] of fetch.mock.calls) {
+    expect(options.cache).toBe('no-store');
+  }
+});

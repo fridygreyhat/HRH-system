@@ -43,8 +43,6 @@ def test_bulk_reset_preserves_all_super_admins_and_revokes_other_sessions(api, c
     })
     target = db.query(User).filter_by(username="clerk1").one()
     old_token = create_access_token(target)
-    target.failed_login_count = 4
-    target.locked_until = utcnow() + timedelta(hours=1)
     protected_ids = set(db.execute(text(
         "select ur.user_id from user_roles ur join roles r on r.id=ur.role_id where r.name='SUPER_ADMIN'"
     )).scalars())
@@ -52,6 +50,10 @@ def test_bulk_reset_preserves_all_super_admins_and_revokes_other_sessions(api, c
     db.commit()
     keys = ("hashed_password", "must_change_password", "password_changed_at", "failed_login_count", "locked_until", "is_active")
     snapshot = {user.id: {key: getattr(user, key) for key in keys} for user in db.query(User).all()}
+    # Restore the real pre-test state, not the synthetic lockout, on teardown.
+    target.failed_login_count = 4
+    target.locked_until = utcnow() + timedelta(hours=1)
+    db.commit()
     count = len(snapshot) - len(protected_ids)
     body = {"new_password": "Temporary-test-947", "confirmation": "RESET NON-SUPER-ADMIN PASSWORDS",
             "expected_count": count, "reason": "Recover accounts after sign-in failures"}

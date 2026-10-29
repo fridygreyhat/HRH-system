@@ -6,3 +6,4 @@
 - [CTC review scope](ctc-review-scope.md) — CTC reviews facility cadres; do not confuse CTC verification with supplementary facility endorsement.
 - [Finance scope testing](finance-scope-testing.md) — isolate region, cadre and CSO boundaries; numbered users may be same-organization maker/checker pairs.
 - [SQL scope correlation](sql-scope-correlation.md) — correlated scope filters can fail when the same work-log table is joined outside the filter; avoid unnecessary joins.
+- [Release regression policy](release-regression-policy.md) — older finance tests can encode retired payment rules; validate against current policy before changing app behavior.

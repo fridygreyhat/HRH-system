@@ -74,7 +74,7 @@ async function send(method: string, path: string, body?: Payload, options?: { si
   }
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, { method, headers, body: data, ...options });
+    res = await fetch(`${API_URL}${path}`, { method, headers, body: data, cache: 'no-store', ...options });
   } catch {
     throw new ApiError(0, 'Cannot reach the server. Check your connection and try again.');
   }

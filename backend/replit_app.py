@@ -20,6 +20,16 @@ app.mount("/api", api)
 app.mount("/static", StaticFiles(directory=BUILD_DIR / "static"), name="static")
 
 
+@app.middleware("http")
+async def prevent_entry_point_caching(request, call_next):
+    response = await call_next(request)
+    # Content-hashed build assets can be reused; entry points and missing files
+    # must be fetched again after publishing. API headers are set by the API.
+    if not request.url.path.startswith(("/static/", "/api/")):
+        response.headers.update(HTML_HEADERS)
+    return response
+
+
 @app.get("/{path:path}")
 def frontend(path: str):
     requested = (BUILD_DIR / path).resolve()

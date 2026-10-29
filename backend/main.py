@@ -15,6 +15,17 @@ logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="HRH Digital Work-Log, Payment Claims and Payroll Routing", version="2.0.0")
 
+
+@app.middleware("http")
+async def prevent_api_caching(request, call_next):
+    """Never retain financial records, exports or authentication responses in caches."""
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,

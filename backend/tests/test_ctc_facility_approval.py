@@ -16,19 +16,26 @@ def submitted_log(api, db, period, provider, work_type):
     from backend.models import Staff, StaffAssignment, User
     staff = db.query(Staff).join(User, User.id == Staff.user_id).filter(User.username == provider).one()
     assignment = db.query(StaffAssignment).filter_by(staff_id=staff.id).first()
-    activity = api.post("/rates", "admin", {
-        "label_en": "Synthetic facility approval activity",
-        "label_sw": "Shughuli ya majaribio",
-        "cadre_id": staff.cadre_id, "region_id": assignment.region_id,
-        "item_type": work_type, "form_mode": "SINGLE",
-        "rate_value": 100, "currency": "TZS",
-        "unit_type": "PER_HOUR" if work_type == "PAYROLL" else "PER_UNIT",
-        "effective_start_date": period["start_date"],
-    })
     log = api.post("/worklogs", provider, {"period_id": period["id"], "work_type": work_type})
+    if work_type == "SERVICES":
+        activity = api.post("/rates", "admin", {
+            "label_en": "Synthetic facility approval activity",
+            "label_sw": "Shughuli ya majaribio",
+            "cadre_id": staff.cadre_id, "region_id": assignment.region_id,
+            "item_type": "SERVICES", "form_mode": "SINGLE",
+            "rate_value": 100, "currency": "TZS", "unit_type": "PER_DAY",
+            "effective_start_date": period["start_date"],
+        })
+    else:
+        # Payroll uses clinical activity definitions, never a payable rate.
+        activity = next(item for item in log["cadre"]["activities"] if item["key"] != "daily_attendance")
+    fields = activity.get("field_definitions", [])
     api.put(f"/worklogs/{log['id']}/entries/{period['start_date']}", provider, {
         "activity_key": activity["key"], "hours_worked": 2, "start_time": "08:00", "end_time": "10:00",
-        "measures": {key: 3 for key in activity["fields"]},
+        "measures": {
+            key: (True if next((field.get("field_type") for field in fields if field["key"] == key), None) == "BOOLEAN" else 3)
+            for key in activity["required_fields"]
+        },
     })
     return api.post(f"/worklogs/{log['id']}/actions/submit", provider, {"attest": True})
 
@@ -71,7 +78,7 @@ def test_technical_then_rm_approval_without_facility_endorsement(
         api.post(f"/worklogs/{log['id']}/actions/authorize", "rpm1",
                  {**body, "review_type": other_type}, expect=422)
         result = api.post(f"/worklogs/{log['id']}/actions/authorize", "rpm1", body)
-        assert result["status"] == "PENDING_FINANCE_REVIEW"
+        assert result["status"] == ("APPROVED" if work_type == "PAYROLL" else "PENDING_FINANCE_REVIEW")
         assert not result["endorsements"]
     finally:
         hcp.requires_facility_endorsement = previous
