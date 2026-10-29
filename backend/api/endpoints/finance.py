@@ -8,8 +8,9 @@ from sqlalchemy.orm import Session
 from ...core import audit
 from ...core.roles import REGIONAL_FINANCE, FHI360_FINANCE, CSO_FINANCE
 from ...core.security import require_roles
+from ...core.serialize import to_dict
 from ...db.session import get_db
-from ...models import Cadre, Facility, PaymentClaim, PayPeriod, Region, Staff, StaffAssignment, WorkLog
+from ...models import Cadre, ClaimCategory, Facility, FundingSource, PaymentClaim, PayPeriod, Region, Staff, StaffAssignment, WorkLog
 from ...services import finance_gate, worklog_workflow as wf
 from ...services.v22_scope import record_condition, regions_for
 
@@ -21,9 +22,49 @@ class ChannelIn(BaseModel):
     work_log_id: Optional[int] = Field(default=None, gt=0)
     target_payor_id: int = Field(gt=0)
     expected_version: Optional[int] = Field(default=None, ge=0)
+    expected_review_token: Optional[str] = Field(default=None, min_length=1, max_length=64)
     review_confirmed: bool = False
     review_type: Literal["SERVICES", "PAYROLL"]
     comment: Optional[str] = Field(default=None, max_length=2000)
+
+
+class FundingAssignmentIn(BaseModel):
+    funding_source_id: int = Field(gt=0)
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+@router.put("/categories/{category_id}/funding-source")
+def assign_initial_funding(
+    category_id: int, body: FundingAssignmentIn,
+    db: Session = Depends(get_db), current=Depends(require_roles(FHI360_FINANCE)),
+):
+    """Explicit initial configuration only; never silently reclassify live claims."""
+    category = db.query(ClaimCategory).filter_by(id=category_id).with_for_update().first()
+    if not category:
+        raise HTTPException(404, "Budget category not found")
+    if (not category.is_active or category.origin_channel == "COMMUNITY"
+            or (category.form_type or "").upper() in {"PAYROLL", "SALARY", "STIPEND", "STIPENDS", "TIMESHEET"}):
+        raise HTTPException(422, "Select an active Services work-log budget category.")
+    if not body.reason.strip() or len(body.reason.strip()) < 3:
+        raise HTTPException(422, "Give a reason for this funding assignment.")
+    source = db.get(FundingSource, body.funding_source_id)
+    if not source:
+        raise HTTPException(404, "Funding source not found")
+    if category.funding_source_id == source.id:
+        return to_dict(category)
+    if category.funding_source_id is not None:
+        raise HTTPException(409, "This category already has a funding source. Refresh its configuration; existing programme assignments cannot be overwritten here.")
+    if db.query(PaymentClaim.id).filter(
+        PaymentClaim.category_id == category.id, PaymentClaim.status != "CANCELLED",
+    ).first():
+        raise HTTPException(409, "This category already has live claims. Central Finance must configure a separate category rather than reclassify them.")
+    category.funding_source_id = source.id
+    audit.record(db, current, "claim_category", category.id, "assign_initial_funding",
+                 before={"funding_source_id": None},
+                 after={"funding_source_id": source.id, "funding_source_name": source.name},
+                 reason=body.reason.strip())
+    db.commit()
+    return to_dict(category)
 
 
 def _visible(db, current):
@@ -145,7 +186,8 @@ def channel(body: ChannelIn, db: Session = Depends(get_db), current=Depends(requ
     if body.target_payor_id not in {owner.id for owner in finance_gate.eligible_payors(db, log)}:
         raise HTTPException(422, "The selected payor does not match this provider's assigned payment channel")
     wf.transition(db, current, log, action, body.comment,
-                  {"target_payor_id": body.target_payor_id, "review_confirmed": True, "review_type": body.review_type},
+                  {"target_payor_id": body.target_payor_id, "review_confirmed": True, "review_type": body.review_type,
+                   "expected_review_token": body.expected_review_token},
                   body.expected_version)
     claim = db.query(PaymentClaim).filter(PaymentClaim.work_log_id == log.id, PaymentClaim.status != "CANCELLED").one()
     owner = finance_gate.eligible_payors(db, log)[0]

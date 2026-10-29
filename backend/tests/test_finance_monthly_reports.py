@@ -58,6 +58,8 @@ def test_payroll_entire_work_approval_chain_without_finance(api, db, period, v22
 def test_monthly_report_aggregates_all_cadres_and_only_requested_dates(api, db, period, v22):
     all_cadres(db, v22["finance"])
     first = date.fromisoformat(period["start_date"])
+    next_month = (first.replace(day=1) + timedelta(days=32)).strftime("%Y-%m")
+    baseline_next_hours = Decimal(api.get(f"/finance/monthly-summary?month={next_month}", v22["finance"])["totals"]["hours"])
     month = first.strftime("%Y-%m")
     for provider in ("chw1", "hcp1", "clerk1"):
         log, entry, _ = unpriced_log(db, period, provider, "PAYROLL")
@@ -94,7 +96,7 @@ def test_monthly_report_aggregates_all_cadres_and_only_requested_dates(api, db, 
         assert "entries" not in row and "gps_lat" not in row
     # An earlier/later month shows its own recorded dates, not the full period.
     next_month = (first + timedelta(days=40)).strftime("%Y-%m")
-    assert Decimal(api.get(f"/finance/monthly-summary?month={next_month}", v22["finance"])["totals"]["hours"]) == 21
+    assert Decimal(api.get(f"/finance/monthly-summary?month={next_month}", v22["finance"])["totals"]["hours"]) == baseline_next_hours + 21
     assert api.get(f"/finance/monthly-summary?month={month}&work_type=SERVICES", v22["finance"])["providers"] == []
     api.get(f"/finance/monthly-summary?month={month}", "chw1", expect=403)
     api.get("/finance/monthly-summary?month=2026-13", v22["finance"], expect=422)

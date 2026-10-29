@@ -88,7 +88,8 @@ def test_route_b_full_trace(api, period, db):
     api.post(f"/claims/{claim['id']}/actions/reconcile", "csofin1", expect=403)
     claim = api.post(f"/claims/{claim['id']}/actions/reconcile", "fhifin1", {"comment": "Matched CSO statement"})
     assert claim["payment_status"] == "RECONCILED"
-    trail = [a["action"] for a in claim["audit"]]
+    assert claim["audit"] == []  # Financial audit history is administrator-only.
+    trail = [a["action"] for a in api.get(f"/claims/{claim['id']}", "admin")["audit"]]
     for step in ("create", "submit", "approve", "mark_ready", "export", "hand_off", "cso_receive", "record_payment", "upload_proof", "confirm_paid", "reconcile"):
         assert step in trail, step
     proof = claim["proofs"][0]

@@ -145,7 +145,7 @@ export const TABLES: TableSpec[] = [
     singular: 'funding source',
     path: '/admin/funding-sources',
     writeRoles: FINANCE,
-    description: 'Where payment money comes from, such as a government budget or donor programme. Public, Police and Prison classify facilities; they are not funding-source categories.',
+    description: 'Services funding programmes such as PnP, Supply Chain and EpiC. Funding sources identify the programme supporting a claim; Public, Police and Prison describe facility type, not funding.',
     fields: [
       { key: 'code', label: 'Code', type: 'text', required: true, maxLength: 50 },
       { key: 'name', label: 'Name', type: 'text', required: true, maxLength: 255 },

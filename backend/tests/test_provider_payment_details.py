@@ -67,9 +67,39 @@ def test_explicit_clear_does_not_resurrect_legacy_mobile_account(api, provider_p
 
 
 def payroll(api, db, period, v22):
-    activity = priced_activity(api, v22, period, kind="PAYROLL", rate=500)
-    routed = route_log(api, db, v22, to_finance(api, entered_log(api, period, activity)), "B")
-    return api.get(f"/claims/{routed['claims'][0]['id']}", "csofin1")
+    # A synthetic historical priced Payroll claim: new Payroll rates/claims
+    # are retired, but existing bank-payment exports must stay readable.
+    from decimal import Decimal
+    from backend.models import BudgetLine, ClaimCategory, PaymentClaim, User, utcnow
+    from backend.services import claims as claim_service
+    from .conftest import category_id
+    from .test_finance_missing_rates import unpriced_log
+    log, _, assignment = unpriced_log(db, period, kind="PAYROLL")
+    category = db.get(ClaimCategory, category_id(db, "B"))
+    line = db.query(BudgetLine).filter_by(
+        category_id=category.id, period_id=period["id"],
+        organization_id=assignment.organization_id, region_id=assignment.region_id,
+    ).one()
+    maker = db.query(User).filter_by(username="fhifin1").one()
+    snapshot = {"total": "1000", "currency": "TZS", "lines": [], "exceptions": []}
+    log.status, log.routed_channel, log.approved_at = "ROUTED_CSO", "CSO", utcnow()
+    log.finance_snapshot = snapshot
+    claim = PaymentClaim(
+        workflow_version=2, work_type="PAYROLL", work_log_id=log.id,
+        staff_id=log.staff_id, period_id=log.period_id, assignment_id=assignment.id,
+        category_id=category.id, funding_source_id=category.funding_source_id,
+        budget_line_id=line.id,
+        route_code="B", payor_org_id=assignment.organization_id,
+        executor_org_id=assignment.organization_id, origin_channel="FACILITY",
+        amount=Decimal("1000"), currency="TZS", calculation_snapshot=snapshot,
+        created_by=maker.id, status=claim_service.APPROVED,
+    )
+    db.add(claim)
+    db.flush()
+    claim_service._commit_budget(db, maker, claim)
+    claim.status = claim_service.READY
+    db.commit()
+    return api.get(f"/claims/{claim.id}", "csofin1")
 
 
 def test_payroll_bank_only_export_scope_and_no_status_change(api, db, period, v22, provider_profile):
@@ -132,8 +162,12 @@ def test_missing_bank_branch_blocks_whole_payroll_export(api, db, period, v22, p
 
 def test_fhi_services_get_mobile_only_including_existing_staff_screen(api, db, period, v22, provider_profile):
     api.put("/provider-details/me", "chw1", SAMPLE)
-    activity = priced_activity(api, v22, period)
-    routed = route_log(api, db, v22, to_finance(api, entered_log(api, period, activity)), "A")
+    from .test_finance_missing_rates import unpriced_log, rate_for
+    log, entry, assignment = unpriced_log(db, period)
+    rate_for(db, log, assignment, entry.activity_key, entry.entry_date, amount=500)
+    approved = api.post(f"/worklogs/{log.id}/actions/authorize", "rpm1",
+                        {"review_confirmed": True, "review_type": "SERVICES"})
+    routed = route_log(api, db, v22, approved, "A")
     claim = api.get(f"/claims/{routed['claims'][0]['id']}", "fhifin1")
     assert claim["payment_recipient"]["payment_account"] == SAMPLE["mobile_money_number"]
     assert not claim["payment_recipient"]["bank_branch"]

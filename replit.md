@@ -467,6 +467,13 @@ payment pricing” below for the current policy. Services remains payable.
   should preserve period/work-log IDs, actual entries and financial history;
   do not delete work or weaken the normal used-period date locks to repair it.
 
+### Programme funding setup
+- Services funding choices are **PnP**, **Supply Chain**, and **EpiC**. Existing sources and historical references are retained.
+- Regional Finance selects a funding source and an active matching Services budget category. Never silently reassign a category or allocate money to make a review succeed.
+- **Why:** a programme choice must not spend another programme's budget. Initial category funding assignment requires explicit Central Finance/Super Admin confirmation, a reason, and an unconfigured category without live claims.
+- Uncommitted Services reviews can be corrected without repeating provider/CTC/technical/RM work approval. Routing checks the saved funding identity, budget currency and current review token; configuration changes require fresh Finance review.
+- Payroll remains report-only; programme/category selection, pricing, budgets and payment routing do not apply to new Payroll reports. Paid and committed historical claims remain protected.
+
 ### Operational approval versus payment pricing
 - Regional Finance accounts that also hold channel-finance roles should start
   from RM-approved work: monthly reports for Payroll, routing review for Services.
