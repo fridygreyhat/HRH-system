@@ -502,6 +502,13 @@ payment pricing” below for the current policy. Services remains payable.
 - Review binds the document, actor and target setup for 15 minutes. Apply rechecks under bounded database locks, writes selected missing records atomically and appends administrator-only audit entries. Missing dependencies or stale setup must fail without a partial update.
 - **Why:** the user approved a missing-setup-only correction after identical published/preview assets concealed differences in live accounts and configuration; live work, approvals, payments and credentials must remain intact.
 
+### Rejected timesheets and period restarts
+- The user approved **archiving used periods**, not erasing their submitted work or approval/audit history. Super Admin may archive an unpaid period after a reason and period-specific confirmation; archive does not create a replacement or invent work entries.
+- Archived periods and their work leave active provider/reviewer/finance lists and are read-only. Preserve their records, frozen versions, approval/audit history, cancelled claims and unused budget configuration. A fresh active period may use the same dates. Super Admin can include archived periods in the period list.
+- Active claims, completed payments/paid work and committed or spent budget funds block restarting a period. Cancel unpaid claims through their normal Finance workflow first; never erase or transfer financial history to force an archive.
+- Rejection by Technical or RM lets the owning CHW/HCP/Data Clerk correct saved days and fill missing eligible dates across the original month. Resubmission restarts at CTC and repeats downstream work approvals. Preserve the rejection reason and frozen review history; do not reuse old confirmation/approval state.
+- **Why:** the user needs providers to refill rejected monthly work and wants old test/used periods removed from active use, while explicitly choosing archive instead of permanent deletion.
+
 ### Operational approval versus payment pricing
 - Regional Finance accounts that also hold channel-finance roles should start
   from RM-approved work: monthly reports for Payroll, routing review for Services.

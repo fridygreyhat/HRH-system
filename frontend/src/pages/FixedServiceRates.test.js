@@ -32,7 +32,7 @@ test('Super Admin sees Delete with used periods protected', () => {
   mockSuper = true;
   const html = renderToStaticMarkup(<PayPeriods />);
   expect(html).toContain('Delete unused period');
-  expect(html).toContain('In use: close this period instead');
+  expect(html).toContain('In use: archive unpaid periods to restart while retaining history');
   expect(html.match(/>Delete<\/button>/g)).toHaveLength(2);
 });
 

@@ -237,6 +237,9 @@ def create_claim(body: ClaimCreate, db: Session = Depends(get_db), current: Curr
     if not body.work_log_id and workflow_policy.NEW_RECORD_WORKFLOW_VERSION >= 2:
         raise HTTPException(409, "New claims must be created by the Regional Finance review and channel-routing gate")
     category, staff, period, assignment, log = _context(db, current, body)
+    period = db.query(PayPeriod).filter_by(id=period.id).with_for_update().populate_existing().one()
+    if period.status == "ARCHIVED":
+        raise HTTPException(409, "Archived periods cannot be used for new claims.")
     if (log and log.workflow_version >= 2) or (not log and workflow_policy.NEW_RECORD_WORKFLOW_VERSION >= 2):
         raise HTTPException(409, "New claims must be created by the Regional Finance review and channel-routing gate")
     if current.staff_id == staff.id:

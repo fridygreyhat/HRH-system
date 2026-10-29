@@ -94,7 +94,15 @@ def assignment_in_role_scope(db: Session, current: CurrentUser, role: str, assig
     return db.query(exists().where(StaffAssignment.id == assignment_id, condition)).scalar()
 
 
-def worklog_visibility(current: CurrentUser):
+def worklog_visibility(current: CurrentUser, include_archived=False):
+    visibility = _worklog_visibility(current)
+    if include_archived:
+        return visibility
+    return and_(visibility, WorkLog.period_id.in_(
+        select(PayPeriod.id).where(PayPeriod.status != "ARCHIVED")))
+
+
+def _worklog_visibility(current: CurrentUser):
     from .v22_scope import record_condition
     if current.has_any(OVERSIGHT, FHI360_FINANCE):
         if current.unrestricted or OVERSIGHT in current.roles:

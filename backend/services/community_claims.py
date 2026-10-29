@@ -28,7 +28,7 @@ def provider(current):
 
 def context(db, current, period_id, category_id=None):
     staff = provider(current)
-    period = db.get(PayPeriod, period_id)
+    period = db.query(PayPeriod).filter_by(id=period_id).with_for_update().populate_existing().first()
     if not period or period.status != "OPEN":
         raise HTTPException(422, "Choose an open pay period")
     assignment = assignment_for_period(db, staff.id, period)

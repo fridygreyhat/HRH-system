@@ -131,6 +131,10 @@ def export_document(db):
         add("facility", row.name, {**facility_ref(db, row), **{k: getattr(row, k) for k in (
             "facility_type", "geofence_lat", "geofence_lon", "geofence_radius_meters")}})
     for row in db.query(PayPeriod).filter_by(status="OPEN").order_by(PayPeriod.id):
+        from ..core.period_dates import period_date_error
+        if period_date_error(row.start_date, row.end_date):
+            warnings.append(f"Pay period #{row.id}: invalid dates were excluded; correct or archive this period manually.")
+            continue
         add("pay_period", row.period_label or str(row.start_date), dict(
             region=name(db, Region, row.region_id), start_date=row.start_date,
             end_date=row.end_date, period_label=row.period_label, status=row.status))
@@ -244,7 +248,7 @@ def existing_record(db, record):
     if kind == "pay_period":
         values = dict(start_date=date.fromisoformat(d["start_date"]), end_date=date.fromisoformat(d["end_date"]),
                       region_id=region(db, d["region"]))
-        row = db.query(PayPeriod).filter_by(**values).one_or_none()
+        row = db.query(PayPeriod).filter_by(**values).filter(PayPeriod.status != "ARCHIVED").one_or_none()
         if row and (row.status != d["status"] or row.period_label != d["period_label"]):
             raise ValueError("Existing period label/status differs; edit manually")
         overlap = db.query(PayPeriod).filter(
@@ -254,6 +258,7 @@ def existing_record(db, record):
             raise ValueError("Another open period overlaps these dates")
         if not row:
             overlapping = db.query(PayPeriod).filter(
+                PayPeriod.status != "ARCHIVED",
                 PayPeriod.start_date <= values["end_date"], PayPeriod.end_date >= values["start_date"])
             if values["region_id"] is not None:
                 overlapping = overlapping.filter(or_(PayPeriod.region_id == values["region_id"], PayPeriod.region_id.is_(None)))

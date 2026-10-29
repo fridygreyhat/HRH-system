@@ -24,11 +24,12 @@ from .base import Base, created_at, updated_at, utcnow
 class PayPeriod(Base):
     __tablename__ = "pay_periods"
     __table_args__ = (
-        UniqueConstraint("start_date", "end_date", "region_id", name="uq_pay_periods_dates_region"),
+        Index("uq_pay_periods_dates_region", "start_date", "end_date", "region_id", unique=True,
+              postgresql_where=text("region_id IS NOT NULL AND status <> 'ARCHIVED'")),
         Index("uq_pay_periods_global_dates", "start_date", "end_date", unique=True,
-              postgresql_where=text("region_id IS NULL")),
+              postgresql_where=text("region_id IS NULL AND status <> 'ARCHIVED'")),
         CheckConstraint("end_date >= start_date", name="dates"),
-        CheckConstraint("status IN ('OPEN', 'CLOSED')", name="status"),
+        CheckConstraint("status IN ('OPEN', 'CLOSED', 'ARCHIVED')", name="status"),
     )
     id = Column(Integer, primary_key=True)
     region_id = Column(Integer, ForeignKey("regions.id"), nullable=True, index=True)

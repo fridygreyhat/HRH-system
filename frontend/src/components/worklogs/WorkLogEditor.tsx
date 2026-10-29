@@ -325,6 +325,10 @@ export function WorkLogEditor({ logId, initialDate, onBack }: { logId: number; i
       <header className="stack">
         <h1>{log.cadre.form_title || log.cadre.name}</h1>
         <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} technicalReviewer={log.cadre?.technical_reviewer_title} />
+        {log.status === 'REJECTED' && log.can_edit && <Alert kind="warn">
+          This timesheet was rejected. Correct existing days or fill missing dates across the month, then submit again.
+          It will restart CTC, Technical and RM review; previous approval history is retained.
+        </Alert>}
         {log.status !== 'RETURNED_TO_PROVIDER' && log.review_feedback?.map((feedback, index) =>
           feedback.comment ? <Alert kind="warn" key={index}>{feedback.comment}</Alert> : null)}
         <div className="row">

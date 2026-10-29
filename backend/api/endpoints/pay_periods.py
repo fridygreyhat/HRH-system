@@ -4,8 +4,8 @@ from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import or_
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import or_, func
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from ...core import audit
@@ -53,11 +53,63 @@ def can_manage(current, region_id):
 
 def period_out(db, current, period):
     date_lock_reason = period_date_lock_reason(db, period.id)
+    archive_reason = archive_block_reason(db, period.id) if SUPER_ADMIN in current.roles else None
+    archived = period.status == "ARCHIVED"
     return {**to_dict(period), "region_name": db.get(Region, period.region_id).name if period.region_id else None,
-            "can_manage": can_manage(current, period.region_id),
-            "can_edit_dates": can_manage(current, period.region_id) and date_lock_reason is None,
+            "can_manage": not archived and can_manage(current, period.region_id),
+            "can_edit_dates": not archived and can_manage(current, period.region_id) and date_lock_reason is None,
             "date_lock_reason": date_lock_reason,
+            "can_archive": SUPER_ADMIN in current.roles and not archived and archive_reason is None,
+            "archive_block_reason": archive_reason,
             "can_delete": SUPER_ADMIN in current.roles and not period_in_use(db, period.id)}
+
+
+def archive_block_reason(db, period_id):
+    if db.query(PaymentClaim.id).filter(PaymentClaim.period_id == period_id, PaymentClaim.status != "CANCELLED").first():
+        return "Payment claims use this period. Cancel unpaid claims through Finance first; periods with completed payments cannot be restarted."
+    if db.query(WorkLog.id).filter_by(period_id=period_id, status="PAID").first():
+        return "Paid work protects this period from being restarted."
+    if db.query(BudgetLine.id).filter(BudgetLine.period_id == period_id,
+            or_(BudgetLine.committed_amount > 0, BudgetLine.spent_amount > 0)).first():
+        return "Committed or spent budget funds protect this period. Finance must resolve unpaid commitments first."
+    return None
+
+
+class ArchiveIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    reason: str = Field(min_length=3, max_length=1000)
+    confirmation: str
+
+
+@router.post("/pay-periods/{period_id}/archive")
+def archive_period(period_id: int, body: ArchiveIn, db: Session = Depends(get_db),
+                   current: CurrentUser = Depends(require_roles(SUPER_ADMIN))):
+    if body.confirmation != f"ARCHIVE {period_id}":
+        raise HTTPException(422, f"Type ARCHIVE {period_id} to confirm")
+    try:
+        period = db.query(PayPeriod).filter_by(id=period_id).with_for_update(nowait=True).populate_existing().first()
+        if not period:
+            raise HTTPException(404, "Pay period not found")
+        if period.status == "ARCHIVED":
+            raise HTTPException(409, "This period is already archived")
+        # Fail rather than race a save, approval, claim or budget transaction.
+        db.query(WorkLog).filter_by(period_id=period_id).with_for_update(nowait=True).all()
+        db.query(PaymentClaim).filter_by(period_id=period_id).with_for_update(nowait=True).all()
+        db.query(BudgetLine).filter_by(period_id=period_id).with_for_update(nowait=True).all()
+        reason = archive_block_reason(db, period_id)
+        if reason:
+            raise HTTPException(409, reason)
+        counts = dict(db.query(WorkLog.status, func.count(WorkLog.id)).filter_by(
+            period_id=period_id).group_by(WorkLog.status).all())
+        before = to_dict(period)
+        period.status = "ARCHIVED"
+        audit.record(db, current, "pay-periods", period.id, "archive", before=before,
+                     after={**to_dict(period), "preserved_work_by_status": counts}, reason=body.reason)
+        db.commit()
+    except OperationalError:
+        db.rollback()
+        raise HTTPException(409, "This period is being changed. Wait for that operation to finish, then review it again.")
+    return {"archived": True, "id": period_id, "preserved_work_by_status": counts}
 
 def period_date_lock_reason(db, period_id):
     if db.query(PaymentClaim.id).filter_by(period_id=period_id).first():
@@ -102,14 +154,20 @@ def period_regions(db: Session = Depends(get_db),
 
 
 @router.get("/pay-periods")
-def list_periods(db: Session = Depends(get_db), current: CurrentUser = Depends(get_current_user)):
+def list_periods(include_archived: bool = False, db: Session = Depends(get_db), current: CurrentUser = Depends(get_current_user)):
+    if include_archived and SUPER_ADMIN not in current.roles:
+        raise HTTPException(403, "Only Super Admin may list archived periods")
     query = db.query(PayPeriod)
+    if not include_archived:
+        query = query.filter(PayPeriod.status != "ARCHIVED")
     if not global_manager(current):
         query = query.filter(or_(PayPeriod.region_id.is_(None), PayPeriod.region_id.in_(visible_regions(db, current))))
     return [period_out(db, current, row) for row in query.order_by(PayPeriod.start_date.desc(), PayPeriod.id)]
 
 
 def validate(db, current, body, existing=None):
+    if existing and existing.status == "ARCHIVED":
+        raise HTTPException(409, "Archived periods are read-only. Create a replacement period instead.")
     if existing and not can_manage(current, existing.region_id):
         raise HTTPException(403, "You may only manage pay periods in your assigned regions")
     if not can_manage(current, body.region_id):
@@ -137,6 +195,7 @@ def validate(db, current, body, existing=None):
     if body.region_id:
         db.query(Region).filter_by(id=body.region_id).with_for_update().one()
     overlaps = db.query(PayPeriod).filter(
+        PayPeriod.status != "ARCHIVED",
         PayPeriod.region_id == body.region_id, PayPeriod.start_date <= body.end_date,
         PayPeriod.end_date >= body.start_date,
     )

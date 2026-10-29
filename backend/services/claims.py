@@ -89,6 +89,8 @@ def resolve(
     declared_units: Optional[dict],
 ) -> Resolution:
     r = Resolution(origin_channel=category.origin_channel, funding_source_id=category.funding_source_id)
+    if period.status == "ARCHIVED":
+        r.exceptions.append("This pay period is archived and cannot be used for a new or changed claim.")
     route = db.get(PaymentRoute, category.route_id) if category.route_id else None
     if not route:
         r.exceptions.append(f"Category '{category.name}' has no payment route configured")

@@ -107,11 +107,27 @@ function PayPeriodForm({
 
 export function PayPeriods() {
   const { hasRole } = useAuth();
-  const periods = useApi<PayPeriod[]>('/admin/pay-periods');
+  const [showArchived, setShowArchived] = useState(false);
+  const periods = useApi<PayPeriod[]>(`/admin/pay-periods${showArchived ? '?include_archived=true' : ''}`);
   const regions = useApi<Named[]>('/admin/pay-period-regions');
   const [editing, setEditing] = useState<PayPeriod | null | undefined>(undefined);
   const [notice, setNotice] = useState<string | null>(null);
   const deletion = useAction();
+  const [archiving, setArchiving] = useState<PayPeriod | null>(null);
+  const [archiveReason, setArchiveReason] = useState('');
+  const [archiveConfirmation, setArchiveConfirmation] = useState('');
+  const archivePeriod = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!archiving) return;
+    const result = await deletion.run(() => api.post(`/admin/pay-periods/${archiving.id}/archive`, {
+      reason: archiveReason.trim(), confirmation: archiveConfirmation,
+    }));
+    if (result) {
+      setArchiving(null);
+      setNotice('Pay period archived. Its work and approval history are preserved. You can now create a fresh period for the same dates.');
+      await periods.reload();
+    }
+  };
   const removePeriod = async (period: PayPeriod) => {
     if (!window.confirm(`Delete ${period.period_label || `${period.start_date} – ${period.end_date}`}? This cannot be undone. Periods with work logs, claims or budget lines cannot be deleted.`)) return;
     const result = await deletion.run(() => api.del(`/admin/pay-periods/${period.id}`));
@@ -148,6 +164,10 @@ export function PayPeriods() {
         </div>
       )}
       <Alert kind="success">{notice}</Alert>
+      {hasRole('SUPER_ADMIN') && <label className="row">
+        <input type="checkbox" checked={showArchived} onChange={event => setShowArchived(event.target.checked)} />
+        Include archived periods (read-only history)
+      </label>}
       {(periods.loading && !periods.data) || (regions.loading && !regions.data) ? (
         <section className="card stack" aria-label="Loading pay periods">
           <div className="loading" style={{ minHeight: 18 }} />
@@ -178,14 +198,20 @@ export function PayPeriods() {
                     <td><StatusBadge status={period.status} /></td>
                     <td className="num">
                       {period.can_manage && <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setNotice(null); setEditing(period); }}>Edit</button>}
-                      {hasRole('SUPER_ADMIN') && <button type="button" className="btn btn-danger btn-sm" disabled={!period.can_delete || deletion.busy} title={period.can_delete ? 'Delete unused period' : 'In use: close this period instead'} onClick={() => removePeriod(period)}>Delete</button>}
+                      {hasRole('SUPER_ADMIN') && <button type="button" className="btn btn-danger btn-sm" disabled={!period.can_delete || deletion.busy} title={period.can_delete ? 'Delete unused period' : 'In use: archive unpaid periods to restart while retaining history'} onClick={() => removePeriod(period)}>Delete</button>}
+                      {hasRole('SUPER_ADMIN') && period.status !== 'ARCHIVED' && <>
+                        <button type="button" className="btn btn-secondary btn-sm" disabled={!period.can_archive || deletion.busy}
+                          title={period.archive_block_reason || 'Preserve history and allow a fresh period for these dates'}
+                          onClick={() => { setArchiveReason(''); setArchiveConfirmation(''); setArchiving(period); }}>Archive / restart</button>
+                        {period.archive_block_reason && <div className="muted small">{period.archive_block_reason}</div>}
+                      </>}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className="muted small">Super Admin can delete unused periods. Periods containing work logs, claims or budget lines must be closed instead, preserving their history.</p>
+          <p className="muted small">Super Admin can delete unused periods or archive used, unpaid periods to start again. Archiving hides old work from active lists without erasing entries, approvals or audit history. Paid work and active claims remain protected.</p>
         </section>
       )}
       {editing !== undefined && (
@@ -198,6 +224,22 @@ export function PayPeriods() {
           onSaved={refresh}
         />
       )}
+      {archiving && <Modal title="Archive pay period and start again" onClose={() => { if (!deletion.busy) setArchiving(null); }}>
+        <form className="stack" onSubmit={archivePeriod}>
+          <Alert kind="warn">Archive {archiving.period_label || 'this period'} ({dateOnly(archiving.start_date)} – {dateOnly(archiving.end_date)})?
+            Its timesheets, Services, approvals and audit history will become read-only and leave active work lists.
+            This does not erase history or move payments or budgets. Create a fresh period afterwards so providers can refill their actual work.</Alert>
+          <Alert>{deletion.error}</Alert>
+          <Field label="Reason for archiving"><textarea required minLength={3} maxLength={1000} value={archiveReason}
+            disabled={deletion.busy} onChange={event => setArchiveReason(event.target.value)} /></Field>
+          <Field label={`Type ARCHIVE ${archiving.id} to confirm`}><input required value={archiveConfirmation}
+            disabled={deletion.busy} autoComplete="off" onChange={event => setArchiveConfirmation(event.target.value)} /></Field>
+          <div className="row">
+            <button type="submit" className="btn btn-danger" disabled={deletion.busy || archiveReason.trim().length < 3 || archiveConfirmation !== `ARCHIVE ${archiving.id}`}>Archive period</button>
+            <button type="button" className="btn btn-ghost" disabled={deletion.busy} onClick={() => setArchiving(null)}>Cancel</button>
+          </div>
+        </form>
+      </Modal>}
     </div>
   );
 }

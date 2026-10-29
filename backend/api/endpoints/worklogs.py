@@ -110,7 +110,7 @@ class OTPIn(BaseModel):
 
 
 def _get_log(db: Session, current: CurrentUser, log_id: int, lock: bool = False) -> WorkLog:
-    query = db.query(WorkLog).filter(WorkLog.id == log_id, worklog_visibility(current))
+    query = db.query(WorkLog).filter(WorkLog.id == log_id, worklog_visibility(current, include_archived=True))
     log = (query.with_for_update(of=WorkLog) if lock else query).first()
     if not log:
         raise HTTPException(status_code=404, detail="Work log not found")
@@ -121,6 +121,8 @@ def _editable_log(db: Session, current: CurrentUser, log_id: int) -> WorkLog:
     log = _get_log(db, current, log_id, lock=True)
     if current.staff_id != log.staff_id:
         raise HTTPException(status_code=403, detail="Only the provider who owns this work log can edit it")
+    if db.get(PayPeriod, log.period_id).status == "ARCHIVED":
+        raise HTTPException(409, "Archived work is read-only. Start a work log in the replacement period.")
     if log.status not in wf.EDITABLE_STATUSES:
         raise HTTPException(status_code=409, detail=f"The work log is locked in status {log.status}. Corrections need a return or reopen.")
     return log
@@ -198,7 +200,7 @@ def _detail(db: Session, current: CurrentUser, log: WorkLog) -> dict:
         "endorsements": [{**to_dict(e), "actor_name": name} for e, name in endorsements],
         "versions": [{"version": v.version, "created_at": v.created_at} for v in db.query(WorkLogVersion).filter(WorkLogVersion.work_log_id == log.id).order_by(WorkLogVersion.version)],
         "available_actions": actions,
-        "can_edit": owner and log.status in wf.EDITABLE_STATUSES,
+        "can_edit": owner and log.status in wf.EDITABLE_STATUSES and period.status != "ARCHIVED",
         "awaiting_my_otp": owner and log.status == wf.PENDING_OTP,
         "dev_otp": dev_code(log.id) if owner and log.status == wf.PENDING_OTP else None,
         "claims": [{"id": c.id, "status": c.status, "payment_status": c.payment_status,
@@ -264,7 +266,7 @@ def create_worklog(body: WorkLogCreate, db: Session = Depends(get_db), current: 
     staff = current.staff
     if not staff or staff.status != "ACTIVE":
         raise HTTPException(status_code=403, detail="Your account is not linked to an active staff record")
-    period = db.get(PayPeriod, body.period_id)
+    period = db.query(PayPeriod).filter_by(id=body.period_id).with_for_update().first()
     if not period:
         raise HTTPException(status_code=404, detail="Pay period not found")
     if period.status != "OPEN":
@@ -285,7 +287,8 @@ def create_worklog(body: WorkLogCreate, db: Session = Depends(get_db), current: 
         PayPeriod.start_date <= period.end_date, PayPeriod.end_date >= period.start_date,
     ).first():
         raise HTTPException(409, "Your region has its own pay-period schedule for these dates; choose that schedule instead")
-    overlapping_log = db.query(WorkLog.id).join(PayPeriod, PayPeriod.id == WorkLog.period_id).join(
+    overlapping_log = db.query(WorkLog.id).join(PayPeriod, PayPeriod.id == WorkLog.period_id).filter(
+        PayPeriod.status != "ARCHIVED").join(
         WorkLogEntry, WorkLogEntry.work_log_id == WorkLog.id,
     ).filter(
         WorkLog.staff_id == staff.id, WorkLog.work_type.in_([kind, "LEGACY"]),

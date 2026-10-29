@@ -120,6 +120,7 @@ def assign_initial_funding(
 
 def _visible(db, current):
     return db.query(WorkLog).filter(
+        WorkLog.period_id.in_(db.query(PayPeriod.id).filter(PayPeriod.status != "ARCHIVED")),
         WorkLog.workflow_version >= 2,
         record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id),
         WorkLog.staff_id != current.staff_id,

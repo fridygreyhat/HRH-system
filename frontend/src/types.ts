@@ -85,6 +85,8 @@ export interface PayPeriod {
   region_name?: string | null;
   can_manage?: boolean;
   can_delete?: boolean;
+  can_archive?: boolean;
+  archive_block_reason?: string | null;
   can_edit_dates?: boolean;
   date_lock_reason?: string | null;
 }

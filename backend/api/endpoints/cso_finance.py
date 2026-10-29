@@ -44,6 +44,7 @@ def organizations(db: Session = Depends(get_db), current: CurrentUser = Depends(
 def periods(db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(CSO_FINANCE))):
     from ...services.v22_scope import regions_for
     return [to_dict(period) for period in db.query(PayPeriod).filter(
+        PayPeriod.status != "ARCHIVED",
         or_(PayPeriod.region_id.is_(None), PayPeriod.region_id.in_(regions_for(current))),
     ).order_by(PayPeriod.start_date.desc(), PayPeriod.id.desc())]
 

@@ -56,7 +56,7 @@ BUDGET_HOLD = "BUDGET_HOLD"
 CANCELLED = "CANCELLED"
 
 ALL_STATUSES = [DRAFT, PENDING_CTC, PENDING_OTP, PENDING_TECH, PENDING_RPM, PENDING_FINANCE, FINANCE_REVIEWED, ROUTED_FHI360, ROUTED_CSO, PAID, APPROVED, RETURNED, REJECTED, BUDGET_HOLD, CANCELLED]
-EDITABLE_STATUSES = {DRAFT, RETURNED}
+EDITABLE_STATUSES = {DRAFT, RETURNED, REJECTED}
 # Stage owner for reminders and queue age reporting
 STAGE_OWNER = {PENDING_CTC: SUPERVISOR, PENDING_TECH: TECHNICAL_OFFICER, PENDING_RPM: RPM, PENDING_FINANCE: REGIONAL_FINANCE}
 
@@ -64,8 +64,10 @@ STAGE_OWNER = {PENDING_CTC: SUPERVISOR, PENDING_TECH: TECHNICAL_OFFICER, PENDING
 TRANSITIONS: dict[tuple[str, str], tuple[str, str]] = {
     (DRAFT, "submit"): (PENDING_CTC, PROVIDER),
     (RETURNED, "submit"): (PENDING_CTC, PROVIDER),
+    (REJECTED, "submit"): (PENDING_CTC, PROVIDER),
     (DRAFT, "cancel"): (CANCELLED, PROVIDER),
     (RETURNED, "cancel"): (CANCELLED, PROVIDER),
+    (REJECTED, "cancel"): (CANCELLED, PROVIDER),
     (PENDING_CTC, "verify"): (PENDING_OTP, SUPERVISOR),
     (PENDING_CTC, "return"): (RETURNED, SUPERVISOR),
     (PENDING_OTP, "confirm_otp"): (PENDING_TECH, PROVIDER),
@@ -120,6 +122,9 @@ def _owns(current: CurrentUser, log: WorkLog) -> bool:
 
 def check_action(db: Session, current: CurrentUser, log: WorkLog, action: str) -> Optional[str]:
     """None when allowed, otherwise the reason it is not."""
+    period = db.get(PayPeriod, log.period_id)
+    if period and period.status == "ARCHIVED":
+        return "Cannot change work in an archived pay period. Start a work log in the replacement period."
     if action == "facility_endorse":
         return _check_facility_endorse(db, current, log)
     transition = transitions_for(log).get((log.status, action))
@@ -132,7 +137,6 @@ def check_action(db: Session, current: CurrentUser, log: WorkLog, action: str) -
     # must not advance at any approval stage (including Regional Finance).
     if action not in {"return", "reject", "reopen", "return_to_reviewer"}:
         from ..core.period_dates import period_date_error
-        from ..models import PayPeriod
         period = db.get(PayPeriod, log.period_id)
         date_error = period_date_error(period.start_date, period.end_date)
         if date_error:
@@ -275,7 +279,9 @@ def transition(
             log.finance_snapshot = None
             log.routed_channel = None
     log.status_changed_at = now
-    log.approved_at = now if log.status in {APPROVED, ROUTED_FHI360, ROUTED_CSO} else (None if next_status == RETURNED else log.approved_at)
+    if next_status in {RETURNED, REJECTED}:
+        log.confirmed_version = None
+    log.approved_at = now if log.status in {APPROVED, ROUTED_FHI360, ROUTED_CSO} else (None if next_status in {RETURNED, REJECTED} else log.approved_at)
     audit(db, current, log, action, role, old, comment, details)
     db.flush()
     _notify(db, log, action, comment)
