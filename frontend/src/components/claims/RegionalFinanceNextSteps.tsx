@@ -13,7 +13,7 @@ export function RegionalFinanceNextSteps() {
       </div>
       <div className="stack">
         <p><strong>Payroll:</strong> view monthly hours and indicator totals by cadre and provider. No claim category, funding source, budget or finance approval is required.</p>
-        <p><strong>Services:</strong> use the routing queue to review authorized work and its payment setup, then select the eligible paying organization. Services payment and budget safeguards remain in place.</p>
+        <p><strong>Services:</strong> use the routing queue to confirm the PnP, Supply Chain or EpiC funding source and fixed daily amount, then select the eligible paying organization. The highest eligible service amount per day is used.</p>
       </div>
       <div className="row">
         <button type="button" className="btn btn-primary" onClick={() => navigate('finance-monthly')}>Monthly work report</button>

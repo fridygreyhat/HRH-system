@@ -4,13 +4,12 @@ import { api, qs, saveBlob } from '../api';
 import { useAuth } from '../AuthContext';
 import { PAYMENT_STATUS_LABELS, ageSince, dateTime, label, money, num } from '../format';
 import { useAction, useApi } from '../hooks';
-import { Batch, BudgetLine, CsoFinanceOrganization, ClaimSummary, PayPeriod } from '../types';
+import { Batch, CsoFinanceOrganization, ClaimSummary, PayPeriod } from '../types';
 import { ClaimDrawer } from '../components/claims/ClaimDrawer';
 import { BatchDrawer } from '../components/batches/BatchDrawer';
-import { BudgetHierarchy } from '../components/budgets/BudgetHierarchy';
 import { Alert, AsyncState, Empty, Field, RouteBadge, Section, StatTile, StatusBadge } from '../components/ui';
 
-type SectionKey = 'all' | 'pending' | 'receipt' | 'routec' | 'recon' | 'budget' | 'export';
+type SectionKey = 'all' | 'pending' | 'receipt' | 'routec' | 'recon' | 'export';
 
 const PENDING_STATUSES = ['PENDING', 'PARTIALLY_RECORDED', 'PROOF_REQUIRED', 'FAILED'];
 const NEXT_ACTION: Record<string, string> = {
@@ -31,12 +30,12 @@ const RECON_GROUPS: { status: string; title: string }[] = [
 ];
 const ROUTE_C_GROUPS: { status: string; title: string; hint: string }[] = [
   { status: 'VALIDATION_NEEDED', title: 'Returned for correction', hint: 'The provider can update and resubmit this claim.' },
-  { status: 'BUDGET_HOLD', title: 'Budget hold', hint: 'Review the budget hold and release it when the allocation is available.' },
+  { status: 'BUDGET_HOLD', title: 'Historical hold', hint: 'Historical hold status retained for reference.' },
   { status: 'DRAFT', title: 'Drafts', hint: 'The provider has not submitted this claim.' },
   {
     status: 'AWAITING_APPROVAL',
     title: 'Awaiting approval',
-    hint: 'Independently approve after community verification. Approval commits budget; it does not record payment.',
+    hint: 'Independently approve after community verification. Approval does not record payment.',
   },
   {
     status: 'PENDING_COMMUNITY_VERIFICATION',
@@ -193,7 +192,6 @@ export function CsoPortal() {
   const { me } = useAuth();
   const claims = useApi<ClaimSummary[]>('/claims');
   const batches = useApi<Batch[]>('/batches');
-  const budgets = useApi<BudgetLine[]>('/budgets/lines');
   const payPeriods = useApi<PayPeriod[]>('/cso-finance/pay-periods');
   const organizations = useApi<CsoFinanceOrganization[]>('/cso-finance/organizations');
   const receive = useAction();
@@ -217,14 +215,11 @@ export function CsoPortal() {
   }, [organizations.data, selectedCsoId]);
 
   const csoNames = (me?.organizations || []).filter((o) => o.type === 'CSO').map((o) => o.name);
-  const csoOrgIds = new Set((me?.organizations || []).filter((organization) => organization.type === 'CSO').map((organization) => organization.id));
-  const csoBudgetLines = (budgets.data || []).filter((line) => csoOrgIds.has(line.organization_id));
   const names = csoNames.length ? csoNames : (me?.organizations || []).map((o) => o.name);
 
   const refreshAll = () => {
     claims.reload();
     batches.reload();
-    budgets.reload();
     payPeriods.reload();
     organizations.reload();
   };
@@ -258,7 +253,6 @@ export function CsoPortal() {
     { key: 'receipt', label: `Awaiting receipt${batches.data ? ` (${awaitingReceipt.length})` : ''}` },
     { key: 'routec', label: `Community claims${claims.data ? ` (${routeCCount})` : ''}` },
     { key: 'recon', label: 'Reconciliation' },
-    { key: 'budget', label: 'Budget' },
     { key: 'export', label: 'Payroll export' },
   ];
   const show = (k: SectionKey) => section === 'all' || section === k;
@@ -271,8 +265,8 @@ export function CsoPortal() {
           <h1>CSO payments{names.length ? ` — ${names.join(', ')}` : ''}</h1>
           <p className="muted">Claims your CSO pays: record payments, upload proof, and keep community claims moving.</p>
         </div>
-        <button type="button" className="btn btn-secondary" onClick={refreshAll} disabled={claims.loading || batches.loading || budgets.loading || payPeriods.loading || organizations.loading}>
-          {claims.loading || batches.loading || budgets.loading || payPeriods.loading || organizations.loading ? 'Refreshing…' : 'Refresh'}
+        <button type="button" className="btn btn-secondary" onClick={refreshAll} disabled={claims.loading || batches.loading || payPeriods.loading || organizations.loading}>
+          {claims.loading || batches.loading || payPeriods.loading || organizations.loading ? 'Refreshing…' : 'Refresh'}
         </button>
       </div>
 
@@ -379,7 +373,7 @@ export function CsoPortal() {
 
       {show('routec') && (
         <Section title="Community claims needing attention">
-          <p className="notice notice-info small">Direct Route C claims are approved by CSO Finance after community verification, then paid externally and recorded here with proof. They do not need a payroll export batch.</p>
+          <p className="notice notice-info small">Direct Route C claims use approved community rates and are approved by assigned CSO Finance after community verification, then paid externally and recorded here with proof. No regional budget allocation or payroll export batch is required.</p>
           <AsyncState data={claims.data} error={claims.error} loading={claims.loading}>
             {() =>
               routeCCount ? (
@@ -430,14 +424,6 @@ export function CsoPortal() {
                 <Empty>None of your CSO's claims have entered payment yet.</Empty>
               )
             }
-          </AsyncState>
-        </Section>
-      )}
-
-      {show('budget') && (
-        <Section title="Budget">
-          <AsyncState data={budgets.data} error={budgets.error} loading={budgets.loading} empty="No budget lines for your CSO.">
-            {() => <BudgetHierarchy lines={csoBudgetLines} emptyMessage="No budget allocations are currently assigned to your CSO." />}
           </AsyncState>
         </Section>
       )}

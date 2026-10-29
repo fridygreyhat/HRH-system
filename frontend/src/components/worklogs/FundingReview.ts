@@ -1,6 +1,31 @@
 import { ClaimCategory } from '../../types';
 
 export type FundingSourceChoice = { id: number; code: string; name: string };
+export const FIXED_DAILY_NO_BUDGET = 'FIXED_DAILY_NO_BUDGET';
+
+const SERVICE_FUNDING_CODES = new Set(['PNP', 'SUPPLY_CHAIN', 'SUPPLYCHAIN', 'EPIC']);
+
+export function supportedServiceFundingSources<T extends FundingSourceChoice>(sources: T[]): T[] {
+  return sources.filter((source) => {
+    const code = source.code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const name = source.name.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    return SERVICE_FUNDING_CODES.has(code) || ['PNP', 'SUPPLYCHAIN', 'EPIC'].includes(name);
+  });
+}
+
+export function buildServiceFinanceReviewPayload<T extends Record<string, unknown>>(
+  payload: T,
+  fundingSourceId: string,
+): T & { funding_source_id: number } {
+  return { ...payload, funding_source_id: Number(fundingSourceId) };
+}
+
+export function canSubmitServiceFinanceReview(fundingSourceId: string, sources: FundingSourceChoice[], reviewReached: boolean, reviewConfirmed: boolean): boolean {
+  return Boolean(fundingSourceId)
+    && sources.some((source) => String(source.id) === fundingSourceId)
+    && reviewReached
+    && reviewConfirmed;
+}
 
 const NON_SERVICE_FORM_TYPES = new Set(['SALARY', 'PAYROLL', 'STIPEND', 'STIPENDS', 'TIMESHEET']);
 
@@ -30,11 +55,12 @@ export function selectionAfterFundingSourceChange(fundingSourceId: string): { fu
 
 export function reviewedFinanceContextChanged(
   selectedSourceId: string,
-  selectedCategoryId: string,
-  reviewedSourceId: string,
-  reviewedCategoryId: string,
+  selectedCategoryIdOrReviewedSourceId: string,
+  reviewedSourceId?: string,
+  reviewedCategoryId?: string,
 ): boolean {
-  return selectedSourceId !== reviewedSourceId || selectedCategoryId !== reviewedCategoryId;
+  if (reviewedSourceId === undefined) return selectedSourceId !== selectedCategoryIdOrReviewedSourceId;
+  return selectedSourceId !== reviewedSourceId || selectedCategoryIdOrReviewedSourceId !== reviewedCategoryId;
 }
 
 export function canRouteReviewedFinanceContext(contextIsDirty: boolean): boolean {

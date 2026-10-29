@@ -40,7 +40,7 @@ class CreateIn(EditIn):
 
 def _quote_out(result):
     _, _, assignment, _, line, components, amount, currency = result
-    return {"amount": amount, "currency": currency, "components": components, "budget_line_id": line.id,
+    return {"amount": amount, "currency": currency, "components": components, "budget_line_id": None,
             "payor_id": assignment.organization_id}
 
 
@@ -94,13 +94,14 @@ def create(body: CreateIn, db: Session = Depends(get_db), current: CurrentUser =
         staff_id=staff.id, category_id=category.id, period_id=period.id, assignment_id=assignment.id,
         community_area_id=assignment.community_area_id, created_by=current.id,
         funding_source_id=category.funding_source_id, payor_org_id=assignment.organization_id,
-        executor_org_id=assignment.organization_id, budget_line_id=line.id,
+        executor_org_id=assignment.organization_id, budget_line_id=None,
         declared_units=jsonable_encoder(body.declared_units), evidence_text=body.description,
         amount=amount, currency=currency, status=cl.DRAFT,
         calculation_snapshot=jsonable_encoder({
             "kind": "DIRECT_COMMUNITY", "cadre_id": staff.cadre_id, "region_id": assignment.region_id,
             "route": "C", "payor_org_id": assignment.organization_id, "executor_org_id": assignment.organization_id,
-            "budget_line_id": line.id, "components": components, "amount": amount,
+            "budget_line_id": None, "components": components, "amount": amount,
+            "payment_policy": "APPROVED_AMOUNTS_NO_BUDGET",
             "captured_at": utcnow(), "authorized_at": None,
         }),
     )

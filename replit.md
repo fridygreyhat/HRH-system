@@ -469,10 +469,17 @@ payment pricing” below for the current policy. Services remains payable.
 
 ### Programme funding setup
 - Services funding choices are **PnP**, **Supply Chain**, and **EpiC**. Existing sources and historical references are retained.
-- Regional Finance selects a funding source and an active matching Services budget category. Never silently reassign a category or allocate money to make a review succeed.
-- **Why:** a programme choice must not spend another programme's budget. Initial category funding assignment requires explicit Central Finance/Super Admin confirmation, a reason, and an unconfigured category without live claims.
-- Uncommitted Services reviews can be corrected without repeating provider/CTC/technical/RM work approval. Routing checks the saved funding identity, budget currency and current review token; configuration changes require fresh Finance review.
+- Regional Finance selects a funding source only; there is no user-facing budget category requirement. An internal programme-specific claim identity is derived without creating or assigning any allocation.
+- Uncommitted Services reviews can be corrected without repeating provider/CTC/technical/RM work approval. Routing checks the saved funding identity, payment organization and current review token; changes require fresh Finance review.
 - Payroll remains report-only; programme/category selection, pricing, budgets and payment routing do not apply to new Payroll reports. Paid and committed historical claims remain protected.
+
+### Current payment policy: no budget section
+- The user asked to remove the Budget section and pay Services using the configured fixed daily amount. New Services have no allocation requirement, budget hold, commitment or budget spend. Multiple services on the same provider-date pay only the highest configured daily amount, once.
+- **Why:** the user wants amounts per service, not budget administration. Do not reintroduce budget controls to resolve finance setup errors.
+- Services route: provider → facility CTC → Technical → RM → Regional Finance review and explicit FHI360 selection → payment recording/proof → paid confirmation and reconciliation. Preserve region/cadre/facility access boundaries.
+- Separate direct community claims retain provider → community verifier → independent assigned CSO Finance → payment/proof, using their approved captured rates without a new regional budget requirement.
+- Preserve legacy allocations, paid snapshots and committed financial ledger history. Historical payment/cancellation bookkeeping may still update an existing committed line; new budget-free claims must never create or charge one.
+- Older budget/routing descriptions below are historical wherever they conflict with this policy.
 
 ### Operational approval versus payment pricing
 - Regional Finance accounts that also hold channel-finance roles should start

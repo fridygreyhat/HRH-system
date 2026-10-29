@@ -154,7 +154,7 @@ def pending_routing(
             "region_id": region.id, "region_name": region.name, "period_label": wf.period_label(period),
             "status": log.status, "amount": str(amount) if amount is not None else None, "currency": currency,
             "finance_review_required": review_required,
-            "next_action": "REVIEW_AMOUNT" if review_required else "RESOLVE_BUDGET_HOLD" if log.status == wf.BUDGET_HOLD else "CHANNEL",
+            "next_action": "REVIEW_AMOUNT" if review_required or (log.finance_snapshot or {}).get("payment_policy") != "FIXED_DAILY_NO_BUDGET" else "CHANNEL",
             **_payors(db, log),
         })
     return rows

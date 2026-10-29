@@ -361,6 +361,7 @@ export interface ClaimSummary {
   /** Present for claims generated from the versioned work-log workflow. */
   workflow_version?: number | null;
   work_type?: 'LEGACY' | 'SERVICES' | 'PAYROLL' | 'COMMUNITY' | null;
+  payment_policy?: 'FIXED_DAILY_NO_BUDGET' | 'APPROVED_AMOUNTS_NO_BUDGET' | string | null;
 }
 
 export interface ClaimComponent {

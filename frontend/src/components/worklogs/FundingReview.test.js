@@ -1,8 +1,11 @@
 import {
   canRouteReviewedFinanceContext,
+  buildServiceFinanceReviewPayload,
+  canSubmitServiceFinanceReview,
   reviewedFinanceContextChanged,
   selectionAfterFundingSourceChange,
   serviceCategoriesForSource,
+  supportedServiceFundingSources,
   unconfiguredServiceCategories,
 } from './FundingReview';
 
@@ -61,4 +64,38 @@ test('a changed reviewed source or category prevents routing until re-review', (
   expect(canRouteReviewedFinanceContext(true)).toBe(false);
   expect(reviewedFinanceContextChanged('10', '1', '10', '1')).toBe(false);
   expect(canRouteReviewedFinanceContext(false)).toBe(true);
+});
+
+test('Services finance review accepts only PnP, Supply Chain and EpiC and sends source without category', () => {
+  const sources = [
+    { id: 11, code: 'PNP', name: 'PnP' },
+    { id: 12, code: 'SUPPLY_CHAIN', name: 'Supply Chain' },
+    { id: 13, code: 'EPIC', name: 'EpiC' },
+    { id: 14, code: 'OTHER', name: 'Other programme' },
+  ];
+  const choices = supportedServiceFundingSources(sources);
+  expect(choices.map(source => source.id)).toEqual([11, 12, 13]);
+  const payload = buildServiceFinanceReviewPayload({
+    review_confirmed: true,
+    review_type: 'SERVICES',
+    expected_version: 7,
+    expected_review_token: 'review-abc',
+  }, '12');
+  expect(payload).toEqual({
+    review_confirmed: true,
+    review_type: 'SERVICES',
+    expected_version: 7,
+    expected_review_token: 'review-abc',
+    funding_source_id: 12,
+  });
+  expect(payload).not.toHaveProperty('category_id');
+});
+
+test('Services finance review is gated on source selection and completed explicit review', () => {
+  const sources = [{ id: 11, code: 'PNP', name: 'PnP' }];
+  expect(canSubmitServiceFinanceReview('', sources, true, true)).toBe(false);
+  expect(canSubmitServiceFinanceReview('99', sources, true, true)).toBe(false);
+  expect(canSubmitServiceFinanceReview('11', sources, false, true)).toBe(false);
+  expect(canSubmitServiceFinanceReview('11', sources, true, false)).toBe(false);
+  expect(canSubmitServiceFinanceReview('11', sources, true, true)).toBe(true);
 });

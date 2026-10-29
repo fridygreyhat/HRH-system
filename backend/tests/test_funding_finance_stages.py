@@ -54,8 +54,12 @@ def test_programme_catalogue_is_available_and_idempotent(api, db, v22):
 
 
 def test_initial_funding_setup_requires_central_permission_and_explicit_assignment(api, db, period, v22):
-    category = db.get(ClaimCategory, category_id(db, "A"))
-    category.funding_source_id = None
+    from uuid import uuid4
+    template = db.get(ClaimCategory, category_id(db, "A"))
+    category = ClaimCategory(name=f"Unconfigured synthetic service {uuid4().hex[:8]}",
+                             form_type="SERVICES", route_id=template.route_id,
+                             payor_org_id=template.payor_org_id)
+    db.add(category)
     db.commit()
     source = db.query(FundingSource).filter_by(name="PnP").one()
     path = f"/finance/categories/{category.id}/funding-source"
@@ -126,41 +130,43 @@ def test_review_source_change_requires_explicit_rereview_and_rejects_stale_scree
     db.expire_all()
     claim = db.get(PaymentClaim, claim_id)
     assert claim.funding_source_id == replacement.id and claim.amount == 40000
-    commits = db.query(BudgetTransaction).filter_by(claim_id=claim_id, kind="COMMIT").all()
-    assert len(commits) == 1 and commits[0].amount == 40000
-    # A double click cannot create a second commitment.
+    assert claim.budget_line_id is None
+    assert db.query(BudgetTransaction).filter_by(claim_id=claim_id).count() == 0
+    # A double click cannot route the claim a second time.
     route_work(api, v22, rereviewed, expect=409)
-    assert db.query(BudgetTransaction).filter_by(claim_id=claim_id, kind="COMMIT").count() == 1
+    assert db.query(BudgetTransaction).filter_by(claim_id=claim_id).count() == 0
 
 
-def test_currency_change_between_review_and_routing_is_not_silent(api, db, period, v22):
+def test_unused_budget_currency_does_not_block_fixed_daily_services(api, db, period, v22):
     work, category, source = finance_work(api, db, period, v22)
     reviewed = review_work(api, v22, work, category, source)
-    line = db.get(BudgetLine, reviewed["finance_snapshot"]["budget_line_id"])
+    line = db.query(BudgetLine).filter_by(category_id=category.id, period_id=period["id"]).one()
     line.currency = "USD"
     db.commit()
-    route_work(api, v22, reviewed, expect=409)
-    line.currency = "TZS"
-    db.commit()
     assert route_work(api, v22, reviewed)["status"] == "ROUTED_FHI360"
+    assert reviewed["finance_snapshot"]["currency"] == "TZS"
 
 
-def test_budget_hold_and_release_preserve_source_claim_and_single_commitment(api, db, period, v22):
+def test_old_uncommitted_services_hold_can_be_reviewed_without_a_budget(api, db, period, v22):
+    from backend.models import WorkLog
     work, category, source = finance_work(api, db, period, v22)
     reviewed = review_work(api, v22, work, category, source)
-    line = db.get(BudgetLine, reviewed["finance_snapshot"]["budget_line_id"])
-    allocation = line.allocated_amount
+    line = db.query(BudgetLine).filter_by(category_id=category.id, period_id=period["id"]).one()
     line.allocated_amount = 0
+    log = db.get(WorkLog, work["id"])
+    old_snapshot = {**log.finance_snapshot, "budget_line_id": line.id}
+    old_snapshot.pop("payment_policy")
+    log.finance_snapshot, log.status = old_snapshot, "BUDGET_HOLD"
+    claim_id = reviewed["claims"][0]["id"]
+    proposal = db.get(PaymentClaim, claim_id)
+    proposal.status, proposal.budget_line_id = "BUDGET_HOLD", line.id
     db.commit()
-    held = route_work(api, v22, reviewed)
-    assert held["status"] == "BUDGET_HOLD"
-    claim_id = held["claim_id"]
-    assert db.query(BudgetTransaction).filter_by(claim_id=claim_id, kind="COMMIT").count() == 0
-    line.allocated_amount = allocation
-    db.commit()
-    held["finance_snapshot"] = reviewed["finance_snapshot"]
-    released = route_work(api, v22, held, comment="Budget restored for tested release")
+    held = api.get(f"/worklogs/{work['id']}", v22["finance"])
+    assert "finance_review" in held["available_actions"]
+    reviewed = review_work(api, v22, held, category, source)
+    released = route_work(api, v22, reviewed)
     assert released["status"] == "ROUTED_FHI360" and released["claim_id"] == claim_id
     db.expire_all()
     assert db.get(PaymentClaim, claim_id).funding_source_id == source.id
-    assert db.query(BudgetTransaction).filter_by(claim_id=claim_id, kind="COMMIT").count() == 1
+    assert db.get(PaymentClaim, claim_id).budget_line_id is None
+    assert db.query(BudgetTransaction).filter_by(claim_id=claim_id).count() == 0

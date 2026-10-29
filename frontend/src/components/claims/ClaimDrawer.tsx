@@ -247,7 +247,8 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
   const paid = claim && (claim.payment_status === 'PAID' || claim.payment_status === 'RECONCILED');
   const financeReviewPending = claim?.status === 'PENDING_FINANCE_REVIEW';
   const paymentActions = claim && !isRpmWithoutFinanceRole && !financeReviewPending ? claim.payment_actions : [];
-  const budget = claim && canSeeBudgetDetails && claim.budget_line && claim.budget_line.id === claim.budget_line_id
+  const noBudgetPolicy = claim?.payment_policy === 'FIXED_DAILY_NO_BUDGET' || claim?.payment_policy === 'APPROVED_AMOUNTS_NO_BUDGET';
+  const budget = claim && !noBudgetPolicy && canSeeBudgetDetails && claim.budget_line && claim.budget_line.id === claim.budget_line_id
     ? claim.budget_line
     : undefined;
   const exposure = budget ? Number(budget.committed_amount || 0) + Number(budget.spent_amount || 0) : 0;
@@ -307,7 +308,7 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
           )}
           {financeReviewPending && (
             <p className="notice notice-info">
-              This claim was created from the RM-approved work log’s saved activity rates. It is awaiting Regional Finance review and category selection. The amount is not routed, budget-committed or payable; finance will review this same claim before routing.
+              This claim was created from RM-approved work and is awaiting Regional Finance review of its funding source and amount. It is not routed or payable yet; finance will review it before routing.
             </p>
           )}
           {claim.payment_recipient && (
@@ -347,7 +348,9 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
                 ['Period', claim.period_label],
                 ['Payor', claim.payor_name],
                 ['Executor (pays)', claim.executor_name],
-                ['Budget line', claim.budget_line ? `${claim.budget_line.code} – ${claim.budget_line.name}` : 'Not resolved'],
+                ...(!noBudgetPolicy && claim.budget_line_id != null
+                  ? [['Budget line', claim.budget_line ? `${claim.budget_line.code} – ${claim.budget_line.name}` : 'Not resolved'] as [string, React.ReactNode]]
+                  : []),
                 ['Origin', humanize(claim.origin_channel)],
                 ['Work log', claim.work_log_id ? `#${claim.work_log_id}` : 'None (community claim)'],
                 ['Batch', claim.batch_reference],
@@ -494,10 +497,16 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
 function actionHelp(action: string, claim: ClaimDetail): string {
   switch (action) {
     case 'approve':
+      if (noBudgetPolicyForClaim(claim)) {
+        return claim.work_type === 'COMMUNITY'
+          ? 'Approve the verified community claim using its captured approved-rate amount. No regional budget allocation is required; payment is recorded separately with proof.'
+          : 'Approve the reviewed Services amount. No budget allocation is required; payment, proof and reconciliation are recorded separately.';
+      }
       return `Approving commits ${money(claim.amount, claim.currency)} against the budget line. If the line is short the claim is held.`;
     case 'send_back':
       return 'The claim returns to “Validation needed” with your reason shown as its exception.';
     case 'cancel':
+      if (noBudgetPolicyForClaim(claim)) return 'Cancel this claim. No budget commitment is created; external payments and proof remain separate records.';
       return 'Cancelling releases any committed budget. This cannot be undone.';
     case 'confirm_paid':
       return 'Confirm that the recorded payments and uploaded proof cover the full amount.';
@@ -508,8 +517,19 @@ function actionHelp(action: string, claim: ClaimDetail): string {
     case 'mark_ready':
       return 'The claim will be included in the next payroll batch for its route.';
     case 'revalidate':
+      if (noBudgetPolicyForClaim(claim)) {
+        return claim.work_type === 'COMMUNITY'
+          ? 'Recalculate the approved community-rate amount from the current configuration. No regional budget line is required.'
+          : 'Recalculate the fixed daily Services amount from approved rates. No budget line is required.';
+      }
       return 'Recalculate the route, budget line and amount from the current configuration.';
     default:
       return '';
   }
+}
+
+function noBudgetPolicyForClaim(claim: ClaimDetail): boolean {
+  return claim.payment_policy === 'FIXED_DAILY_NO_BUDGET'
+    || claim.payment_policy === 'APPROVED_AMOUNTS_NO_BUDGET'
+    || (claim.work_type === 'COMMUNITY' && claim.budget_line_id == null);
 }

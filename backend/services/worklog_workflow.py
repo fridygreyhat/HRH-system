@@ -96,7 +96,7 @@ def transitions_for(log):
     if log.workflow_version < 2:
         return TRANSITIONS
     return {
-        **TRANSITIONS,
+        **{key: value for key, value in TRANSITIONS.items() if key != (PENDING_RPM, "hold")},
         (PENDING_RPM, "authorize"): (PENDING_FINANCE, RPM),
         (PENDING_FINANCE, "finance_review"): (FINANCE_REVIEWED, REGIONAL_FINANCE),
         (FINANCE_REVIEWED, "finance_review"): (FINANCE_REVIEWED, REGIONAL_FINANCE),
@@ -105,7 +105,10 @@ def transitions_for(log):
         (FINANCE_REVIEWED, "return"): (RETURNED, REGIONAL_FINANCE),
         (FINANCE_REVIEWED, "route_fhi360"): (ROUTED_FHI360, REGIONAL_FINANCE),
         (FINANCE_REVIEWED, "route_cso"): (ROUTED_CSO, REGIONAL_FINANCE),
-        (BUDGET_HOLD, "release"): (FINANCE_REVIEWED, REGIONAL_FINANCE),
+        **({
+            (BUDGET_HOLD, "release"): (FINANCE_REVIEWED, REGIONAL_FINANCE),
+            (BUDGET_HOLD, "finance_review"): (FINANCE_REVIEWED, REGIONAL_FINANCE),
+        } if getattr(log, "finance_snapshot", None) and getattr(log, "approved_at", None) else {}),
         (ROUTED_FHI360, "reopen"): (RETURNED, RPM),
         (ROUTED_CSO, "reopen"): (RETURNED, RPM),
     }

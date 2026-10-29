@@ -9,6 +9,7 @@ let mockRoles = ['PROVIDER'];
 let mockClaims = [];
 let mockCatalogFields = [{ key: 'visits', label: 'Visits completed', unit_type: 'PER_UNIT' }];
 let mockConfigurationError = null;
+let mockCategories = [{ id: 5, name: 'Community outreach', unit_fields: mockCatalogFields, configuration_error: mockConfigurationError }];
 let mockPaths = [];
 
 jest.mock('../AuthContext', () => ({ useAuth: () => ({ me: { id: 99, staff: { id: 99 } }, hasRole: (...roles) => roles.some(role => mockRoles.includes(role)) }) }));
@@ -26,7 +27,7 @@ jest.mock('../hooks', () => ({
       data: path === null ? null : path === '/community-claims/options'
         ? { periods: [{ id: 7, start_date: '2025-01-01', end_date: '2025-01-31', period_label: 'January 2025' }], categories: [] }
         : path && path.startsWith('/community-claims/options') && path.includes('period_id=7')
-          ? { periods: [], categories: [{ id: 5, name: 'Community outreach', unit_fields: mockCatalogFields, configuration_error: mockConfigurationError }] }
+          ? { periods: [], categories: mockCategories.map(category => ({ ...category, unit_fields: mockCatalogFields, configuration_error: mockConfigurationError })) }
           : path && path.startsWith('/claims?work_type=COMMUNITY') ? mockClaims : [],
       error: null, loading: false, reload: jest.fn(), setData: jest.fn(),
     };
@@ -48,7 +49,7 @@ function mount() {
 
 test('provider previews a period aggregate, explicitly saves draft and opens its claim details', async () => {
   api.post.mockImplementation((path) => Promise.resolve(path.endsWith('/preview')
-    ? { amount: 12000, currency: 'TZS', components: [], payor_name: 'Kijiji CSO', region_name: 'Mara', budget_line_id: 3 }
+    ? { amount: 12000, currency: 'TZS', components: [], payor_name: 'Kijiji CSO', region_name: 'Mara', budget_line_id: null }
     : { id: 88, status: 'DRAFT' }));
   const { container, root } = mount();
   try {
@@ -61,6 +62,8 @@ test('provider previews a period aggregate, explicitly saves draft and opens its
     expect(container.textContent).toContain('TZS 12,000');
     expect(container.textContent).toContain('Preview only · not submitted');
     expect(container.textContent).toContain('Save as draft');
+    expect(container.textContent).toContain('No regional budget allocation is required');
+    expect(container.textContent).not.toContain('budget line');
     await act(async () => Simulate.click(Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Save as draft')));
     expect(api.post).toHaveBeenLastCalledWith('/community-claims', expect.objectContaining({ period_id: 7, category_id: 5 }));
     expect(container.textContent).toContain('Opened claim #88');
@@ -119,6 +122,7 @@ test('provider can edit a draft without changing its period or category', async 
     mockRoles = ['PROVIDER'];
     mockCatalogFields = [{ key: 'visits', label: 'Visits completed', unit_type: 'PER_UNIT' }];
     mockConfigurationError = null;
+    mockCategories = [{ id: 5, name: 'Community outreach', unit_fields: mockCatalogFields, configuration_error: mockConfigurationError }];
     mockPaths = [];
     act(() => root.unmount());
     container.remove();
@@ -135,6 +139,21 @@ test('configured category error is shown and prevents preview', () => {
     expect(Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Preview amount').disabled).toBe(true);
   } finally {
     mockConfigurationError = null;
+    act(() => root.unmount());
+    container.remove();
+  }
+});
+
+test('community category setup guidance requires approved rates but not budget mapping', () => {
+  mockCategories = [];
+  const { container, root } = mount();
+  try {
+    act(() => Simulate.change(container.querySelectorAll('select')[0], { target: { value: '7' } }));
+    expect(container.textContent).toContain('approved rates');
+    expect(container.textContent).not.toContain('budget mapping');
+    expect(container.textContent).not.toContain('budget line');
+  } finally {
+    mockCategories = [{ id: 5, name: 'Community outreach', unit_fields: mockCatalogFields, configuration_error: mockConfigurationError }];
     act(() => root.unmount());
     container.remove();
   }

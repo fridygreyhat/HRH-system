@@ -23,3 +23,13 @@ Excluding that work to satisfy a test would break the actual monthly report.
 
 **How to apply:** compare the expected increase over the baseline when a test
 adds next-month entries; do not weaken the report to filter only its test period.
+
+For budget-free finance tests, create a pay period without allocations instead
+of trying to delete an ordinary fixture's allocation history.
+
+**Why:** ordinary financial fixtures already allocate funds, and append-only
+ledger protection applies in test databases too.
+
+**How to apply:** use the normal period-creation API without allocating funds.
+Keep financial triggers enabled and verify that new payments create no budget
+ledger activity; do not remove history to manufacture an empty financial state.

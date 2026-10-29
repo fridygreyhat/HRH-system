@@ -35,7 +35,7 @@ export function Claims() {
         <div>
           <h1>{onlyProvider ? 'My payment claims' : 'Payment claims'}</h1>
           <p className="muted small">
-            Claim status and payment status are separate. A work-log claim awaiting finance review is an operational record, not a routed, budget-committed or payable claim.
+            Claim status and payment status are separate. A work-log claim awaiting finance review is an operational record, not routed or payable yet.
           </p>
         </div>
         <div className="row">

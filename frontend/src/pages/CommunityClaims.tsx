@@ -130,7 +130,7 @@ export function CommunityClaims() {
             <span className="community-step">01 / PREPARE</span>
             <div>
               <h2 id="community-form-title">{editing ? `Edit draft #${editing.id}` : 'Prepare a period claim'}</h2>
-              <p className="muted small">Enter the category’s configured totals for the period. No daily evidence is required.</p>
+              <p className="muted small">Enter period totals priced from approved community rates. No regional budget allocation is required, and daily evidence is not part of this claim type.</p>
             </div>
           </div>
           <Alert>{options.error || previewAction.error || saveAction.error}</Alert>
@@ -164,7 +164,7 @@ export function CommunityClaims() {
               )}
             </div>
             {periodId && !options.loading && categories.length === 0 && (
-              <div className="community-config-state"><strong>No community categories are configured for this period.</strong><p>Approved rates and regional budget mapping must be configured before a claim can be made.</p></div>
+              <div className="community-config-state"><strong>No community categories are configured for this period.</strong><p>Ask your programme administrator to configure the eligible community categories and approved rates.</p></div>
             )}
             {selectedCategory?.configuration_error && <Alert kind="warn">{selectedCategory.configuration_error}</Alert>}
             {(editing || selectedCategory) && (
@@ -211,7 +211,7 @@ export function CommunityClaims() {
         </section>
       )}
 
-      {!provider && <section className="community-flow card"><span className="community-step">INDEPENDENT REVIEW · ROUTE C</span><p><strong>Provider submits → scoped verifier confirms → CSO Finance approves and pays.</strong> No RM or Regional Finance routing is required for this claim type.</p></section>}
+      {!provider && <section className="community-flow card"><span className="community-step">INDEPENDENT REVIEW · ROUTE C</span><p><strong>Provider submits → scoped verifier confirms → assigned CSO Finance approves → payment, proof and reconciliation.</strong> Approved community rates determine the amount; no RM, Regional Finance or regional budget allocation is required.</p></section>}
       <section className="stack">
         <div className="community-list-heading"><div><span className="community-step">CLAIM REGISTER</span><h2>{provider ? 'Your claims' : 'Claims in your scope'}</h2></div><span className="muted small">Work approval and payment recording remain separate.</span></div>
         <AsyncState data={claims.data} error={claims.error} loading={claims.loading} empty="No community claims are visible yet. Drafts and reviews will appear here when available.">

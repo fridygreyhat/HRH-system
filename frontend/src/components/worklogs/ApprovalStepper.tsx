@@ -52,7 +52,7 @@ function states(status: string, audit: WorkLogAudit[], steps: typeof ALL_STEPS):
     if (status === 'RETURNED_TO_PROVIDER' || status === 'BUDGET_HOLD') return 'warn';
     return status === 'DRAFT' ? 'upcoming' : 'current';
   });
-  const note = status === 'RETURNED_TO_PROVIDER' ? 'Returned for correction' : status === 'BUDGET_HOLD' ? 'Budget hold' : null;
+  const note = status === 'RETURNED_TO_PROVIDER' ? 'Returned for correction' : status === 'BUDGET_HOLD' ? 'Historical hold' : null;
   return { current, state, note };
 }
 

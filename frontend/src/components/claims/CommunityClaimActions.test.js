@@ -15,6 +15,7 @@ const mockClaim = {
   origin_channel: 'COMMUNITY', work_log_id: null, batch_reference: null, verified_at: null, approved_at: null,
   created_at: '2025-01-01T00:00:00Z', declared_units: { visits: 12 }, evidence_text: 'Community clinic support', description: 'Community clinic support',
   budget_line_id: 3, category_id: 5, period_id: 7, staff_id: 8, payor_org_id: 4, executor_org_id: null,
+  payment_policy: null,
   created_by: 8, updated_at: '2025-01-01T00:00:00Z',
 };
 let mockRole = 'COMMUNITY_VERIFIER';
@@ -73,6 +74,33 @@ test('claim viewers without budget visibility do not see embedded estimate detai
     expect(container.textContent).not.toContain('Soft estimate reached');
   } finally {
     mockClaim.budget_line = null;
+    mockRole = 'COMMUNITY_VERIFIER';
+    act(() => root.unmount());
+    container.remove();
+  }
+});
+
+test('new direct community claims omit budget-line details and preserve approval safeguards', () => {
+  mockRole = 'CSO_FINANCE';
+  mockClaim.budget_line = null;
+  mockClaim.budget_line_id = null;
+  mockClaim.payment_policy = 'APPROVED_AMOUNTS_NO_BUDGET';
+  mockClaim.available_actions = ['approve'];
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  act(() => root.render(<ClaimDrawer claimId={43} onClose={() => {}} />));
+  try {
+    expect(container.textContent).not.toContain('Budget line');
+    const approve = Array.from(container.querySelectorAll('button')).find(button => button.textContent.trim() === 'Approve');
+    expect(approve).toBeTruthy();
+    act(() => approve.click());
+    expect(container.textContent).toContain('No regional budget allocation is required');
+    expect(container.textContent).toContain('payment is recorded separately with proof');
+  } finally {
+    mockClaim.budget_line_id = 3;
+    mockClaim.payment_policy = null;
+    mockClaim.available_actions = ['verify_community', 'send_back'];
     mockRole = 'COMMUNITY_VERIFIER';
     act(() => root.unmount());
     container.remove();

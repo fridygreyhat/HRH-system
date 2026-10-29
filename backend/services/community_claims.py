@@ -118,18 +118,13 @@ def quote(db, current, period_id, category_id, declared):
     if not category.funding_source_id:
         raise HTTPException(422, "The community category needs a configured funding source")
     cso_regions.require_assignment(db, assignment.organization_id, assignment.region_id)
-    line = budgets.find_line(db, category.id, period.id, assignment.organization_id, assignment.region_id, strict_region=True)
-    if not line:
-        raise HTTPException(422, "Configure a CSO-owned budget for this exact region, category and pay period")
     components = [{
         "rate_rule_id": rule.id, "component_name": rule.component_name, "unit_type": rule.unit_type,
         "measure_key": rule.measure_key, "rate": rule.rate_value, "cap_amount": rule.cap_amount,
         "currency": rule.currency, "effective_start_date": rule.effective_start_date,
     } for rule in approved_rules(db, category, staff, period, assignment)]
     components, amount, currency = calculate(components, declared)
-    if currency != line.currency:
-        raise HTTPException(422, "The captured rate currency does not match the regional CSO budget")
-    return staff, period, assignment, category, line, components, amount, currency
+    return staff, period, assignment, category, None, components, amount, currency
 
 
 def save_components(db, claim, components):
@@ -150,9 +145,10 @@ def check_authority(db, claim, *, lock=False):
     route = db.get(PaymentRoute, category.route_id) if category else None
     if not category or not category.is_active or category.requires_work_log or category.origin_channel != "COMMUNITY" or not route or route.code != "C":
         raise HTTPException(409, "This category is no longer configured for direct community claims")
-    line = budgets.find_line(db, category.id, claim.period_id, claim.executor_org_id, assignment.region_id, strict_region=True)
-    if not line or line.id != claim.budget_line_id or line.currency != claim.currency:
-        raise HTTPException(409, "The regional CSO budget configuration changed; do not charge a different allocation")
+    if snapshot.get("payment_policy") != "APPROVED_AMOUNTS_NO_BUDGET":
+        line = budgets.find_line(db, category.id, claim.period_id, claim.executor_org_id, assignment.region_id, strict_region=True)
+        if not line or line.id != claim.budget_line_id or line.currency != claim.currency:
+            raise HTTPException(409, "The historical regional CSO budget configuration changed.")
     return assignment
 
 
@@ -224,11 +220,18 @@ def perform(db, current, claim, action, comment):
                 raise HTTPException(422, "Configure the provider's bank or mobile-money payment details before approving")
             claim.approved_by, claim.approved_at = current.id, utcnow()
             claim.calculation_snapshot = {**claim.calculation_snapshot, "authorized_at": claim.approved_at.isoformat()}
-        details = cl._commit_budget(db, current, claim)
+        if (claim.calculation_snapshot or {}).get("payment_policy") == "APPROVED_AMOUNTS_NO_BUDGET":
+            if claim.budget_line_id is not None:
+                raise HTTPException(409, "This claim has inconsistent financial history; contact the administrator.")
+            claim.status = cl.APPROVED
+            claim.exception_reason = None
+            details = {"budget_required": False, "payment_policy": "APPROVED_AMOUNTS_NO_BUDGET"}
+        else:
+            details = cl._commit_budget(db, current, claim)
         if claim.status == cl.APPROVED:
             claim.status = cl.READY
     elif action == "cancel":
-        if old in cl.COMMITTED_STATUSES:
+        if old in cl.COMMITTED_STATUSES and claim.budget_line_id:
             budgets.release(db, claim.budget_line_id, claim.amount, claim.id, current.id, comment)
         claim.status = cl.CANCELLED
         if current.staff_id == claim.staff_id:

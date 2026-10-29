@@ -78,7 +78,9 @@ def test_verifier_or_technical_review_goes_direct_to_independent_cso(api, db, co
     assert approved["payment_recipient"]["payment_account"]
     assert approved["payment_recipient"]["name"] == approved["staff_name"]
     assert approved["payor_name"] == approved["executor_name"] == "DEMO CSO Iringa"
-    assert {row["action"] for row in approved["audit"]} >= {"create_community", "submit", "verify_community", "approve"}
+    assert approved["audit"] == []  # Raw history remains administrator-only.
+    admin_view = api.get(f"/claims/{claim['id']}", "admin")
+    assert {row["action"] for row in admin_view["audit"]} >= {"create_community", "submit", "verify_community", "approve"}
     assert all(row["claim_id"] != claim["id"] for row in api.get("/finance/pending-routing", "admin"))
 
 
@@ -172,31 +174,24 @@ def test_dual_role_verifier_cannot_approve_the_claim_they_verified(api, db, comm
         db.commit()
 
 
-def test_empty_regional_budget_holds_then_releases_one_commitment(api, db, community):
+def test_empty_regional_budget_does_not_hold_new_community_payments(api, db, community):
     from backend.models import BudgetLine, BudgetTransaction
     claim = verified(api, community)
-    line = db.get(BudgetLine, claim["budget_line_id"])
-    allocation = line.allocated_amount
-    line.allocated_amount = 0
+    lines = db.query(BudgetLine).filter_by(category_id=claim["category_id"], period_id=claim["period_id"]).all()
+    for line in lines:
+        line.allocated_amount = 0
     db.commit()
-    held = api.post(f"/claims/{claim['id']}/actions/approve", "csofin1")
-    assert held["status"] == "BUDGET_HOLD" and held["payment_actions"] == []
+    ready = api.post(f"/claims/{claim['id']}/actions/approve", "csofin1")
+    assert ready["status"] == "READY" and ready["budget_line_id"] is None
     api.post(f"/claims/{claim['id']}/actions/release", "rpm1", {"comment": "Cannot bypass CSO"}, expect=403)
-    still_held = api.post(f"/claims/{claim['id']}/actions/release", "csofin2", {"comment": "Rechecked regional allocation"})
-    assert still_held["status"] == "BUDGET_HOLD"
+    api.post(f"/claims/{claim['id']}/actions/release", "csofin2", {"comment": "Already ready"}, expect=409)
     db.expire_all()
-    line.allocated_amount = allocation
-    db.commit()
-    ready = api.post(f"/claims/{claim['id']}/actions/release", "csofin2", {"comment": "Funding restored"})
-    assert ready["status"] == "READY"
-    api.post(f"/claims/{claim['id']}/actions/release", "csofin2", {"comment": "No duplicate commitment"}, expect=409)
-    db.expire_all()
-    assert line.committed_amount == Decimal(str(claim["amount"]))
-    assert db.query(BudgetTransaction).filter_by(claim_id=claim["id"], kind="COMMIT").count() == 1
+    assert all(line.committed_amount == 0 for line in lines)
+    assert db.query(BudgetTransaction).filter_by(claim_id=claim["id"]).count() == 0
 
 
 def test_payment_requires_proof_even_when_global_setting_is_off_and_reconciliation_is_independent(api, db, community):
-    from backend.models import BudgetLine
+    from backend.models import BudgetTransaction
     claim = verified(api, community)
     ready = api.post(f"/claims/{claim['id']}/actions/approve", "csofin1")
     amount = ready["amount"]
@@ -222,8 +217,8 @@ def test_payment_requires_proof_even_when_global_setting_is_off_and_reconciliati
             "amount": amount, "payment_reference": "NO-SECOND-PAYMENT", "payment_date": "2026-01-01",
         }, expect=409)
         db.expire_all()
-        line = db.get(BudgetLine, claim["budget_line_id"])
-        assert line.spent_amount == Decimal(str(amount)) and line.committed_amount == 0
+        assert claim["budget_line_id"] is None
+        assert db.query(BudgetTransaction).filter_by(claim_id=claim["id"]).count() == 0
     finally:
         api.put("/admin/settings/payment_requires_proof", "admin", {"value": True, "reason": "Restore proof policy"})
 

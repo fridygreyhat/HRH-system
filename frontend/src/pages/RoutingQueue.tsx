@@ -42,7 +42,7 @@ export function RoutingQueue() {
             <option value="">All stages</option>
             <option value="PENDING_FINANCE_REVIEW">Amount review</option>
             <option value="FINANCE_REVIEWED">Channel selection</option>
-            <option value="BUDGET_HOLD">Budget hold</option>
+            <option value="BUDGET_HOLD">Historical hold</option>
           </select>
         </Field>
         {regions.error && <Alert kind="warn">Region options could not be loaded. You can still review the full queue. {regions.error}</Alert>}
@@ -59,7 +59,7 @@ export function RoutingQueue() {
           error={null}
           loading={queue.loading}
           isEmpty={(items) => items.every((item) => item.work_type !== 'SERVICES')}
-          empty={<div className="routing-empty"><span aria-hidden="true">✓</span><strong>No service claims need finance action</strong><p>RM-approved service claims appear here for payment review, channel selection or budget-hold resolution. Payroll is reported separately by calendar month.</p></div>}
+          empty={<div className="routing-empty"><span aria-hidden="true">✓</span><strong>No service claims need finance action</strong><p>RM-approved service claims appear here for fixed daily amount review, channel selection or historical hold review. Payroll is reported separately by calendar month.</p></div>}
         >
           {(items) => (
             <div className="table-wrap routing-table-wrap">
@@ -75,13 +75,13 @@ export function RoutingQueue() {
                     <td><strong>{item.provider_name}</strong><span className="routing-subline">{item.cadre_code} · {item.cadre_name}</span></td>
                     <td><strong>{item.facility_name || 'Facility not recorded'}</strong><span className="routing-subline">{item.region_name}</span></td>
                     <td>{item.period_label}<span className="routing-subline"><span className="type-mark type-services">Services</span></span></td>
-                    <td><StatusBadge kind="log" status={item.status} bare /><span className="routing-subline">{reviewAmount ? 'Amount review required' : resolveHold ? 'Budget hold' : 'Channel selection'}</span></td>
+                    <td><StatusBadge kind="log" status={item.status} bare /><span className="routing-subline">{reviewAmount ? 'Amount review required' : resolveHold ? 'Historical hold' : 'Channel selection'}</span></td>
                     <td className="num routing-amount">{item.amount === null || !item.currency ? <span className="muted">Not prepared</span> : `${item.currency} ${item.amount}`}</td>
                     <td>
                       {item.eligible_payors.length ? item.eligible_payors.map((payor) => <span className="routing-payor" key={payor.id}>{payor.name}</span>) : <span className="muted">Pending lookup</span>}
                       {item.routing_exception && <span className="routing-exception" title={item.routing_exception}>Exception to resolve</span>}
                     </td>
-                    <td><button type="button" className="btn btn-primary btn-sm" onClick={() => setOpenId(item.work_log_id)}>{reviewAmount ? 'Review amount' : resolveHold ? 'Resolve hold' : 'Choose channel'}</button></td>
+                    <td><button type="button" className="btn btn-primary btn-sm" onClick={() => setOpenId(item.work_log_id)}>{reviewAmount ? 'Review amount' : resolveHold ? 'Review historical hold' : 'Choose channel'}</button></td>
                   </tr>
                   );
                 })}</tbody>
@@ -90,7 +90,7 @@ export function RoutingQueue() {
           )}
         </AsyncState>
       )}
-      <p className="muted small routing-footnote">This queue retains Services payment review, routing and hold-resolution actions. Payroll has no pricing, budget check, finance approval or routing step; view RM-authorized work in the monthly report.</p>
+      <p className="muted small routing-footnote">Services use approved fixed daily rates; only the highest eligible amount per day is payable. Historical held records remain available for finance review. Payroll has no pricing, finance approval or routing step; view RM-authorized work in the monthly report.</p>
       {openId !== null && <WorkLogDrawer logId={openId} onClose={() => setOpenId(null)} onChanged={queue.reload} />}
     </div>
   );

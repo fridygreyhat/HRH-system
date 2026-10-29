@@ -19,7 +19,7 @@ import {
 import { useApi } from '../hooks';
 import { Cadre, DashboardData, Named, PayPeriod } from '../types';
 
-const EXCEPTION_ACTIONS = ['return', 'return_to_reviewer', 'reject', 'hold', 'reopen', 'decline'];
+const EXCEPTION_ACTIONS = ['return', 'return_to_reviewer', 'reject', 'reopen', 'decline'];
 const ROUTES = ['A', 'B', 'C'];
 const ROUTE_NAMES: Record<string, string> = { A: 'FHI360 Payment', B: 'CSO Payment · Facility payroll', C: 'CSO Payment · Community', UNROUTED: 'No payment route (exception)' };
 const ROUTE_SHORT: Record<string, string> = { A: 'Paid by FHI360', B: 'Facility → FHI360 → CSO', C: 'Community, paid by CSO', UNROUTED: 'Exception' };
@@ -29,7 +29,6 @@ const PIPELINE = [
   'PENDING_PROVIDER_OTP_CONFIRMATION',
   'PENDING_TECHNICAL_REVIEW',
   'PENDING_RPM_AUTHORIZATION',
-  'BUDGET_HOLD',
   'RETURNED_TO_PROVIDER',
   'APPROVED',
   'REJECTED',
@@ -40,7 +39,7 @@ const CLAIM_GROUPS = [
   { key: 'preparing', label: 'Preparing', statuses: ['DRAFT', 'VALIDATION_NEEDED', 'PENDING_COMMUNITY_VERIFICATION'] },
   { key: 'awaiting', label: 'Awaiting approval', statuses: ['AWAITING_APPROVAL'] },
   { key: 'approved', label: 'Approved / ready', statuses: ['APPROVED', 'READY'] },
-  { key: 'held', label: 'Budget hold', statuses: ['BUDGET_HOLD', 'HELD'] },
+  { key: 'held', label: 'Held', statuses: ['BUDGET_HOLD', 'HELD'] },
   { key: 'exported', label: 'Exported / handed off', statuses: ['EXPORTED', 'HANDED_OFF'] },
 ];
 const PAYMENT_GROUPS = [
@@ -52,9 +51,6 @@ const PAYMENT_GROUPS = [
 ];
 
 type Totals = Record<string, { count: number; amount: number }>;
-type BudgetSummary = Exclude<DashboardData['budgets'], never[]>;
-const isBudgetSummary = (b: DashboardData['budgets']): b is BudgetSummary => !Array.isArray(b);
-
 function grouped(totals: Totals, groups: typeof CLAIM_GROUPS) {
   return groups.map((g) => {
     const count = g.statuses.reduce((s, k) => s + (totals[k]?.count || 0), 0);
@@ -124,8 +120,6 @@ function DashboardBody({ d, periodSelected }: { d: DashboardData; periodSelected
     (s, r) => s + ['APPROVED', 'READY', 'EXPORTED', 'HANDED_OFF'].reduce((x, k) => x + (d.claims[r].by_status[k]?.amount || 0), 0),
     0,
   ) - paid;
-  const budgets = d.budgets;
-  const used = isBudgetSummary(budgets) && budgets.allocated > 0 ? (budgets.committed + budgets.spent) / budgets.allocated : null;
   const c = d.work_logs.completeness;
   const pipeline = PIPELINE.filter((s) => d.work_logs.by_status[s]).map((s) => ({ key: s, label: label(WORKLOG_STATUS_LABELS, s), value: d.work_logs.by_status[s] }));
   const routeRow = (r: string) => (
@@ -144,13 +138,7 @@ function DashboardBody({ d, periodSelected }: { d: DashboardData; periodSelected
         <Kpi icon="clock" label={`Waiting ${reminderHours} h or more`} value={num(late)} tone={late ? 'danger' : 'success'} hint={late ? 'Reminder checks run hourly' : 'All queues within target'} />
         <Kpi icon="receipt" label="Approved, not yet paid" value={compactMoney(Math.max(approvedUnpaid, 0))} hint="Liabilities still moving to payment" />
         <Kpi icon="wallet" label="Paid & recorded" value={compactMoney(paid)} tone="success" hint="Payment status Paid or Reconciled" />
-        <Kpi
-          icon="pie"
-          label="Budget used"
-          value={used === null ? '—' : `${Math.round(used * 100)}%`}
-          tone={used !== null && used > 0.9 ? 'warn' : undefined}
-          hint={isBudgetSummary(budgets) ? `${num(budgets.claims_on_hold)} claim(s) on budget hold` : 'Not in your view'}
-        />
+        <Kpi icon="receipt" label="Services rate basis" value="Fixed daily amount" hint="Highest eligible service amount per day" />
       </div>
 
       <div className="grid-charts">
@@ -285,65 +273,6 @@ function DashboardBody({ d, periodSelected }: { d: DashboardData; periodSelected
           )}
         </ChartCard>
 
-        {isBudgetSummary(budgets) && (
-          <ChartCard
-            title="Budget utilization"
-            subtitle={`${num(budgets.lines)} budget line(s) in your view.`}
-            table={
-              <table>
-                <tbody>
-                  {(
-                    [
-                      ['Allocated', budgets.allocated],
-                      ['Committed (approved, unpaid)', budgets.committed],
-                      ['Spent (recorded payments)', budgets.spent],
-                      ['Remaining', budgets.remaining],
-                    ] as [string, number][]
-                  ).map(([k, v]) => (
-                    <tr key={k}>
-                      <th scope="row">{k}</th>
-                      <td className="num">{money(v)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            }
-            footer={
-              <div className="row small">
-                {budgets.claims_on_hold > 0 && (
-                  <span className="badge badge-warn">
-                    <Icon name="alert" size={13} /> {num(budgets.claims_on_hold)} on budget hold
-                  </span>
-                )}
-                {budgets.unsynced_tracker_lines > 0 && <span className="badge badge-info">{num(budgets.unsynced_tracker_lines)} tracker line(s) not synced</span>}
-                <span className="muted">FHI360 lines sync by file; there is no live tracker connection.</span>
-              </div>
-            }
-          >
-            <StackedBars
-              categories={[
-                { key: 'spent', label: 'Spent' },
-                { key: 'committed', label: 'Committed' },
-                { key: 'remaining', label: 'Remaining' },
-              ]}
-              format={compactMoney}
-              rows={[
-                {
-                  key: 'all',
-                  label: 'All visible lines',
-                  tipLabel: 'Budget',
-                  caption: `of ${compactMoney(budgets.allocated)} allocated`,
-                  segments: [
-                    { key: 'spent', label: 'Spent', value: budgets.spent },
-                    { key: 'committed', label: 'Committed', value: budgets.committed },
-                    { key: 'remaining', label: 'Remaining', value: Math.max(budgets.remaining, 0) },
-                  ],
-                },
-              ]}
-            />
-          </ChartCard>
-        )}
-
         <ChartCard
           title="Completeness & review exceptions"
           subtitle="How many active staff have a log, and how often reviewers sent logs back."
@@ -400,7 +329,7 @@ export function Dashboard() {
         <div>
           <p className="eyebrow">{greeting()}, {me?.full_name.split(' ')[0]}</p>
           <h1>Programme overview</h1>
-          <p className="muted">Every figure covers only the staff, work logs, claims and budgets you are allowed to see.</p>
+          <p className="muted">Every figure covers only the staff, work logs and claims you are allowed to see.</p>
         </div>
         <button type="button" className="btn btn-secondary" onClick={dash.reload} disabled={dash.loading}>
           <Icon name="refresh" size={16} /> {dash.loading ? 'Refreshing…' : 'Refresh'}

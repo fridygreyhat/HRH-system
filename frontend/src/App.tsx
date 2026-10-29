@@ -3,11 +3,10 @@ import { useAuth } from './AuthContext';
 import { BrandMark, Icon } from './components/Icon';
 import { roleLabel } from './format';
 import { useApi } from './hooks';
-import { canOpenBudgetAllocation, isBudgetAllocationEntry, navigate, useHashRoute } from './nav';
+import { navigate, useHashRoute } from './nav';
 import { Admin } from './pages/Admin';
 import { Batches } from './pages/Batches';
 import { BackdateAccess } from './pages/BackdateAccess';
-import { Budgets } from './pages/Budgets';
 import { Claims } from './pages/Claims';
 import { CommunityClaims } from './pages/CommunityClaims';
 import { CsoPortal } from './pages/CsoPortal';
@@ -41,11 +40,11 @@ interface Page {
   render: () => React.ReactNode;
 }
 
-const PAGES: Page[] = [
+export const PAGES: Page[] = [
   {
     key: 'dashboard',
     label: 'Dashboard',
-    description: 'Pipeline, queues, claims and budgets at a glance',
+    description: 'Work approvals, claims and payment progress at a glance',
     icon: 'dashboard',
     group: 'Overview',
     roles: ['OVERSIGHT', 'RPM', 'REGIONAL_FINANCE', 'TECHNICAL_OFFICER', 'SUPERVISOR', 'FHI360_FINANCE', 'CSO_FINANCE', 'CENTRAL_ADMIN', 'REGIONAL_ADMIN'],
@@ -80,7 +79,6 @@ const PAGES: Page[] = [
   { key: 'batches', label: 'Payroll batches', description: 'Exports, FHI360 → CSO handoffs and receipts', icon: 'layers', group: 'Finance', roles: ['FHI360_FINANCE', 'CSO_FINANCE', 'OVERSIGHT'], render: () => <Batches /> },
   { key: 'cso', label: 'CSO payments', description: 'Your pending payments, proof and reconciliation', icon: 'wallet', group: 'Finance', roles: ['CSO_FINANCE'], render: () => <CsoPortal /> },
   { key: 'community-claims', label: 'Community claims', description: 'Period-based community claims and direct payment', icon: 'users', group: 'Finance', roles: ['PROVIDER', 'COMMUNITY_VERIFIER', 'TECHNICAL_OFFICER', 'CSO_FINANCE', 'OVERSIGHT', 'SUPER_ADMIN'], render: () => <CommunityClaims /> },
-  { key: 'budgets', label: 'Budgets', description: 'Allocations, commitments, spend and tracker sync', icon: 'pie', group: 'Finance', roles: ['FHI360_FINANCE', 'CSO_FINANCE', 'RPM', 'OVERSIGHT'], render: () => <Budgets /> },
   {
     key: 'staff',
     label: 'Staff registry',
@@ -164,9 +162,7 @@ function App() {
   const [passwordOpen, setPasswordOpen] = useState(false);
   const pages = PAGES.filter((p) => hasRole(...p.roles));
   const defaultPage = pages[0];
-  const budgetAllocateEntry = isBudgetAllocationEntry(route);
-  const mayCreateBudget = canOpenBudgetAllocation(me?.roles || []);
-  const current = pages.find((p) => p.key === (budgetAllocateEntry ? 'budgets' : route.page)) || defaultPage;
+  const current = pages.find((p) => p.key === route.page) || defaultPage;
   const isReviewer = hasRole(...REVIEWERS);
   // A super admin holds every role; naming them all would crowd the top bar.
   const roleSummary = me ? (me.roles.includes('SUPER_ADMIN') ? roleLabel('SUPER_ADMIN') : me.roles.map(roleLabel).join(', ')) : '';
@@ -276,9 +272,7 @@ function App() {
         <main className="content">
           {current ? (
             <React.Fragment key={current.key}>
-              {budgetAllocateEntry && current.key === 'budgets'
-                ? <Budgets initialCreate={mayCreateBudget} />
-                : current.render()}
+              {current.render()}
             </React.Fragment>
           ) : (
             <p className="empty">Your account has no roles with pages yet. Ask an administrator.</p>

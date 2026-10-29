@@ -20,11 +20,10 @@ import {
 } from '../../format';
 import { useApi } from '../../hooks';
 import { navigate } from '../../nav';
-import { ChannelResponse, ClaimCategory, FinancePayorsResponse, ReturnFlag, WorkLogDetail, WorkLogSnapshot } from '../../types';
+import { ChannelResponse, FinancePayorsResponse, ReturnFlag, WorkLogDetail, WorkLogSnapshot } from '../../types';
 import { Alert, AuditTimeline, DevCodeNotice, Drawer, Facts, Field, Modal, ReasonDialog, Section, StatusBadge } from '../ui';
 import { EntriesView, FLAG_GENERAL_FIELDS, FlagsList, TotalsPanel } from './shared';
-import { canRouteReviewedFinanceContext, reviewedFinanceContextChanged, selectionAfterFundingSourceChange, serviceCategoriesForSource } from './FundingReview';
-import { FundingCategorySetup } from './FundingCategorySetup';
+import { buildServiceFinanceReviewPayload, canRouteReviewedFinanceContext, canSubmitServiceFinanceReview, FIXED_DAILY_NO_BUDGET, reviewedFinanceContextChanged, supportedServiceFundingSources } from './FundingReview';
 
 const ACTION_HELP: Record<string, string> = {
   verify: 'Confirms the work occurred and freezes the current content as a new version.',
@@ -33,14 +32,16 @@ const ACTION_HELP: Record<string, string> = {
   return: 'Send back to the provider for correction. Resubmission restarts the whole review chain.',
   return_to_reviewer: 'Send back to the previous review stage.',
   reject: 'Final rejection of this work log.',
-  hold: 'Place on budget hold until released.',
-  release: 'Release the budget hold back to RM authorization.',
+  hold: 'Place this historical claim on hold.',
+  release: 'Release this historical hold back to RM authorization.',
   reopen: 'Reopen an approved log for correction (linked claims must be cancelled first).',
-  finance_review: 'Confirm the Services funding programme and its configured budget category before routing.',
+  finance_review: 'Confirm the funding source and fixed daily amount before routing.',
 };
 
 function actionDisplayLabel(action: string, hasFinanceSnapshot: boolean): string {
-  if (action === 'finance_review') return hasFinanceSnapshot ? 'Re-review Services finance setup' : 'Review Services funding and category';
+  if (action === 'finance_review') return hasFinanceSnapshot ? 'Re-review Services funding source' : 'Review Services funding source';
+  if (action === 'release') return 'Release historical hold';
+  if (action === 'hold') return 'Place historical claim on hold';
   return WORKLOG_ACTION_LABELS[action] || humanize(action);
 }
 
@@ -173,11 +174,6 @@ function VersionModal({ log, version, onClose }: { log: WorkLogDetail; version: 
   );
 }
 
-function snapshotCategoryId(log: WorkLogDetail): string {
-  const value = log.finance_snapshot?.category_id;
-  return value === null || value === undefined ? '' : String(value);
-}
-
 type FundingSource = { id: number; code: string; name: string };
 
 function snapshotFundingSourceId(log: WorkLogDetail): string {
@@ -191,8 +187,6 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
   const isRpmWithoutFinanceRole = hasRole('RPM') && !hasRole('REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE');
   const financeSummaryOnly = hasRole('REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE')
     && !hasRole('SUPER_ADMIN', 'SYSTEM_ADMIN', 'CENTRAL_ADMIN', 'REGIONAL_ADMIN', 'SUPERVISOR', 'TECHNICAL_OFFICER', 'RPM');
-  const canConfigureFundingCategory = hasRole('FHI360_FINANCE', 'SUPER_ADMIN');
-  const showFundingSetupHint = hasRole('REGIONAL_FINANCE') && !canConfigureFundingCategory;
   const { data: log, error, loading, setData, reload } = useApi<WorkLogDetail>(`/worklogs/${logId}`);
   const [action, setAction] = useState<string | null>(null);
   const [flags, setFlags] = useState<ReturnFlag[]>([]);
@@ -202,12 +196,9 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
   const [version, setVersion] = useState<number | null>(null);
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [reviewReached, setReviewReached] = useState(false);
-  const [categoryId, setCategoryId] = useState('');
   const [fundingSourceId, setFundingSourceId] = useState('');
-  const [fundingSetupNeedsReview, setFundingSetupNeedsReview] = useState(false);
   const [targetPayorId, setTargetPayorId] = useState('');
   const reviewMarker = useRef<HTMLDivElement | null>(null);
-  const categories = useApi<ClaimCategory[]>(log?.workflow_version === 2 && (Boolean(log.finance_snapshot) || log.available_actions.includes('finance_review')) ? '/admin/claim-categories' : null);
   const fundingSources = useApi<FundingSource[]>(log?.workflow_version === 2 && log.work_type === 'SERVICES' && (Boolean(log.finance_snapshot) || log.available_actions.includes('finance_review')) ? '/admin/funding-sources' : null);
   const routingActionAvailable = Boolean(log?.available_actions.some((item) => item === 'route_fhi360' || item === 'route_cso'));
   const payors = useApi<FinancePayorsResponse>(routingActionAvailable ? `/finance/payors?work_log_id=${logId}` : null);
@@ -215,22 +206,9 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
   useEffect(() => {
     setReviewConfirmed(false);
     setReviewReached(false);
-    setCategoryId(log ? snapshotCategoryId(log) : '');
     setFundingSourceId(log ? snapshotFundingSourceId(log) : '');
-    setFundingSetupNeedsReview(false);
     setTargetPayorId('');
   }, [log]);
-
-  // Older finance snapshots only saved the category. Resolve its configured source once
-  // the category list is available; never infer/reassign a source from a user selection.
-  useEffect(() => {
-    if (!log || log.work_type !== 'SERVICES' || fundingSourceId || !categoryId || !categories.data) return;
-    const snapshotSource = snapshotFundingSourceId(log);
-    const selectedCategory = categories.data.find((item) => String(item.id) === categoryId);
-    if (snapshotSource || selectedCategory?.funding_source_id != null) {
-      setFundingSourceId(snapshotSource || String(selectedCategory?.funding_source_id));
-    }
-  }, [log, categoryId, fundingSourceId, categories.data]);
 
   useEffect(() => {
     const marker = reviewMarker.current;
@@ -273,14 +251,18 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
         ...(log.workflow_version === 2 ? {
           review_confirmed: true,
           review_type: log.work_type,
-          ...(action === 'finance_review' && log.work_type === 'SERVICES' ? {
-            category_id: Number(categoryId),
-            funding_source_id: Number(fundingSourceId),
-          } : {}),
+          ...(action === 'finance_review' && log.work_type === 'SERVICES'
+            ? buildServiceFinanceReviewPayload({
+              review_confirmed: true,
+              review_type: log.work_type,
+              expected_version: log.version,
+              expected_review_token: log.finance_snapshot?.review_token,
+              comment: comment || null,
+            }, fundingSourceId)
+            : {}),
         } : {}),
       });
       setData(result);
-      if (action === 'finance_review') setFundingSetupNeedsReview(false);
       setNotice(`${WORKLOG_ACTION_LABELS[action] || humanize(action)}: done.`);
       setDevOtp(result.otp?.dev_otp || null);
       setAction(null);
@@ -301,16 +283,12 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
     await reload();
   };
 
-  const matchingCategories = serviceCategoriesForSource(categories.data || [], fundingSourceId);
-  const savedCategoryId = log ? snapshotCategoryId(log) : '';
   const savedSourceId = log ? snapshotFundingSourceId(log) : '';
-  const inferredSavedSourceId = savedSourceId || (savedCategoryId
-    ? String(categories.data?.find((item) => String(item.id) === savedCategoryId)?.funding_source_id ?? '')
-    : '');
   const hasLegacySnapshot = Boolean(log?.finance_snapshot && log.work_type === 'SERVICES');
-  const hasReviewedContext = Boolean(savedSourceId || (categories.data && (savedCategoryId ? inferredSavedSourceId : true)));
-  const reviewedContextDirty = fundingSetupNeedsReview || (hasLegacySnapshot && hasReviewedContext
-    && reviewedFinanceContextChanged(fundingSourceId, categoryId, inferredSavedSourceId, savedCategoryId));
+  const reviewedContextDirty = hasLegacySnapshot
+    && reviewedFinanceContextChanged(fundingSourceId, savedSourceId);
+  const availableFundingSources = supportedServiceFundingSources(fundingSources.data || []);
+  const fixedDailyNoBudget = log?.finance_snapshot?.payment_policy === FIXED_DAILY_NO_BUDGET;
 
   return (
     <Drawer title={log ? `${log.staff_name} · ${log.period_label}` : `Work log #${logId}`} onClose={onClose} wide>
@@ -447,13 +425,13 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
             <Section title="Linked claims">
               {log.claims.some((claim) => claim.status === 'PENDING_FINANCE_REVIEW') && (
                 <p className="notice notice-info">
-                  RM authorization records a pending finance claim from the activity rate snapshots. This is an operational record for finance review—not routed, budget-committed or payable. Regional Finance reviews this same claim and selects its category.
+                  RM authorization records the activity-rate amount for finance review. It is not routed or payable yet; Regional Finance confirms the funding source and fixed daily amount before routing.
                 </p>
               )}
               <ul className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                 {log.claims.map((c) => (
                   <li key={c.id} className="row">
-                    <span>Claim #{c.id}{c.category_name ? ` · ${c.category_name}` : c.category_id == null ? ' · Category not selected' : ''}{c.amount != null ? ` · ${c.currency || 'TZS'} ${num(c.amount)}` : ''}</span>
+                    <span>Claim #{c.id}{c.amount != null ? ` · ${c.currency || 'TZS'} ${num(c.amount)}` : ''}</span>
                     <StatusBadge kind="claim" status={c.status} /> <StatusBadge kind="payment" status={c.payment_status} />
                   </li>
                 ))}
@@ -464,11 +442,11 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
           {log.workflow_version >= 2 && (
             <p className="notice notice-info">{log.work_type === 'PAYROLL'
               ? 'Payroll is a monthly work report. CTC verification, Technical review and RM approval remain required. No activity rate, budget, finance approval or payment routing is required.'
-              : 'RM approval confirms the recorded work. Regional Finance validates Services amounts and budgets before payment routing.'}</p>
+              : 'RM approval confirms the recorded work. Regional Finance confirms the funding source and fixed daily amount before routing.'}</p>
           )}
           {log.workflow_version === 2 && log.work_type !== 'PAYROLL' && log.financial_preview && (
             <Section title="Payment estimate">
-              {log.work_type === 'SERVICES' && <p className="notice notice-info">Only the highest service amount on each date is payable. Unpriced work uses approved amounts effective on its work date; already priced work keeps its saved payment rules.</p>}
+              {log.work_type === 'SERVICES' && <p className="notice notice-info">Services use a fixed amount per service day. Only the highest eligible service amount on each date is payable. Unpriced work uses approved amounts effective on its work date; already priced work keeps its saved payment rules.</p>}
               <p className="muted small">Finance confirms the final payable amount. Later rate changes do not alter completed payments.</p>
               <PaymentSetupNotice exceptions={log.financial_preview.exceptions} workType={log.work_type} />
               {!financeSummaryOnly && <div className="table-wrap">
@@ -489,23 +467,20 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
                 const snapshot = log.finance_snapshot || {};
                 const rawLines = Array.isArray(snapshot.lines) ? snapshot.lines : Array.isArray(snapshot.components) ? snapshot.components : [];
                 const lines = rawLines.filter((line): line is Record<string, unknown> => Boolean(line) && typeof line === 'object');
-                const categoryLookup = categories.data?.find((item) => String(item.id) === String(snapshot.category_id));
-                  const sourceId = snapshot.funding_source_id == null ? categoryLookup?.funding_source_id : Number(snapshot.funding_source_id);
-                  const fundingSource = fundingSources.data?.find((item) => String(item.id) === String(sourceId));
+                const fundingSource = fundingSources.data?.find((item) => String(item.id) === String(snapshot.funding_source_id));
                 const category = typeof snapshot.category_name === 'string'
                   ? snapshot.category_name
                   : typeof snapshot.category === 'string'
                     ? snapshot.category
                     : snapshot.category && typeof snapshot.category === 'object' && 'name' in snapshot.category
                       ? String((snapshot.category as { name: unknown }).name)
-                      : categoryLookup
-                        ? categoryLookup.name
-                        : snapshot.category_id !== undefined && snapshot.category_id !== null
+                      : snapshot.category_id !== undefined && snapshot.category_id !== null
                           ? `Category #${String(snapshot.category_id)}`
                           : 'Not selected yet';
                 return <>
                   {fundingSource && <p><strong>Funding source:</strong> {fundingSource.name}</p>}
-                  <p><strong>Finance category:</strong> {category}</p>
+                  {snapshot.payment_policy !== FIXED_DAILY_NO_BUDGET && <p><strong>Historical finance category:</strong> {category}</p>}
+                  {snapshot.payment_policy === FIXED_DAILY_NO_BUDGET && <p><strong>Payment policy:</strong> Fixed daily amount · highest eligible amount per day · no budget allocation.</p>}
                   {!financeSummaryOnly && lines.length > 0 && <div className="table-wrap"><table>
                     <thead><tr><th>Date</th><th>Activity / component</th><th className="num">Units</th><th className="num">Rate</th><th className="num">Amount</th></tr></thead>
                     <tbody>{lines.map((line, index) => <tr key={String(line.entry_id ?? line.id ?? index)}>
@@ -544,20 +519,18 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
               {log.workflow_version === 2 && log.work_type === 'SERVICES' && (
                 <div className="stack">
                   {(log.available_actions.includes('finance_review') || Boolean(log.finance_snapshot)) && <>
-                    <Field label="Funding source" hint="Choose the programme funding this Services claim. Categories remain configured to their own source.">
+                    <Field label="Funding source" hint="Select the programme paying for this Services work.">
                       <select
                         required
                         value={fundingSourceId}
                         onChange={(event) => {
-                          const selection = selectionAfterFundingSourceChange(event.target.value);
-                          setFundingSourceId(selection.fundingSourceId);
-                          setCategoryId(selection.categoryId);
+                          setFundingSourceId(event.target.value);
                         }}
                         disabled={fundingSources.loading || Boolean(fundingSources.error)}
                         aria-describedby="funding-source-status"
                       >
                         <option value="">Choose funding source…</option>
-                        {(fundingSources.data || []).map((source) => (
+                        {availableFundingSources.map((source) => (
                           <option key={source.id} value={source.id}>{source.name} · {source.code}</option>
                         ))}
                       </select>
@@ -565,32 +538,10 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
                     <div id="funding-source-status">
                       {fundingSources.loading && <p className="muted small" role="status">Loading funding sources…</p>}
                       {fundingSources.error && <div className="stack"><Alert>{fundingSources.error}</Alert><button type="button" className="btn btn-secondary btn-sm" onClick={fundingSources.reload}>Retry funding sources</button></div>}
-                      {!fundingSources.loading && !fundingSources.error && (fundingSources.data || []).length === 0 && <p className="notice notice-warn">No funding sources are configured. Ask Central Finance to configure the Services funding programmes before review.</p>}
+                      {!fundingSources.loading && !fundingSources.error && availableFundingSources.length === 0 && <p className="notice notice-warn">No PnP, Supply Chain or EpiC funding sources are available. Ask Central Finance to configure them before review.</p>}
                     </div>
-                    <Field label="Services budget category" hint="Only active Services categories configured for the selected funding source are shown.">
-                      <select required value={categoryId} onChange={(event) => setCategoryId(event.target.value)} disabled={!fundingSourceId || categories.loading || Boolean(categories.error)}>
-                        <option value="">Choose category…</option>
-                        {matchingCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-                      </select>
-                    </Field>
-                    {categories.loading && <p className="muted small" role="status">Loading budget categories…</p>}
-                    {categories.error && <div className="stack"><Alert>{categories.error}</Alert><button type="button" className="btn btn-secondary btn-sm" onClick={categories.reload}>Retry budget categories</button></div>}
-                    {!categories.loading && !categories.error && fundingSourceId && matchingCategories.length === 0 && (
-                      <p className="notice notice-warn">No active Services budget category is configured for this funding source. Ask Central Finance to configure one; budget checks remain in force.</p>
-                    )}
-                    <FundingCategorySetup
-                      categories={categories.data || []}
-                      fundingSourceId={fundingSourceId}
-                      canConfigure={canConfigureFundingCategory}
-                      showContactHint={showFundingSetupHint}
-                      onSaved={async (updatedCategory) => {
-                        await categories.reload();
-                        setCategoryId(String(updatedCategory.id));
-                        setFundingSetupNeedsReview(true);
-                      }}
-                    />
                     {reviewedContextDirty && <p className="notice notice-warn" role="status">This differs from the saved finance review. Review these selections again before choosing a routing channel.</p>}
-                    {log.available_actions.includes('finance_review') && hasLegacySnapshot && <p className="muted small">Re-review the Services funding and category to save a corrected finance setup.</p>}
+                    {log.available_actions.includes('finance_review') && hasLegacySnapshot && <p className="muted small">Re-review the funding source and fixed daily amount. Historical paid or committed records remain unchanged.</p>}
                   </>}
                 </div>
               )}
@@ -599,8 +550,8 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
                 <span>{financeSummaryOnly ? 'I have cross-checked the monthly summary and Services payment setup.' : 'I have cross-checked all entries and the monthly summary.'}</span>
               </label>
               <div className="row">
-                {log.available_actions.filter((a) => !isRpmWithoutFinanceRole || !['route_fhi360', 'route_cso', 'paid'].includes(a)).map((a) => (
-                  <button key={a} className={`btn ${DESTRUCTIVE_ACTIONS.has(a) ? 'btn-secondary' : 'btn-primary'}`} disabled={!reviewReached || !reviewConfirmed || (a === 'finance_review' && log.work_type === 'SERVICES' && (!fundingSourceId || !categoryId || !matchingCategories.some((category) => String(category.id) === categoryId))) || ((a === 'route_fhi360' || a === 'route_cso') && !canRouteReviewedFinanceContext(reviewedContextDirty))} onClick={() => setAction(a)}>
+                {log.available_actions.filter((a) => (!isRpmWithoutFinanceRole || !['route_fhi360', 'route_cso', 'paid'].includes(a)) && !(a === 'hold' && fixedDailyNoBudget)).map((a) => (
+                  <button key={a} className={`btn ${DESTRUCTIVE_ACTIONS.has(a) ? 'btn-secondary' : 'btn-primary'}`} disabled={!reviewReached || !reviewConfirmed || (a === 'finance_review' && log.work_type === 'SERVICES' && !canSubmitServiceFinanceReview(fundingSourceId, availableFundingSources, reviewReached, reviewConfirmed)) || ((a === 'route_fhi360' || a === 'route_cso') && !canRouteReviewedFinanceContext(reviewedContextDirty))} onClick={() => setAction(a)}>
                     {actionDisplayLabel(a, Boolean(log.finance_snapshot))}
                   </button>
                 ))}

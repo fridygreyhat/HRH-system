@@ -9,8 +9,8 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy import or_
 
 from ..core.roles import REGIONAL_FINANCE, RPM
-from ..models import ActivityRate, BudgetLine, BudgetTransaction, ClaimCategory, ClaimComponent, FundingSource, Organization, PaymentClaim, PayPeriod, Staff, StaffAssignment, WorkLog, WorkLogEntry, utcnow
-from . import budgets, claims, cso_regions
+from ..models import ActivityRate, BudgetTransaction, ClaimCategory, ClaimComponent, FundingSource, Organization, PaymentClaim, PaymentRoute, PayPeriod, Staff, StaffAssignment, WorkLog, WorkLogEntry, utcnow
+from . import claims, cso_regions
 from .forms import entries_with_measures
 
 
@@ -133,30 +133,41 @@ def eligible_payors(db, log, *, lock=False):
 
 
 def _context(db, log, category_id, funding_source_id=None):
+    owner = eligible_payors(db, log)[0]
+    if category_id is None:
+        source = (db.query(FundingSource).filter_by(id=funding_source_id)
+                  .with_for_update().first()) if funding_source_id else None
+        if not source:
+            raise HTTPException(422, "Select a configured funding programme: PnP, Supply Chain or EpiC.")
+        # A technical claim identity, not a budget or a user-maintained category.
+        # Serializing on the source prevents duplicate creation by two reviewers.
+        name = f"Services — {source.code} [{source.id}]"
+        category = db.query(ClaimCategory).filter_by(name=name).first()
+        if not category:
+            route = db.query(PaymentRoute).filter_by(code="A").first()
+            if not route:
+                raise HTTPException(422, "The FHI360 Services payment route is not configured.")
+            category = ClaimCategory(name=name, form_type="SERVICES", route_id=route.id,
+                                     funding_source_id=source.id, payor_org_id=owner.id,
+                                     origin_channel="FACILITY", requires_work_log=True)
+            db.add(category)
+            db.flush()
+        category_id = category.id
     category = (db.query(ClaimCategory).filter_by(id=category_id)
                 .with_for_update().populate_existing().first())
     if not category or not category.is_active or not category.funding_source_id:
-        raise HTTPException(422, "Select an active Services budget category configured for PnP, Supply Chain or EpiC. Central Finance can configure its funding source.")
+        raise HTTPException(422, "Select a configured Services funding programme.")
     if funding_source_id is not None and funding_source_id != category.funding_source_id:
-        raise HTTPException(422, "The selected funding source does not match this budget category. Choose a category configured for the selected programme.")
+        raise HTTPException(422, "The selected funding source does not match this Services category.")
     if not db.get(FundingSource, category.funding_source_id):
-        raise HTTPException(422, "The budget category's funding source is no longer available. Ask Central Finance to correct its configuration.")
+        raise HTTPException(422, "The Services funding source is no longer available. Ask Central Finance to correct its configuration.")
     if category.origin_channel == "COMMUNITY":
-        raise HTTPException(422, "Community claims have a separate workflow. Select a Services work-log budget category.")
+        raise HTTPException(422, "Community claims have a separate workflow. Select a Services work-log programme.")
     is_payroll = (category.form_type or "").upper() in {"SALARY", "PAYROLL", "STIPEND", "STIPENDS", "TIMESHEET"}
     if is_payroll != (log.work_type == "PAYROLL"):
-        raise HTTPException(422, "The selected budget category does not match this Services or Payroll queue")
-    assignment = db.get(StaffAssignment, log.assignment_id)
-    owner = eligible_payors(db, log)[0]
+        raise HTTPException(422, "The selected category does not match this Services queue.")
     route, channel = ("A", "FHI360") if log.work_type == "SERVICES" else ("B", "CSO")
-    line = budgets.find_line(db, category.id, log.period_id, owner.id, assignment.region_id, strict_region=log.work_type == "PAYROLL")
-    if not line:
-        raise HTTPException(422, f"No {channel}-owned budget line matches this category, period and region")
-    # Lock and refresh before validating currency/configuration, not only later
-    # when committing money. An ORM object already in the session may be stale.
-    line = (db.query(BudgetLine).filter_by(id=line.id)
-            .with_for_update().populate_existing().one())
-    return category, owner, line, route, channel
+    return category, owner, None, route, channel
 
 
 def _components(db, claim, snapshot):
@@ -220,8 +231,8 @@ def prepare_after_rpm(db, current, log):
 def review(db, current, log, category_id, funding_source_id=None):
     if log.work_type == "PAYROLL":
         raise HTTPException(409, "Payroll is an approved work report; finance approval, pricing and budgets are not required.")
-    if not category_id:
-        raise HTTPException(422, "Select the budget category for finance review")
+    if not category_id and not funding_source_id:
+        raise HTTPException(422, "Select the funding programme for Services finance review.")
     _guard_daily_service_claim(db, log)
     pending = db.query(PaymentClaim).filter(
         PaymentClaim.work_log_id == log.id, PaymentClaim.status != claims.CANCELLED,
@@ -236,15 +247,14 @@ def review(db, current, log, category_id, funding_source_id=None):
             raise HTTPException(422, "Payment setup is incomplete: approved amounts/rates are missing for recorded work dates. Configure the missing amounts listed in Payment estimate before Finance prepares the claim.")
         raise HTTPException(422, " ".join(amount["exceptions"]))
     category, owner, line, route, channel = _context(db, log, category_id, funding_source_id)
-    if line.currency != amount["currency"]:
-        raise HTTPException(422, "Activity-rate currency does not match the budget line")
     log.finance_snapshot = jsonable_encoder({
         **amount, "category_id": category.id, "payor_org_id": owner.id,
-        "executor_org_id": owner.id, "budget_line_id": line.id, "route_code": route,
+        "executor_org_id": owner.id, "budget_line_id": None, "route_code": route,
         "channel": channel, "reviewed_by": current.id,
         "funding_source_id": category.funding_source_id,
         "funding_source_name": db.get(FundingSource, category.funding_source_id).name,
         "review_token": uuid4().hex,
+        "payment_policy": "FIXED_DAILY_NO_BUDGET",
     })
     claim = _prepare_claim(db, current, log, category, owner, line, route)
     claims.audit(db, current, claim, "finance_prepare", REGIONAL_FINANCE,
@@ -260,7 +270,7 @@ def _prepare_claim(db, current, log, category, owner, line, route_code):
     if claim:
         if claim.status not in {claims.PENDING_FINANCE_REVIEW, claims.PENDING_ROUTING, claims.HELD}:
             raise HTTPException(409, "This work log already has a routed claim")
-        if claim.status in {claims.PENDING_FINANCE_REVIEW, claims.PENDING_ROUTING}:
+        if claim.status in {claims.PENDING_FINANCE_REVIEW, claims.PENDING_ROUTING, claims.HELD}:
             if db.query(BudgetTransaction.id).filter(BudgetTransaction.claim_id == claim.id).first():
                 raise HTTPException(409, "This claim has financial ledger history and cannot be reconfigured as an uncommitted proposal.")
             duplicate = db.query(PaymentClaim).filter(
@@ -275,7 +285,7 @@ def _prepare_claim(db, current, log, category, owner, line, route_code):
             claim.payor_org_id = owner.id
             claim.executor_org_id = owner.id
             claim.funding_source_id = category.funding_source_id
-            claim.budget_line_id = line.id
+            claim.budget_line_id = None
             claim.origin_channel = category.origin_channel
             claim.calculation_snapshot = snapshot
             claim.amount = Decimal(snapshot["total"])
@@ -292,7 +302,7 @@ def _prepare_claim(db, current, log, category, owner, line, route_code):
         workflow_version=2, work_type=log.work_type, work_log_id=log.id, staff_id=log.staff_id,
         period_id=log.period_id, assignment_id=log.assignment_id, category_id=category.id,
         route_code=route_code, payor_org_id=owner.id, executor_org_id=owner.id,
-        funding_source_id=category.funding_source_id, budget_line_id=line.id,
+        funding_source_id=category.funding_source_id, budget_line_id=None,
         origin_channel=category.origin_channel, amount=Decimal(snapshot["total"]),
         currency=snapshot["currency"], calculation_snapshot=snapshot, created_by=current.id,
         status=claims.PENDING_ROUTING,
@@ -325,6 +335,8 @@ def route(db, current, log, channel, target_payor_id=None, expected_review_token
         raise HTTPException(409, "Regional Finance must review the amount before routing")
     if expected_review_token is not None and expected_review_token != snapshot.get("review_token"):
         raise HTTPException(409, "Another Finance review changed this payment setup. Refresh and verify the current funding source and category before routing.")
+    if snapshot.get("payment_policy") != "FIXED_DAILY_NO_BUDGET":
+        raise HTTPException(409, "Review the Services amount again to use fixed daily payments without a budget.")
     if target_payor_id is None:
         raise HTTPException(422, "Select the destination payor explicitly before channeling")
     if target_payor_id not in {owner.id for owner in eligible_payors(db, log, lock=True)}:
@@ -334,25 +346,22 @@ def route(db, current, log, channel, target_payor_id=None, expected_review_token
                                              PaymentClaim.status != claims.CANCELLED)
                 .with_for_update().populate_existing().first())
     category, owner, line, route_code, _ = _context(db, log, snapshot["category_id"])
-    if owner.id != snapshot["payor_org_id"] or line.id != snapshot["budget_line_id"]:
-        raise HTTPException(409, "Finance configuration changed. Review the funding source and budget category again before routing.")
+    if owner.id != snapshot["payor_org_id"]:
+        raise HTTPException(409, "The payment organization changed. Review the Services amount again before routing.")
     source_id = snapshot.get("funding_source_id")
     if source_id is None:
         source_id = existing.funding_source_id if existing else None
-    if source_id != category.funding_source_id or line.currency != snapshot["currency"]:
-        raise HTTPException(409, "Funding source or budget currency changed after review. Review the Services payment setup again before routing.")
+    if source_id != category.funding_source_id:
+        raise HTTPException(409, "Funding source changed after review. Review the Services payment setup again before routing.")
     claim = _prepare_claim(db, current, log, category, owner, line, route_code)
     old = claim.status
-    details = claims._commit_budget(db, current, claim)
+    details = {"payment_policy": "FIXED_DAILY_NO_BUDGET", "budget_required": False}
     details.update(target_payor_id=owner.id, target_payor_name=owner.name, actor_id=current.id,
                    channeled_at=utcnow().isoformat(), claim_id=claim.id)
-    if claim.status == claims.APPROVED:
-        claim.status = claims.READY
-        claim.approved_by = current.id
-        claim.approved_at = utcnow()
-        log.routed_channel = channel
-        log.status = f"ROUTED_{channel}"
-    else:
-        log.status = "BUDGET_HOLD"
+    claim.status = claims.READY
+    claim.approved_by = current.id
+    claim.approved_at = utcnow()
+    log.routed_channel = channel
+    log.status = f"ROUTED_{channel}"
     claims.audit(db, current, claim, "finance_route", REGIONAL_FINANCE, old, claim.payment_status, details=details)
     return details

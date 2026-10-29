@@ -2,7 +2,6 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { act, Simulate } from 'react-dom/test-utils';
 import { CsoPortal } from './CsoPortal';
-import { money } from '../format';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let mockCommunityClaim = null;
@@ -30,36 +29,16 @@ jest.mock('../hooks', () => ({
   useAction: () => ({ busy: false, error: null, run: async fn => fn() }),
 }));
 
-test('CSO portal presents scoped regional, category, and pay-period budget hierarchy with aggregated currency totals', () => {
+test('CSO portal removes budget section and retains payment/reconciliation navigation', () => {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
   act(() => root.render(<CsoPortal />));
   try {
-    const budgetTab = Array.from(container.querySelectorAll('.subnav button')).find(button => button.textContent === 'Budget');
-    act(() => Simulate.click(budgetTab));
-
     expect(container.textContent).toContain('Kijiji Health CSO');
-    expect(container.textContent).toContain('Mara');
-    expect(container.textContent).toContain('Activity type');
-    expect(container.textContent).toContain('Payment item');
-    expect(container.textContent).toContain('Pay period');
-    expect(container.textContent).not.toContain('FHI allocation');
-    expect(container.textContent).not.toContain('Other CSO allocation');
-    expect(container.querySelectorAll('.budget-period')).toHaveLength(2);
-    expect(Array.from(container.querySelectorAll('.budget-category > summary > strong')).map((node) => node.textContent)).toEqual(['Services']);
-    const firstLine = container.querySelector('.budget-line-table tbody tr');
-    expect(firstLine.cells[3].textContent).toBe('Services');
-    expect(firstLine.cells[4].textContent).toBe('CHW PNP assistance');
-
-    const regionSummary = container.querySelector('.budget-region > summary');
-    expect(regionSummary.textContent).toContain('Hard cap');
-    expect(regionSummary.textContent).toContain('Committed');
-    expect(regionSummary.textContent).toContain('Spent');
-    expect(regionSummary.textContent).toContain('Remaining');
-    expect(regionSummary.textContent).toContain(money(150, 'TZS'));
-    expect(regionSummary.textContent).toContain(money(25, 'TZS'));
-    expect(regionSummary.textContent).toContain(money(100, 'TZS'));
+    expect(Array.from(container.querySelectorAll('.subnav button')).map(button => button.textContent)).not.toContain('Budget');
+    expect(container.querySelector('.budget-hierarchy')).toBeNull();
+    expect(container.textContent).toContain('Reconciliation');
   } finally {
     act(() => root.unmount());
     container.remove();
@@ -86,7 +65,7 @@ test('CSO Community claims section shows incoming direct Route C work with exter
     act(() => Simulate.click(routeTab));
     expect(container.textContent).toContain('Awaiting community verification');
     expect(container.textContent).toContain('Neema Juma');
-    expect(container.textContent).toContain('do not need a payroll export batch');
+    expect(container.textContent).toContain('No regional budget allocation or payroll export batch is required');
   } finally {
     mockCommunityClaim = null;
     act(() => root.unmount());

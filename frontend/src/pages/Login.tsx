@@ -7,7 +7,7 @@ import { Alert, Field } from '../components/ui';
 interface Meta {
   version: string;
 }
-const STAGES = ['Provider logs work', 'CTC verifies', 'Technical review', 'RM authorizes', 'Claim · budget · payment'];
+const STAGES = ['Provider logs work', 'CTC verifies', 'Technical review', 'RM authorizes', 'Finance review · payment'];
 
 export function Login() {
   const { login, sessionExpired } = useAuth();
@@ -49,7 +49,7 @@ export function Login() {
             From reported work to <span className="hero-accent">verified payment</span> — every step on the record.
           </h1>
           <p className="hero-lead">
-            Kumbukumbu za kazi, idhini na malipo kwa watoa huduma wa afya. Digital work logs, sequential approvals, claims, budgets and CSO
+            Kumbukumbu za kazi, idhini na malipo kwa watoa huduma wa afya. Digital work logs, sequential approvals, fixed Services payments and CSO
             disbursement tracking for Tanzania's HRH programme.
           </p>
           <ol className="hero-pipeline" aria-label="Approval pipeline">
