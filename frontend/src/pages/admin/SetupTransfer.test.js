@@ -78,10 +78,21 @@ test('reviews imported setup, requires explicit selection and sends confirmation
     const checkbox = container.querySelector('input[type="checkbox"][aria-label="Select Community health worker"]');
     expect(checkbox.disabled).toBe(false);
     act(() => Simulate.change(checkbox, { target: { checked: true } }));
+    expect(apply().disabled).toBe(true);
+    expect(container.textContent).toContain('Enter a reason for this transfer using at least 3 characters.');
+    expect(container.textContent).toContain('Type APPLY MISSING SETUP exactly in the confirmation field above.');
+    expect(apply().getAttribute('aria-describedby')).toBe('setup-apply-requirements');
     const fields = container.querySelectorAll('textarea, input:not([type="file"]):not([type="checkbox"])');
+    expect(fields[0].maxLength).toBe(1000);
     act(() => Simulate.change(fields[0], { target: { value: 'Approved Preview configuration' } }));
+    expect(apply().disabled).toBe(true);
+    expect(container.textContent).not.toContain('Enter a reason for this transfer using at least 3 characters.');
+    act(() => Simulate.change(fields[1], { target: { value: 'apply missing setup' } }));
+    expect(apply().disabled).toBe(true);
+    expect(container.textContent).toContain('Type APPLY MISSING SETUP exactly in the confirmation field above.');
     act(() => Simulate.change(fields[1], { target: { value: 'APPLY MISSING SETUP' } }));
     expect(apply().disabled).toBe(false);
+    expect(container.textContent).toContain('Ready to apply 1 selected item. No changes have been applied yet.');
 
     api.post.mockResolvedValueOnce({
       applied: 1, skipped: 0,

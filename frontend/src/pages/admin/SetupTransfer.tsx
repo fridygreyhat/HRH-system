@@ -131,7 +131,7 @@ export function SetupTransfer() {
   };
 
   const applySetup = async () => {
-    if (!document || !review || !reviewIsCurrent || selected.size === 0 || reason.trim().length < 3 || confirmation !== APPLY_PHRASE) return;
+    if (!canApply || !document || !review) return;
     setBusy('apply');
     setError('');
     setNotice('');
@@ -163,8 +163,15 @@ export function SetupTransfer() {
   };
 
   const missing = review?.items.filter((item) => item.state === 'MISSING') || [];
-  const canApply = !!document && !!review && reviewIsCurrent && selected.size > 0 &&
-    reason.trim().length >= 3 && confirmation === APPLY_PHRASE && !busy;
+  const applyRequirements = [
+    ...(!reviewIsCurrent ? ['Run Review setup again to get a current review.'] : []),
+    ...(selected.size === 0 ? ['Inspect and select at least one missing record.'] : []),
+    ...(selected.size > 250 ? ['Select no more than 250 records per transfer.'] : []),
+    ...(reason.trim().length < 3 ? ['Enter a reason for this transfer using at least 3 characters.'] : []),
+    ...(reason.trim().length > 1000 ? ['Shorten the transfer reason to 1,000 characters or fewer.'] : []),
+    ...(confirmation !== APPLY_PHRASE ? [`Type ${APPLY_PHRASE} exactly in the confirmation field above.`] : []),
+  ];
+  const canApply = !!document && !!review && applyRequirements.length === 0 && !busy;
 
   return (
     <div className="stack-lg setup-transfer">
@@ -311,13 +318,22 @@ export function SetupTransfer() {
               </div>
               <div className="grid-2">
                 <Field label="Reason for this transfer" hint="At least 3 characters; recorded with the change">
-                  <textarea rows={3} value={reason} maxLength={2000} disabled={!!busy} onChange={(event) => setReason(event.target.value)} placeholder="For example: align Live setup with approved Preview changes" />
+                  <textarea rows={3} value={reason} maxLength={1000} disabled={!!busy} onChange={(event) => setReason(event.target.value)} placeholder="For example: align Live setup with approved Preview changes" />
                 </Field>
                 <Field label={`Type ${APPLY_PHRASE} to confirm`} hint="This confirmation is required for every apply operation.">
                   <input value={confirmation} disabled={!!busy} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" spellCheck={false} />
                 </Field>
               </div>
-              <button type="button" className="btn btn-primary" onClick={applySetup} disabled={!canApply}>
+              <div id="setup-apply-requirements" role="status" aria-live="polite">
+                {busy === 'apply' ? <p>Applying the selected setup. Please wait; do not submit again.</p> :
+                  applyRequirements.length > 0 ? (
+                    <Alert kind="info">
+                      <strong>Before Apply becomes available:</strong>
+                      <ul>{applyRequirements.map((requirement) => <li key={requirement}>{requirement}</li>)}</ul>
+                    </Alert>
+                  ) : <p>Ready to apply {selected.size} selected item{selected.size === 1 ? '' : 's'}. No changes have been applied yet.</p>}
+              </div>
+              <button type="button" className="btn btn-primary" onClick={applySetup} disabled={!canApply} aria-describedby="setup-apply-requirements">
                 {busy === 'apply' ? 'Applying selected setup…' : `Apply ${selected.size} selected item${selected.size === 1 ? '' : 's'}`}
               </button>
             </div>
