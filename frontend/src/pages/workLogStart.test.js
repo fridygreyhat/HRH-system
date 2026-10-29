@@ -1,7 +1,36 @@
-import { resolveWorkLogStart } from './workLogStart';
+import { resolveWorkLogStart, resolveWorkLogMonth } from './workLogStart';
 
 const period = { id: 1, start_date: '2026-10-01', end_date: '2026-10-31', status: 'OPEN' };
 const day = '2026-10-23';
+
+test.each(['PAYROLL', 'SERVICES'])('reopens rejected %s for its month even with a closed partial schedule', (work_type) => {
+  const partial = { ...period, start_date: '2026-10-25', status: 'CLOSED' };
+  const existing = { id: 11, period_id: 1, work_type, status: 'REJECTED' };
+  expect(resolveWorkLogMonth([partial], [existing], work_type, '2026-10', '2026-10-29')).toEqual({ period: partial, existing });
+});
+
+test('keeps an existing global correction when a new regional schedule also exists', () => {
+  const regional = { ...period, id: 2, region_id: 7 };
+  const existing = { id: 11, period_id: 1, work_type: 'PAYROLL', status: 'RETURNED_TO_PROVIDER' };
+  expect(resolveWorkLogMonth([period, regional], [existing], 'PAYROLL', '2026-10', '2026-10-29').existing).toBe(existing);
+});
+
+test('uses the regional monthly schedule and never bypasses a closed one', () => {
+  const regional = { ...period, id: 2, region_id: 7 };
+  expect(resolveWorkLogMonth([period, regional], [], 'PAYROLL', '2026-10', '2026-10-29')).toEqual({ period: regional });
+  expect(resolveWorkLogMonth([period, { ...regional, status: 'CLOSED' }], [], 'PAYROLL', '2026-10', '2026-10-29').error).toBeTruthy();
+});
+
+test('ignores archived months but does not silently choose between duplicate records', () => {
+  const archived = { ...period, id: 2, status: 'ARCHIVED' };
+  expect(resolveWorkLogMonth([period, archived], [{ id: 12, period_id: 2, work_type: 'PAYROLL' }], 'PAYROLL', '2026-10', '2026-10-29')).toEqual({ period });
+  const logs = [1, 2].map(id => ({ id, period_id: 1, work_type: 'PAYROLL' }));
+  expect(resolveWorkLogMonth([period], logs, 'PAYROLL', '2026-10', '2026-10-29').error).toMatch(/Several records/);
+});
+
+test.each(['2026-13', '2026-00', '', '0206-10', '2026-11'])('rejects invalid or future work month %s', month => {
+  expect(resolveWorkLogMonth([period], [], 'PAYROLL', month, '2026-10-29').error).toBeTruthy();
+});
 
 test('uses the matching date schedule without a pay-period selection', () => {
   expect(resolveWorkLogStart([period], [], 'SERVICES', day)).toEqual({ period });

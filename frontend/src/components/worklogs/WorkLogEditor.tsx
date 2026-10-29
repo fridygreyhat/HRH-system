@@ -3,7 +3,7 @@ import { AdminAudit } from '../AdminAudit';
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api';
 import { useAuth } from '../../AuthContext';
-import { datesBetween, dayOfMonth, money, num, periodDateError, todayLocal, WORKLOG_ACTION_LABELS, weekday } from '../../format';
+import { dateOnly, datesBetween, dayOfMonth, money, num, periodDateError, todayLocal, WORKLOG_ACTION_LABELS, weekday } from '../../format';
 import { useAction, useApi } from '../../hooks';
 import { navigate } from '../../nav';
 import { PayoutEstimateData, Section as SectionRow, WorkLogDetail } from '../../types';
@@ -119,11 +119,13 @@ export function HeaderForm({ log, onSaved }: { log: WorkLogDetail; onSaved: (l: 
 export function DayCalendar({
   log,
   selected,
+  initialMonth,
   flaggedDates,
   onSelect,
 }: {
   log: WorkLogDetail;
   selected: string | null;
+  initialMonth?: string;
   flaggedDates: Set<string>;
   onSelect: (d: string) => void;
 }) {
@@ -134,11 +136,12 @@ export function DayCalendar({
   const months = useMemo(() => Array.from(new Set(dates.map(date => date.slice(0, 7)))), [dates]);
   const focusDate = selected && selected >= log.period.start_date && selected <= log.period.end_date
     ? selected : today >= log.period.start_date && today <= log.period.end_date ? today : log.period.start_date;
-  const preferredMonth = focusDate.slice(0, 7);
+  const preferredMonth = !selected && initialMonth && months.includes(initialMonth)
+    ? initialMonth : focusDate.slice(0, 7);
   const [visibleMonth, setVisibleMonth] = useState(preferredMonth);
   useEffect(() => setVisibleMonth(preferredMonth), [preferredMonth, log.id]);
   const dateError = periodDateError(log.period.start_date, log.period.end_date);
-  if (dateError) return <div role="alert" className="alert alert-warn">{dateError} Contact an administrator to correct the pay period.</div>;
+  if (dateError) return <div role="alert" className="alert alert-warn">{dateError} Contact an administrator to correct the monthly reporting dates.</div>;
   const month = months.includes(visibleMonth) ? visibleMonth : preferredMonth;
   const monthIndex = months.indexOf(month);
   const visibleDates = dates.filter(date => date.startsWith(`${month}-`));
@@ -294,7 +297,7 @@ function PayoutEstimate({ logId, version }: { logId: number; version: string }) 
 }
 
 /** Provider work-log editor: header, day-by-day entries, totals and submission. */
-export function WorkLogEditor({ logId, initialDate, onBack }: { logId: number; initialDate?: string; onBack: () => void }) {
+export function WorkLogEditor({ logId, initialDate, initialMonth, onBack }: { logId: number; initialDate?: string; initialMonth?: string; onBack: () => void }) {
   const { me, t, lang } = useAuth();
   const { data: log, error, loading, setData, reload } = useApi<WorkLogDetail>(`/worklogs/${logId}`);
   const [selected, setSelected] = useState<string | null>(initialDate || null);
@@ -333,7 +336,7 @@ export function WorkLogEditor({ logId, initialDate, onBack }: { logId: number; i
           feedback.comment ? <Alert kind="warn" key={index}>{feedback.comment}</Alert> : null)}
         <div className="row">
           <span className="muted">
-            {log.period_label} · #{log.id}
+            {dateOnly(log.period.start_date)} – {dateOnly(log.period.end_date)} · #{log.id}
           </span>
           <StatusBadge kind="log" status={log.status} />
           {log.claims.map((c) => (
@@ -364,7 +367,7 @@ export function WorkLogEditor({ logId, initialDate, onBack }: { logId: number; i
 
       <HeaderForm key={`${log.id}-${log.updated_at}`} log={log} onSaved={setData} />
 
-      <DayCalendar log={log} selected={selected} flaggedDates={flaggedDates} onSelect={setSelected} />
+      <DayCalendar log={log} selected={selected} initialMonth={initialMonth} flaggedDates={flaggedDates} onSelect={setSelected} />
 
       {selected && log.can_edit && (
         <DayEntryForm

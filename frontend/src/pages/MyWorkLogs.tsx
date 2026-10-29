@@ -4,10 +4,10 @@ import { api } from '../api';
 import { useAuth } from '../AuthContext';
 import { WorkLogEditor } from '../components/worklogs/WorkLogEditor';
 import { Alert, AsyncState, Field, StatusBadge } from '../components/ui';
-import { dateOnly, num, todayLocal } from '../format';
+import { num, todayLocal } from '../format';
 import { useAction, useApi } from '../hooks';
 import { PayPeriod, WorkLogDetail, WorkLogSummary } from '../types';
-import { resolveWorkLogStart } from './workLogStart';
+import { resolveWorkLogMonth, workMonthLabel } from './workLogStart';
 
 export function MyWorkLogs() {
   const { me, t } = useAuth();
@@ -16,11 +16,11 @@ export function MyWorkLogs() {
   const logs = useApi<WorkLogSummary[]>('/worklogs?mine=true');
   const periods = useApi<PayPeriod[]>('/admin/pay-periods');
   const [openId, setOpenId] = useState<number | null>(null);
-  const [editorDate, setEditorDate] = useState<string | undefined>();
+  const [editorMonth, setEditorMonth] = useState<string | undefined>();
   const [workType, setWorkType] = useState<'SERVICES' | 'PAYROLL'>('SERVICES');
-  const [workDate, setWorkDate] = useState(todayLocal());
+  const [workMonth, setWorkMonth] = useState(todayLocal().slice(0, 7));
   const { busy, error, run } = useAction();
-  const resolution = resolveWorkLogStart(periods.data || [], logs.data || [], workType, workDate);
+  const resolution = resolveWorkLogMonth(periods.data || [], logs.data || [], workType, workMonth);
   const loadingStartData = periods.loading || logs.loading;
   const startDataError = periods.error || logs.error;
 
@@ -28,7 +28,7 @@ export function MyWorkLogs() {
     return (
       <WorkLogEditor
         logId={openId}
-        initialDate={editorDate}
+        initialMonth={editorMonth}
         onBack={() => {
           setOpenId(null);
           logs.reload();
@@ -40,7 +40,7 @@ export function MyWorkLogs() {
   const start = async (e: React.FormEvent) => {
     e.preventDefault();
     if (disableStart) return;
-    setEditorDate(workDate);
+    setEditorMonth(workMonth);
     if (resolution.existing) {
       setOpenId(resolution.existing.id);
       return;
@@ -56,8 +56,8 @@ export function MyWorkLogs() {
   const disableStart = busy || loadingStartData || Boolean(startDataError) || !me?.staff || (!hasExisting && !resolution.period);
   const typeTitle = workType === 'SERVICES' ? 'Services' : 'Payroll';
   const typeDescription = workType === 'SERVICES'
-    ? 'Record service activity for the selected work date.'
-    : 'Record your daily facility timesheet for the selected work date.';
+    ? 'Record your actual service activities on the dates you worked during this month.'
+    : 'Fill your daily timesheet across the selected month, choosing each date you actually worked.';
   const typeEyebrow = workType === 'SERVICES' ? 'SERVICE RECORD' : 'DAILY TIMESHEET';
   const cascadePreviewCount = workType === 'SERVICES' ? 6 : 3;
   const chwService = me?.cadre?.activities?.find((activity) => activity.key === 'chw_weekend_clinic');
@@ -84,7 +84,7 @@ export function MyWorkLogs() {
           <div>
             <span className="worklog-start-kicker">{t('startLog')}</span>
             <h2>{isHcp ? 'Timesheet / activity type' : 'Choose a work log'}</h2>
-            <p>Choose the record type and date to continue or begin.</p>
+            <p>Choose Services or Payroll and the month. Rejected work reopens in the same record for correction.</p>
           </div>
           <span className="worklog-start-mark" aria-hidden="true">{workType === 'SERVICES' ? 'S' : 'P'}</span>
         </div>
@@ -100,13 +100,13 @@ export function MyWorkLogs() {
               <option value="PAYROLL">Payroll</option>
             </select>
           </Field>
-          <Field label="Work date" hint="Choose a date up to today.">
+          <Field label="Work month" hint="Choose the month you want to fill or correct.">
             <input
-              type="date"
+              type="month"
               required
-              max={todayLocal()}
-              value={workDate}
-              onChange={(e) => setWorkDate(e.target.value)}
+              max={todayLocal().slice(0, 7)}
+              value={workMonth}
+              onChange={(e) => setWorkMonth(e.target.value)}
             />
           </Field>
         </div>
@@ -139,8 +139,8 @@ export function MyWorkLogs() {
             )}
           </div>
           <div className="worklog-type-date">
-            <span className="worklog-date-label">Selected work date</span>
-            <strong>{dateOnly(workDate)}</strong>
+            <span className="worklog-date-label">Selected month</span>
+            <strong>{workMonthLabel(workMonth)}</strong>
           </div>
         </section>
 
@@ -154,7 +154,7 @@ export function MyWorkLogs() {
         {startDataError && <Alert>{startDataError}</Alert>}
         {resolution.error && !startDataError && !hasExisting && <Alert kind="warn">{resolution.error}</Alert>}
         {!loadingStartData && !startDataError && !resolution.period && !hasExisting && !resolution.error && (
-          <p className="worklog-start-note" role="status">{t('noOpenPeriods')}</p>
+          <p className="worklog-start-note" role="status">No monthly schedule is available. Contact your regional Technical Officer.</p>
         )}
         {resolution.error && !startDataError && hasExisting && (
           <p className="worklog-start-note" role="status">{resolution.error}</p>
@@ -163,25 +163,29 @@ export function MyWorkLogs() {
         <div className="worklog-start-actions">
           <p className="worklog-start-guidance">
             {hasExisting
-              ? `A ${typeTitle.toLowerCase()} record already exists for this period. Continue it to add or review entries.`
+              ? ['REJECTED', 'RETURNED_TO_PROVIDER'].includes(resolution.existing!.status)
+                ? `Your ${typeTitle.toLowerCase()} record for ${workMonthLabel(workMonth)} needs correction. Open it, fill or correct the eligible dates across the month, then submit again.`
+                : `A ${typeTitle.toLowerCase()} record already exists for ${workMonthLabel(workMonth)}. Open it to continue or review your work.`
               : resolution.period
-                ? `Ready for ${dateOnly(workDate)}${resolution.period.period_label ? ` · ${resolution.period.period_label}` : ''}.`
-                : 'A work log can be started when an open period covers this date.'}
+                ? `Ready to fill ${workMonthLabel(workMonth)}. Select the actual workdays in the calendar.`
+                : 'Your regional Technical Officer can open the monthly schedule for new work.'}
           </p>
           <button className="btn btn-primary btn-lg" disabled={disableStart}>
-            {busy ? t('loading') : hasExisting ? `Continue ${typeTitle}` : `Start ${typeTitle}`}
+            {busy ? t('loading') : hasExisting
+              ? ['REJECTED', 'RETURNED_TO_PROVIDER'].includes(resolution.existing!.status) ? `Correct ${typeTitle}` : `Open ${typeTitle}`
+              : `Start ${typeTitle}`}
           </button>
         </div>
-        <Alert>{error}</Alert>
+        <Alert>{error?.replace(/pay period/gi, 'work month')}</Alert>
       </form>
 
       <AsyncState data={logs.data} error={logs.error} loading={logs.loading} empty={t('noLogs')}>
         {(rows) => (
           <div className="stack">
             {rows.map((l) => (
-              <button key={l.id} type="button" className="card log-card" onClick={() => { setEditorDate(undefined); setOpenId(l.id); }} aria-label={`${t('open')} ${l.period_label}`}>
+              <button key={l.id} type="button" className="card log-card" onClick={() => { setEditorMonth(undefined); setOpenId(l.id); }} aria-label={`${t('open')} ${recordMonth(l, periods.data || [])}`}>
                 <div className="row-between">
-                  <strong>{l.period_label}</strong>
+                  <strong>{recordMonth(l, periods.data || [])}</strong>
                   <span className="row"><span className="badge badge-neutral">{l.work_type === 'LEGACY' ? 'Legacy' : l.work_type === 'SERVICES' ? 'Services' : l.work_type === 'PAYROLL' && isHcp ? 'Daily timesheet · Payroll' : l.work_type}</span><StatusBadge kind="log" status={l.status} /></span>
                 </div>
                 <MiniStepper status={l.status} />
@@ -195,4 +199,12 @@ export function MyWorkLogs() {
       </AsyncState>
     </div>
   );
+}
+
+function recordMonth(log: WorkLogSummary, periods: PayPeriod[]): string {
+  const period = periods.find(p => p.id === log.period_id);
+  if (!period) return 'Monthly work record';
+  const start = period.start_date.slice(0, 7);
+  const end = period.end_date.slice(0, 7);
+  return start === end ? workMonthLabel(start) : `${workMonthLabel(start)} – ${workMonthLabel(end)}`;
 }
