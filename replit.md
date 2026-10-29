@@ -541,3 +541,10 @@ payment pricing” below for the current policy. Services remains payable.
   retaining RM approval and recording append-only system history.
 - **Why:** missing Services finance setup must not prevent operational work approval, but
   operational approval is not evidence that a payment amount or budget is valid.
+
+### Explicit testing resets
+- A full testing-data reset is a manually authorized maintenance operation, never a Git-pull, startup, build or publishing hook. Do not automatically import demo accounts or fixtures afterward.
+- An admin-only reset preserves the existing Super Admin credentials and permissions, required system role definitions and migration metadata, not business setup. Regions, cadres and other setup must be configured again when the user chooses this option.
+- Keep identity sequences advancing rather than recycling deleted user IDs. Old signed sessions must never become valid for a different newly created account.
+- Verify resets and workflows only in independently disposable databases; tests must not repopulate the empty Preview or Live database.
+- **Why:** the user explicitly requested clean testing databases, keeping only Super Admin, and asked that Git pull not restore old or trial database content.
