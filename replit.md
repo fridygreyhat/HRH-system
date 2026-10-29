@@ -494,6 +494,14 @@ payment pricing” below for the current policy. Services remains payable.
 - Full recorded payment plus the checked proof marks each linked Services claim/work log paid. Standalone legacy/community uploads retain their previous behavior. Reconciliation must still be done by someone other than the payment recorder. Preserve finance role, organization, region and cadre boundaries.
 - **Why:** the user wants provider/service names and amounts linked to proof and reflected as paid, without allowing an unrelated upload or a retry to create a false or duplicate payment.
 
+### Super Admin setup transfer
+- Development and live databases hold independent setup data. Publishing code is not a setup-data synchronization operation. Use the Super Admin **Setup transfer** screen to export, review and explicitly select missing setup on the target site.
+- Transfer operational account roles/scopes/cadres, linked provider setup and non-overlapping placements, organizations, facilities with their geofences, programme sources, open periods and fixed daily Services rates only. Exclude administrator accounts, credentials, bank/mobile payment details, work, approvals, financial records, signed reports, proof files and CSO payment authority.
+- Existing values, passwords and access are never removed or overwritten. Additional target roles, identity differences, conflicting rates, overlapping placements or periods require manual review. In particular, do not create another period over an existing closed global/regional period; review/reopen it manually.
+- New imported accounts are inactive and receive an inaccessible random password hash. Activate and reset through existing Super Admin controls before sign-in. Never copy password hashes or assign a known default password through transfer.
+- Review binds the document, actor and target setup for 15 minutes. Apply rechecks under bounded database locks, writes selected missing records atomically and appends administrator-only audit entries. Missing dependencies or stale setup must fail without a partial update.
+- **Why:** the user approved a missing-setup-only correction after identical published/preview assets concealed differences in live accounts and configuration; live work, approvals, payments and credentials must remain intact.
+
 ### Operational approval versus payment pricing
 - Regional Finance accounts that also hold channel-finance roles should start
   from RM-approved work: monthly reports for Payroll, routing review for Services.

@@ -173,6 +173,7 @@ export function SetupTransfer() {
           <p className="setup-transfer-kicker">Super Admin · controlled configuration</p>
           <h2>Setup transfer</h2>
           <p className="muted">Move approved system setup from Preview into Live with a fresh review before any change.</p>
+          <p className="muted small">Current website: {window.location.origin}</p>
         </div>
         <span className="setup-transfer-version">DOCUMENT / 01</span>
       </header>

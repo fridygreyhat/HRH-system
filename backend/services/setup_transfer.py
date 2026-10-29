@@ -3,11 +3,12 @@ import hashlib
 import json
 import secrets
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 
 import jwt
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import text
+from sqlalchemy import or_, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from ..core import audit, config
@@ -127,7 +128,8 @@ def export_document(db):
     for row in db.query(FundingSource).order_by(FundingSource.id):
         add("funding_source", row.name, dict(name=row.name, code=row.code))
     for row in db.query(Facility).filter_by(is_active=True).order_by(Facility.id):
-        add("facility", row.name, {**facility_ref(db, row), "facility_type": row.facility_type})
+        add("facility", row.name, {**facility_ref(db, row), **{k: getattr(row, k) for k in (
+            "facility_type", "geofence_lat", "geofence_lon", "geofence_radius_meters")}})
     for row in db.query(PayPeriod).filter_by(status="OPEN").order_by(PayPeriod.id):
         add("pay_period", row.period_label or str(row.start_date), dict(
             region=name(db, Region, row.region_id), start_date=row.start_date,
@@ -167,6 +169,12 @@ def normalize(value):
 
 def same_fields(row, values):
     return all(normalize(getattr(row, key)) == normalize(value) for key, value in values.items())
+
+
+def geofence_values(data):
+    return {key: (Decimal(data[key]) if data[key] is not None else None)
+            for key in ("geofence_lat", "geofence_lon")} | {
+                "geofence_radius_meters": data["geofence_radius_meters"]}
 
 
 def user_changes(db, data):
@@ -230,8 +238,8 @@ def existing_record(db, record):
         return row
     if kind == "facility":
         row = db.query(Facility).filter_by(ward_id=ward_id(db, d), name=d["name"]).one_or_none()
-        if row and (not row.is_active or row.facility_type != d["facility_type"]):
-            raise ValueError("Facility type differs or facility is inactive")
+        if row and (not row.is_active or row.facility_type != d["facility_type"] or not same_fields(row, geofence_values(d))):
+            raise ValueError("Facility type/geofence differs or facility is inactive")
         return row
     if kind == "pay_period":
         values = dict(start_date=date.fromisoformat(d["start_date"]), end_date=date.fromisoformat(d["end_date"]),
@@ -244,6 +252,13 @@ def existing_record(db, record):
             PayPeriod.start_date <= values["end_date"], PayPeriod.end_date >= values["start_date"]).first()
         if not row and overlap:
             raise ValueError("Another open period overlaps these dates")
+        if not row:
+            overlapping = db.query(PayPeriod).filter(
+                PayPeriod.start_date <= values["end_date"], PayPeriod.end_date >= values["start_date"])
+            if values["region_id"] is not None:
+                overlapping = overlapping.filter(or_(PayPeriod.region_id == values["region_id"], PayPeriod.region_id.is_(None)))
+            if overlapping.first():
+                raise ValueError("An existing global/regional period overlaps these dates. Review/reopen it manually instead.")
         return row
     if kind == "service_rate":
         values = dict(cadre_id=one(db, Cadre, code=d["cadre"]).id, region_id=region(db, d["region"]))
@@ -252,7 +267,7 @@ def existing_record(db, record):
                                                effective_start_date=date.fromisoformat(d["effective_start_date"])).all()
         if not row and peers:
             row = peers[0]
-        if row and (not row.is_active or normalize(rate_data(db, row)) != d):
+        if row and (not row.is_active or DATA_TYPES["service_rate"].model_validate(rate_data(db, row)).model_dump(mode="json") != d):
             raise ValueError("An existing rate differs; rates and paid snapshots are never overwritten")
         return row
     raise ValueError("Unsupported setup record")
@@ -371,7 +386,8 @@ def create_record(db, current, record):
     elif kind == "funding_source":
         db.add(FundingSource(**d))
     elif kind == "facility":
-        db.add(Facility(name=d["name"], ward_id=ward_id(db, d), facility_type=d["facility_type"], is_active=True))
+        db.add(Facility(name=d["name"], ward_id=ward_id(db, d), facility_type=d["facility_type"],
+                        **geofence_values(d), is_active=True))
     elif kind == "pay_period":
         db.add(PayPeriod(region_id=region(db, d["region"]), start_date=date.fromisoformat(d["start_date"]),
                          end_date=date.fromisoformat(d["end_date"]), period_label=d["period_label"], status=d["status"]))

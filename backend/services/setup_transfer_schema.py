@@ -30,6 +30,16 @@ class FundingData(Strict):
 
 class FacilityData(FacilityRef):
     facility_type: str | None = Field(default=None, max_length=50)
+    geofence_lat: Decimal | None = Field(default=None, ge=-90, le=90, max_digits=10, decimal_places=8)
+    geofence_lon: Decimal | None = Field(default=None, ge=-180, le=180, max_digits=11, decimal_places=8)
+    geofence_radius_meters: int | None = Field(default=None, gt=0, le=100000)
+
+    @model_validator(mode="after")
+    def geofence(self):
+        values = [self.geofence_lat, self.geofence_lon, self.geofence_radius_meters]
+        if any(v is not None for v in values) and not all(v is not None for v in values):
+            raise ValueError("A facility geofence requires latitude, longitude and radius")
+        return self
 
 
 class PeriodData(Strict):

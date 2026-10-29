@@ -7,3 +7,4 @@
 - [Finance scope testing](finance-scope-testing.md) — isolate region, cadre and CSO boundaries; numbered users may be same-organization maker/checker pairs.
 - [SQL scope correlation](sql-scope-correlation.md) — correlated scope filters can fail when the same work-log table is joined outside the filter; avoid unnecessary joins.
 - [Release regression policy](release-regression-policy.md) — older finance tests can encode retired payment rules; validate against current policy before changing app behavior.
+- [Published setup drift](published-setup-drift.md) — matching live/preview assets can conceal missing live configuration; compare setup before clearing more caches.

@@ -3,8 +3,8 @@ import copy
 from fastapi.encoders import jsonable_encoder
 
 from backend.models import (
-    AuditEvent, Cadre, FundingSource, Organization, PaymentClaim, PaymentRecord,
-    Role, Staff, StaffAssignment, User, UserReviewCadre, UserRole, WorkLog,
+    ActivityRate, AuditEvent, Cadre, FundingSource, Organization, PaymentClaim, PaymentRecord,
+    PayPeriod, Region, Role, Staff, StaffAssignment, User, UserReviewCadre, UserRole, WorkLog,
 )
 from backend.services.setup_transfer import user_data
 
@@ -168,3 +168,78 @@ def test_document_forbids_admin_roles_passwords_financial_data_and_bad_periods(a
     response = client.post(PREFIX + "/review", content=b" " * (2 * 1024 * 1024 + 1),
                            headers={"Content-Type": "application/json"})
     assert response.status_code == 413
+
+
+def test_daily_service_amount_and_period_roundtrip_without_repricing_existing_work(api, db):
+    region = db.query(Region).first()
+    doc = document(
+        record("pay_period", {
+            "region": region.name, "start_date": "2099-11-01", "end_date": "2099-11-30",
+            "period_label": "Transfer test period", "status": "OPEN",
+        }, "new-period"),
+        record("service_rate", {
+            "key": "transfer_fixed_daily", "source_key": None, "label_en": "Transfer fixed service",
+            "label_sw": "Huduma", "cadre": "CHW", "region": region.name,
+            "item_type": "SERVICES", "form_mode": "SINGLE",
+            "field_definitions": [{"key": "transfer_count", "label_en": "Clients", "label_sw": "Wateja",
+                                   "field_type": "INTEGER", "is_active": True, "sort_order": 200}],
+            "hours_input": False, "rate_value": "40000.00", "currency": "TZS",
+            "unit_type": "PER_DAY", "billable_field": None, "effective_start_date": "2026-10-01",
+        }, "new-rate"),
+    )
+    apply(api, doc, review(api, doc))
+    assert db.query(PayPeriod).filter_by(period_label="Transfer test period").count() == 1
+    rate = db.query(ActivityRate).filter_by(key="transfer_fixed_daily").one()
+    assert str(rate.rate_value) == "40000.00"
+    assert rate.field_definitions[0]["sort_order"] == 200
+    assert {r["state"] for r in review(api, doc)["items"]} == {"EXISTS"}
+    changed = copy.deepcopy(doc)
+    changed["records"][1]["data"]["rate_value"] = "50000.00"
+    result = review(api, changed)
+    assert result["items"][1]["state"] == "CONFLICT"
+    db.expire_all()
+    assert str(rate.rate_value) == "40000.00"
+
+
+def test_missing_historical_placement_can_be_added_without_editing_current_assignment(api, db):
+    user = db.query(User).filter_by(username="hcp2").one()
+    staff = db.query(Staff).filter_by(user_id=user.id).one()
+    assignment = db.query(StaffAssignment).filter_by(staff_id=staff.id).first()
+    original_start = assignment.start_date
+    try:
+        from datetime import date
+        assignment.start_date = date(2026, 10, 25)
+        db.commit()
+        data = user_data(db, user)
+        historical = jsonable_encoder(data["staff"]["assignments"][0])
+        historical.update(start_date="2026-09-01", end_date="2026-09-30")
+        data["staff"]["assignments"].insert(0, historical)
+        doc = document(record("user_setup", data, "historical-placement"))
+        assert review(api, doc)["items"][0]["state"] == "MISSING"
+        apply(api, doc, review(api, doc))
+        db.expire_all()
+        assert assignment.start_date == date(2026, 10, 25)
+        assert db.query(StaffAssignment).filter_by(staff_id=staff.id, start_date=date(2026, 9, 1)).count() == 1
+    finally:
+        db.rollback()
+        assignment.start_date = original_start
+        # Remove only the synthetic historic placement to leave shared fixtures unchanged.
+        from datetime import date
+        db.query(StaffAssignment).filter_by(staff_id=staff.id, start_date=date(2026, 9, 1)).delete()
+        db.commit()
+
+
+def test_transfer_does_not_duplicate_closed_global_period(api, db):
+    from datetime import date
+    region = db.query(Region).first()
+    db.add(PayPeriod(start_date=date(2098, 10, 1), end_date=date(2098, 10, 31),
+                     period_label="Protected old period", status="CLOSED"))
+    db.commit()
+    doc = document(record("pay_period", {
+        "region": region.name, "start_date": "2098-10-01", "end_date": "2098-10-31",
+        "period_label": "Do not duplicate", "status": "OPEN",
+    }))
+    result = review(api, doc)
+    assert result["items"][0]["state"] == "CONFLICT"
+    apply(api, doc, result, expect=409)
+    assert not db.query(PayPeriod).filter_by(period_label="Do not duplicate").first()
