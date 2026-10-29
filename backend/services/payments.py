@@ -1,8 +1,9 @@
 """Recording payments executed outside the app (the MVP never initiates bank or wallet transfers).
 
-Uploading proof never marks a claim PAID by itself: PAID needs a recorded payment action for the full amount
-plus the required proof, then (if proof came later) an explicit confirmation. Reconciliation is done by a
-different person from whoever recorded the payment.
+Standalone proof uploads never mark a claim PAID. The separately confirmed FHI360
+Services proof-and-payment operation atomically links the document, records any
+outstanding amount and confirms the resulting full payment. Reconciliation remains
+an independent action by someone other than the payment recorder.
 """
 import hashlib
 import os

@@ -221,4 +221,5 @@ class PaymentProof(Base):
     size_bytes = Column(Integer, nullable=False)
     sha256 = Column(String(64), nullable=False)
     uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    beneficiary_snapshot = Column(JSONB)
     created_at = created_at()

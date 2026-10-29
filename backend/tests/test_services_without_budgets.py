@@ -1,5 +1,6 @@
 """Current Services routes use approved daily amounts, never allocations."""
 from io import BytesIO
+import json
 import calendar
 from datetime import date, timedelta
 import pytest
@@ -60,19 +61,37 @@ def test_every_cadre_routes_and_gets_paid_without_a_budget(api, db, empty_period
     claim_id = routed["claim_id"]
     claim = api.get(f"/claims/{claim_id}", "fhifin1")
     assert claim["status"] == "READY" and claim["amount"] == 40000
+    assert claim["payment_manifest"]["services"] == ["[Site::TZN] Service of the day"] if False else claim["payment_manifest"]["services"]
+    assert claim["payment_manifest"]["provider_name"] == claim["staff_name"]
     api.get(f"/claims/{claim_id}", "csofin1", expect=404)
-    paid = api.post(f"/claims/{claim_id}/payments", "fhifin1", {
-        "amount": 40000, "payment_reference": f"ISOLATED-NO-BUDGET-{provider}",
-        "payment_date": period["start_date"],
-    })
-    assert paid["payment_status"] == "PROOF_REQUIRED"
-    response = api.client.post(
-        f"/claims/{claim_id}/proofs", headers={"Authorization": f"Bearer {api.token('fhifin1')}"},
-        files={"file": ("synthetic-proof.pdf", BytesIO(b"%PDF-1.4\nSynthetic isolated test proof\n%%EOF"), "application/pdf")},
-    )
+    names = [{
+        "claim_id": claim_id,
+        "provider_name": claim["payment_manifest"]["provider_name"],
+        "service_names": claim["payment_manifest"]["services"],
+        "amount": claim["payment_manifest"]["amount"],
+    }]
+    headers = {"Authorization": f"Bearer {api.token('fhifin1')}"}
+    fields = {"beneficiaries": json.dumps(names), "payment_reference": f"ISOLATED-NO-BUDGET-{provider}",
+              "payment_date": period["start_date"], "beneficiaries_confirmed": "true", "payment_method": "BANK"}
+    data = BytesIO(b"%PDF-1.4\nSynthetic isolated test proof with provider, service and amount list\n%%EOF")
+    response = api.client.post("/claims/services/proof-payment", headers=headers, data=fields,
+                               files={"file": ("synthetic-proof.pdf", data, "application/pdf")})
     assert response.status_code == 201, response.text
-    paid = api.post(f"/claims/{claim_id}/actions/confirm_paid", "fhifin2")
+    assert response.json()["paid_claim_ids"] == [claim_id]
+    paid = api.get(f"/claims/{claim_id}", "fhifin1")
     assert paid["payment_status"] == "PAID"
+    assert paid["payment_actions"] == ["reconcile"]
+    proof = paid["proofs"][0]["beneficiary_snapshot"]
+    assert proof["provider_name"] == claim["staff_name"]
+    assert proof["services"] == claim["payment_manifest"]["services"]
+    assert proof["claim_amount"] == proof["payment_amount"] == "40000.00"
+    assert paid["payments"][0]["amount"] == 40000
+    assert paid["payments"][0]["payment_reference"] == fields["payment_reference"]
+    api.client.post("/claims/services/proof-payment", headers=headers, data=fields,
+                    files={"file": ("duplicate.pdf", BytesIO(b"%PDF-1.4\nDuplicate proof\n%%EOF"), "application/pdf")})
+    duplicate = api.client.post("/claims/services/proof-payment", headers=headers, data=fields,
+                                files={"file": ("duplicate.pdf", BytesIO(b"%PDF-1.4\nDuplicate proof\n%%EOF"), "application/pdf")})
+    assert duplicate.status_code == 409
     api.post(f"/claims/{claim_id}/actions/reconcile", "fhifin1",
              {"comment": "Payment recorder must not reconcile"}, expect=403)
     reconciled = api.post(f"/claims/{claim_id}/actions/reconcile", "fhifin2",

@@ -362,6 +362,20 @@ export interface ClaimSummary {
   workflow_version?: number | null;
   work_type?: 'LEGACY' | 'SERVICES' | 'PAYROLL' | 'COMMUNITY' | null;
   payment_policy?: 'FIXED_DAILY_NO_BUDGET' | 'APPROVED_AMOUNTS_NO_BUDGET' | string | null;
+  /** Present only for authorized FHI360 Services payment-proof reconciliation. */
+  payment_manifest?: PaymentManifest | null;
+}
+
+export interface PaymentManifest {
+  claim_id: number;
+  provider_id: number;
+  provider_name: string;
+  services: string[];
+  amount: string;
+  currency: string;
+  amount_recorded: string;
+  outstanding_amount: string;
+  can_record_with_proof: boolean;
 }
 
 export interface ClaimComponent {
@@ -397,6 +411,15 @@ export interface PaymentProof {
   sha256: string;
   uploaded_by: number;
   created_at?: string;
+  beneficiary_snapshot?: {
+    provider_name: string;
+    services: string[];
+    amount: string;
+    currency: string;
+    payment_reference: string;
+    payment_date: string;
+    beneficiaries_confirmed: boolean;
+  } | null;
 }
 
 export interface ClaimAudit {

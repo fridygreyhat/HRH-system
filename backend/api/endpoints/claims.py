@@ -32,6 +32,7 @@ from ...models import (
 )
 from ...services import claims as cl
 from ...services import payments as pay
+from ...services import services_payment_proofs as service_proofs
 from ...services.scope import assignment_for_period, claim_visibility, worklog_visibility
 from ...services.trace import trace_claim
 from ...services.worklog_workflow import APPROVED as LOG_APPROVED, period_label
@@ -106,7 +107,12 @@ def _detail(db: Session, current: CurrentUser, claim: PaymentClaim) -> dict:
         "budget_line": {"id": line.id, "code": line.code, "name": line.name} if line else None,
         "components": [to_dict(c) for c in db.query(ClaimComponent).filter(ClaimComponent.claim_id == claim.id)],
         "payments": [to_dict(p) for p in db.query(PaymentRecord).filter(PaymentRecord.claim_id == claim.id).order_by(PaymentRecord.id)] if finance_view else [],
-        "proofs": [to_dict(p, exclude=("storage_key",)) for p in db.query(PaymentProof).filter(PaymentProof.claim_id == claim.id)] if finance_view else [],
+        "proofs": [
+            {**to_dict(p, exclude=("storage_key",)),
+             **({"beneficiary_snapshot": p.beneficiary_snapshot} if current.has_any(FHI360_FINANCE) and p.beneficiary_snapshot else {})}
+            for p in db.query(PaymentProof).filter(PaymentProof.claim_id == claim.id)
+        ] if finance_view else [],
+        "payment_manifest": service_proofs.manifest(db, current, claim),
         "audit": [{**to_dict(a), "actor_name": name} for a, name in audit_rows] if can_view_audit(current) else [],
         "review_feedback": next(([{"action": row.action, "comment": row.comment}]
                                  for row, _ in reversed(audit_rows)
@@ -120,6 +126,32 @@ def _detail(db: Session, current: CurrentUser, claim: PaymentClaim) -> dict:
 @router.get("/statuses")
 def statuses():
     return {"claim_statuses": cl.CLAIM_STATUSES, "payment_statuses": cl.PAYMENT_STATUSES}
+
+
+@router.get("/services/proof-payment/eligible")
+def services_proof_payment_eligible(
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(require_roles(FHI360_FINANCE)),
+):
+    return service_proofs.eligible_claims(db, current)
+
+
+@router.post("/services/proof-payment")
+async def services_proof_payment(
+    file: UploadFile = File(...),
+    beneficiaries: str = Form(..., max_length=50_000),
+    payment_reference: str = Form(..., max_length=200),
+    payment_date: date = Form(...),
+    beneficiaries_confirmed: bool = Form(default=False),
+    payment_method: Optional[str] = Form(default=None),
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(require_roles(FHI360_FINANCE)),
+):
+    claim_ids = await service_proofs.record_with_proof(
+        db, current, file, beneficiaries, payment_reference, payment_date,
+        beneficiaries_confirmed, payment_method,
+    )
+    return {"paid_claim_ids": claim_ids, "paid_count": len(claim_ids)}
 
 
 @router.get("")
