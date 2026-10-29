@@ -481,6 +481,12 @@ payment pricing” below for the current policy. Services remains payable.
 - Preserve legacy allocations, paid snapshots and committed financial ledger history. Historical payment/cancellation bookkeeping may still update an existing committed line; new budget-free claims must never create or charge one.
 - Older budget/routing descriptions below are historical wherever they conflict with this policy.
 
+### Monthly regional report sign-off
+- Regional Finance reviews and signs off each region, calendar month and work type after RM authorization, covering all CHW, HCP and Data Clerk work in its assigned region. A Regional Finance user must hold all three cadre review scopes to sign off a whole-region report.
+- This is append-only documentation approval, not a claim, pricing, Payroll financial authorization, or payment instruction. Late work changes make the Regional Finance live view stale; a fresh review creates a new revision without changing old signed documents.
+- Assigned CSO Finance users see only the latest signed report data belonging to their CSO, region and cadre scopes. Unapproved work must not leak through older report URLs or file exports. PDF and CSV reflect the same authorized view and include totals, indicators, provider breakdown and approval attribution.
+- **Why:** the user needs the whole monthly regional report reviewed before their CSO Finance team can document it, while keeping Payroll report-only and payment routing separate.
+
 ### Operational approval versus payment pricing
 - Regional Finance accounts that also hold channel-finance roles should start
   from RM-approved work: monthly reports for Payroll, routing review for Services.
@@ -491,8 +497,9 @@ payment pricing” below for the current policy. Services remains payable.
 - Keep providers grouped by cadre in the regional monthly report. Large cadre
   lists must remain compact and searchable, with full-month totals independent
   of list filtering or pagination.
-- Payroll is a work report only: CTC verification → Technical review → RM approval.
-  It has no activity-rate requirement, budget gate, finance approval or payment routing.
+ - Payroll is a work report only: CTC verification → Technical review → RM approval.
+   It has no activity-rate requirement, budget gate, payment approval or payment routing.
+   A later regional monthly report sign-off is for documentation, not payment.
   Finance sees calendar-month indicator and hour totals across all assigned cadres
   on one page, respecting region, cadre and CSO scope. Totals use actual entry dates,
   not whole pay-period spans; indicator sums are activity counts, not unique clients.

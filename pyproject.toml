@@ -24,6 +24,7 @@ dependencies = [
     "python-multipart>=0.0.32",
     "sqlalchemy>=2.0",
     "uvicorn>=0.30",
+    "reportlab>=4.4",
 ]
 
 [project.scripts]

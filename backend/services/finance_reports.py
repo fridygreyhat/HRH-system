@@ -15,7 +15,7 @@ RM_AUTHORIZED = {"APPROVED", "PENDING_FINANCE_REVIEW", "FINANCE_REVIEWED",
                  "ROUTED_FHI360", "ROUTED_CSO", "PAID", "BUDGET_HOLD"}
 
 
-def monthly_summary(db, current, month, region_id, work_type):
+def monthly_summary(db, current, month, region_id, work_type, organization_id=None):
     year, number = map(int, month.split("-"))
     if not 2000 <= year <= 2100:
         raise HTTPException(422, "Select a month between 2000 and 2100.")
@@ -32,7 +32,6 @@ def monthly_summary(db, current, month, region_id, work_type):
         .filter(
             worklog_visibility(current),
             record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id),
-            WorkLog.staff_id != current.staff_id,
             WorkLog.work_type == work_type,
             WorkLog.status.in_(RM_AUTHORIZED),
             # Legacy BUDGET_HOLD can be an RM hold, not finance-authorized work.
@@ -42,6 +41,8 @@ def monthly_summary(db, current, month, region_id, work_type):
     )
     if region_id:
         query = query.filter(StaffAssignment.region_id == region_id)
+    if organization_id is not None:
+        query = query.filter(StaffAssignment.organization_id == organization_id)
     rows = query.order_by(Cadre.code, Staff.first_name, Staff.last_name, Region.name, WorkLogEntry.id).all()
     measures = {}
     if rows:
@@ -59,13 +60,14 @@ def monthly_summary(db, current, month, region_id, work_type):
             "staff_id": staff.id, "provider_name": staff.legal_name,
             "cadre_code": cadre.code, "cadre_name": cadre.name,
             "facility_name": facility.name if facility else "Not assigned",
-            "region_name": region.name, "_dates": set(), "_hours": Decimal(0), "_indicators": {},
+            "region_name": region.name, "_dates": set(), "_logs": set(), "_hours": Decimal(0), "_indicators": {},
         })
         group = cadres.setdefault(cadre.id, {
             "code": cadre.code, "name": cadre.name, "_staff": set(), "_dates": set(),
             "_hours": Decimal(0), "_indicators": {},
         })
         provider["_dates"].add(entry.entry_date)
+        provider["_logs"].add(log.id)
         group["_dates"].add((staff.id, entry.entry_date))
         group["_staff"].add(staff.id)
         for target in (provider, group):
@@ -93,6 +95,8 @@ def monthly_summary(db, current, month, region_id, work_type):
                                   for _, value in sorted(item["_indicators"].items())])
         if "_staff" in item:
             result["provider_count"] = len(item["_staff"])
+        if "_logs" in item:
+            result["logs"] = len(item["_logs"])
         return result
 
     return {

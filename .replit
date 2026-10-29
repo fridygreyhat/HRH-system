@@ -2,7 +2,7 @@ modules = ["nodejs-20", "python-3.12", "web", "postgresql-16"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["cacert", "cargo", "libiconv", "libxcrypt", "rustc"]
+packages = ["cacert", "cargo", "freetype", "glibcLocales", "libiconv", "libxcrypt", "rustc"]
 
 [agent]
 expertMode = true

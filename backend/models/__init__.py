@@ -29,3 +29,4 @@ from .budgets import BudgetLine, BudgetTransaction, BudgetSyncLog
 from .notifications import SMSTemplate, SMSOutbox
 from .audit import AuditEvent, SystemSetting
 from .activities import ActivityRate
+from .finance_reports import FinanceMonthlyReport

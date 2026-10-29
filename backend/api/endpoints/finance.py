@@ -2,6 +2,7 @@
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -13,8 +14,58 @@ from ...db.session import get_db
 from ...models import Cadre, ClaimCategory, Facility, FundingSource, PaymentClaim, PayPeriod, Region, Staff, StaffAssignment, WorkLog
 from ...services import finance_gate, worklog_workflow as wf
 from ...services.v22_scope import record_condition, regions_for
+from ...services import monthly_report_approval as monthly_reports
+from ...services.monthly_report_exports import csv_file, pdf_file
 
 router = APIRouter()
+
+
+class MonthlyApprovalIn(BaseModel):
+    month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    region_id: int = Field(gt=0)
+    work_type: Literal["SERVICES", "PAYROLL"]
+    review_confirmed: bool
+    expected_digest: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+
+
+@router.get("/monthly-report")
+def monthly_report(
+    month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    region_id: Optional[int] = Query(default=None, gt=0),
+    work_type: Literal["SERVICES", "PAYROLL"] = "PAYROLL",
+    db: Session = Depends(get_db),
+    current=Depends(require_roles(REGIONAL_FINANCE, FHI360_FINANCE, CSO_FINANCE)),
+):
+    return monthly_reports.view(db, current, month, region_id, work_type)
+
+
+@router.post("/monthly-report/approve")
+def approve_monthly_report(
+    data: MonthlyApprovalIn,
+    db: Session = Depends(get_db),
+    current=Depends(require_roles(REGIONAL_FINANCE)),
+):
+    return monthly_reports.approve(db, current, data)
+
+
+@router.get("/monthly-report/export")
+def export_monthly_report(
+    month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    region_id: int = Query(gt=0),
+    work_type: Literal["SERVICES", "PAYROLL"] = "PAYROLL",
+    format: Literal["csv", "pdf"] = "csv",
+    db: Session = Depends(get_db),
+    current=Depends(require_roles(REGIONAL_FINANCE, FHI360_FINANCE, CSO_FINANCE)),
+):
+    result = monthly_reports.view(db, current, month, region_id, work_type)
+    if not result["report"]["providers"]:
+        raise HTTPException(404, "No authorized approved monthly work is available to export.")
+    region = db.query(Region).filter_by(id=region_id).one()
+    filename = f"regional-work-{month}-{work_type.lower()}-region-{region_id}.{format}"
+    payload = csv_file(result, region.name) if format == "csv" else pdf_file(result, region.name)
+    return Response(payload, media_type="text/csv; charset=utf-8" if format == "csv" else "application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"',
+                             "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
 
 class ChannelIn(BaseModel):
@@ -103,6 +154,9 @@ def monthly_summary(
     db: Session = Depends(get_db),
     current=Depends(require_roles(REGIONAL_FINANCE, FHI360_FINANCE, CSO_FINANCE)),
 ):
+    # Do not let the legacy endpoint bypass Regional Finance publication.
+    if monthly_reports.cso_only(current):
+        return monthly_reports.view(db, current, month, region_id, work_type)["report"]
     from ...services.finance_reports import monthly_summary as report
     return report(db, current, month, region_id, work_type)
 
@@ -111,7 +165,8 @@ def monthly_summary(
 def regions(db: Session = Depends(get_db), current=Depends(require_roles(REGIONAL_FINANCE, FHI360_FINANCE, CSO_FINANCE))):
     query = db.query(Region)
     if not current.unrestricted:
-        query = query.filter(Region.id.in_(regions_for(current)))
+        allowed = monthly_reports.cso_regions(db, current) if monthly_reports.cso_only(current) else regions_for(current)
+        query = query.filter(Region.id.in_(allowed))
     return [{"id": region.id, "name": region.name} for region in query.order_by(Region.name)]
 
 

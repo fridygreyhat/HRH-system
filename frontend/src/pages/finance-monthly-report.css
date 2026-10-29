@@ -83,6 +83,29 @@
 .finance-pagination > div { display: flex; gap: .5rem; }
 .finance-pagination .btn { min-height: 2rem; padding: .35rem .65rem; font-size: .75rem; }
 .finance-pagination .btn:disabled { cursor: not-allowed; opacity: .48; }
+.finance-report-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+.finance-signoff {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, .8fr);
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.finance-signoff.is-approved { border-left-color: var(--primary); }
+.finance-signoff h2 { margin: .2rem 0 .35rem; font-size: 1.12rem; }
+.finance-signoff p { margin: .25rem 0 0; color: var(--muted); font-size: .82rem; }
+.finance-signoff p strong { color: var(--text); }
+.finance-signoff-control { display: grid; justify-items: start; gap: .75rem; }
+.finance-confirm-check { display: flex; align-items: flex-start; gap: .55rem; color: var(--text); font-size: .8rem; line-height: 1.45; cursor: pointer; }
+.finance-confirm-check input { width: 1rem; height: 1rem; margin: .1rem 0 0; accent-color: var(--primary); }
+.finance-stale-note { color: #8a4f16 !important; }
+.finance-readonly-note { color: var(--report-ink) !important; }
+.finance-signoff .finance-signoff-legal { font-size: .72rem; }
+.finance-report-actions .btn:disabled { opacity: .58; cursor: wait; }
 @media (max-width: 900px) {
   .finance-monthly-overview { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .finance-overview-title { grid-column: 1 / -1; }
@@ -91,7 +114,10 @@
 }
 @media (max-width: 640px) {
   .finance-monthly-heading { flex-direction: column; }
-  .finance-monthly-heading > button { width: 100%; }
+  .finance-monthly-heading > .finance-report-actions { width: 100%; justify-content: stretch; }
+  .finance-report-actions .btn { flex: 1 1 9rem; }
+  .finance-signoff { grid-template-columns: 1fr; padding: .95rem; }
+  .finance-signoff-control, .finance-signoff-control .btn { width: 100%; }
   .finance-report-note { align-items: start; gap: .7rem; padding: .9rem; }
   .finance-monthly-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .finance-total:nth-child(2n) { border-left: 0; }

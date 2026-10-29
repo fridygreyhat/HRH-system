@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import { qs } from '../api';
+import React, { useEffect, useMemo, useState } from 'react';
+import { api, qs, saveBlob } from '../api';
+import { useAuth } from '../AuthContext';
 import { Alert, AsyncState, Field } from '../components/ui';
 import { todayLocal, num } from '../format';
 import { useApi } from '../hooks';
@@ -37,6 +38,23 @@ interface MonthlySummary {
   totals: { providers: number; days: number; hours: string; logs: number };
   providers: MonthlyProvider[];
   cadres: MonthlyCadre[];
+}
+interface Approval {
+  id: number;
+  month: string;
+  region_id: number;
+  region_name: string;
+  work_type: WorkType;
+  approved_at: string;
+  approved_by_name: string;
+}
+interface MonthlyReportResponse {
+  state: 'NOT_APPROVED' | 'APPROVED';
+  approval: Approval | null;
+  can_approve: boolean;
+  stale: boolean;
+  digest: string | null;
+  report: MonthlySummary;
 }
 
 const monthName = (month: string) => {
@@ -147,9 +165,25 @@ export function FinanceMonthlyReport() {
   const [month, setMonth] = useState(() => todayLocal().slice(0, 7));
   const [workType, setWorkType] = useState<WorkType>('PAYROLL');
   const [regionId, setRegionId] = useState('');
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [approving, setApproving] = useState(false);
+  const [exporting, setExporting] = useState<'csv' | 'pdf' | null>(null);
   const regions = useApi<Named[]>('/finance/regions');
-  const summary = useApi<MonthlySummary>(`/finance/monthly-summary${qs({ month, region_id: regionId, work_type: workType })}`);
+  const { hasRole } = useAuth();
+  const isCsoOnly = hasRole('CSO_FINANCE') && !hasRole('REGIONAL_FINANCE', 'FHI360_FINANCE', 'SUPER_ADMIN');
+  const reportState = useApi<MonthlyReportResponse>(`/finance/monthly-report${qs({ month, region_id: regionId, work_type: workType })}`);
+  const summary = {
+    data: reportState.data?.report ?? null,
+    error: reportState.error,
+    loading: reportState.loading,
+    reload: reportState.reload,
+  };
   const providers = useMemo(() => summary.data?.providers || [], [summary.data]);
+  useEffect(() => { setReviewConfirmed(false); setActionError(''); }, [month, workType, regionId]);
+  useEffect(() => {
+    if (!regionId && regions.data?.length === 1) setRegionId(String(regions.data[0].id));
+  }, [regionId, regions.data]);
   const providerGroups = useMemo(() => {
     const cadres = summary.data?.cadres || [];
     const byCode = new Map(cadres.map((cadre) => [cadre.code, cadre]));
@@ -171,6 +205,44 @@ export function FinanceMonthlyReport() {
     }));
   }, [summary.data, providers]);
 
+  const download = async (format: 'csv' | 'pdf') => {
+    setExporting(format);
+    setActionError('');
+    try {
+      const path = `/finance/monthly-report/export${qs({ month, region_id: regionId, work_type: workType, format })}`;
+      saveBlob(await api.blob(path, 'GET', `monthly-report-${month}.${format}`));
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'The report could not be downloaded. Try again.');
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const approve = async () => {
+    if (!regionId || !reportState.data?.digest || !reviewConfirmed) return;
+    setApproving(true);
+    setActionError('');
+    try {
+      await api.post<MonthlyReportResponse>('/finance/monthly-report/approve', {
+        month, region_id: Number(regionId), work_type: workType,
+        review_confirmed: true, expected_digest: reportState.data.digest,
+      });
+      reportState.reload();
+      setReviewConfirmed(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The sign-off could not be completed.';
+      setActionError(message);
+      if ((error as { status?: number; requiresRefresh?: boolean }).status === 409 || (error as { requiresRefresh?: boolean }).requiresRefresh) {
+        reportState.reload();
+      }
+    } finally {
+      setApproving(false);
+    }
+  };
+  const canSignOff = !isCsoOnly && reportState.data?.can_approve;
+  const approval = reportState.data?.approval;
+  const approvedDate = approval?.approved_at ? new Date(approval.approved_at) : null;
+
   return (
     <div className="stack-lg finance-monthly">
       <header className="page-header finance-monthly-heading">
@@ -179,9 +251,11 @@ export function FinanceMonthlyReport() {
           <h1>Monthly work report</h1>
           <p className="muted small">One approved-work view across CHW, HCP and Data Clerk cadres. Totals follow entry dates within the selected calendar month.</p>
         </div>
-        <button type="button" className="btn btn-secondary" onClick={() => { summary.reload(); regions.reload(); }} disabled={summary.loading}>
-          Refresh report
-        </button>
+        <div className="finance-report-actions">
+          <button type="button" className="btn btn-secondary" onClick={() => { summary.reload(); regions.reload(); }} disabled={summary.loading}>Refresh report</button>
+          <button type="button" className="btn btn-secondary" onClick={() => download('csv')} disabled={!!exporting}>{exporting === 'csv' ? 'Preparing CSV…' : 'Download CSV'}</button>
+          <button type="button" className="btn btn-secondary" onClick={() => download('pdf')} disabled={!!exporting}>{exporting === 'pdf' ? 'Preparing PDF…' : 'Download PDF'}</button>
+        </div>
       </header>
 
       <section className="finance-report-note" aria-label="Report scope">
@@ -207,6 +281,36 @@ export function FinanceMonthlyReport() {
         </Field>
         {regions.error && <Alert kind="warn">Region options could not be loaded. Showing your authorized scope. {regions.error}</Alert>}
       </div>
+
+      {reportState.data && (
+        <section className={`finance-signoff ${approval ? 'is-approved' : ''}`} aria-labelledby="finance-signoff-heading">
+          <div className="finance-signoff-copy">
+            <p className="finance-overview-kicker">Regional document status</p>
+            <h2 id="finance-signoff-heading">{approval ? 'Approved report' : 'Not yet approved'}</h2>
+            {approval ? (
+              <p>Signed by <strong>{approval.approved_by_name}</strong> for {approval.region_name} · {approvedDate && !Number.isNaN(approvedDate.getTime()) ? approvedDate.toLocaleString() : approval.approved_at}</p>
+            ) : (
+              <p>{regionId ? `Review the ${monthName(month)} ${workType.toLowerCase()} report for the selected region before signing.` : 'Choose one region to review and sign off. All-region view is available for browsing only.'}</p>
+            )}
+            {reportState.data.stale && <p className="finance-stale-note" role="status">New or changed work is present after this sign-off. Refresh and review the current report before relying on this document.</p>}
+            {isCsoOnly && <p className="finance-readonly-note">Read-only documentation view. This account sees the approved report snapshot for its assigned scope.</p>}
+            <p className="finance-signoff-legal">Report sign-off documents regional review only. It does not authorize or initiate payment.</p>
+          </div>
+          {canSignOff && (
+            <div className="finance-signoff-control">
+              <label className="finance-confirm-check">
+                <input type="checkbox" checked={reviewConfirmed} onChange={(event) => setReviewConfirmed(event.target.checked)} />
+                <span>I reviewed this regional report and confirm it as a document sign-off.</span>
+              </label>
+              <button type="button" className="btn btn-primary" onClick={approve} disabled={!regionId || !reviewConfirmed || approving || reportState.loading}>
+                {approving ? 'Signing off…' : approval ? 'Confirm updated sign-off' : 'Sign off report'}
+              </button>
+            </div>
+          )}
+          {!isCsoOnly && approval && !canSignOff && <p className="finance-readonly-note">This approved report is shown for reference.</p>}
+        </section>
+      )}
+      {actionError && <Alert kind="warn">{actionError}</Alert>}
 
       {summary.error ? (
         <div className="stack">

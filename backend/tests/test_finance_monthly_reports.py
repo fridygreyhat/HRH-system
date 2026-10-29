@@ -79,9 +79,17 @@ def test_monthly_report_aggregates_all_cadres_and_only_requested_dates(api, db, 
     assert report["totals"]["logs"] == 3 and Decimal(report["totals"]["hours"]) == 24
     assert {row["code"] for row in report["cadres"]} == {"CHW", "HCP", "DATA_CLERK"}
     assert len(report["providers"]) == 3
-    for finance_user in ("fhifin1", "csofin1"):
-        all_cadres(db, finance_user)
-        assert api.get(f"/finance/monthly-summary?month={month}", finance_user)["totals"]["providers"] == 3
+    all_cadres(db, "fhifin1")
+    assert api.get(f"/finance/monthly-summary?month={month}", "fhifin1")["totals"]["providers"] == 3
+    all_cadres(db, "csofin1")
+    assert api.get(f"/finance/monthly-summary?month={month}", "csofin1")["providers"] == []
+    scoped = api.get(f"/finance/monthly-report?month={month}&region_id={v22['region_id']}", v22["finance"])
+    assert scoped["report"]["totals"]["providers"] == 3
+    api.post("/finance/monthly-report/approve", v22["finance"], {
+        "month": month, "region_id": v22["region_id"], "work_type": "PAYROLL",
+        "review_confirmed": True, "expected_digest": scoped["digest"],
+    })
+    assert api.get(f"/finance/monthly-summary?month={month}", "csofin1")["totals"]["providers"] == 3
     # csofin1 and csofin2 are the same-CSO maker/checker pair. Use the
     # genuinely different CSO actor, with region/cadres explicitly granted,
     # so denial proves the organization boundary rather than missing scope.
