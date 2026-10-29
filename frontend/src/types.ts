@@ -327,6 +327,7 @@ export interface WorkLogSnapshot {
 // ---- Claims ----------------------------------------------------------------------------
 
 export interface ClaimSummary {
+  service_names?: string[];
   id: number;
   work_log_id: number | null;
   staff_id: number;
@@ -412,9 +413,13 @@ export interface PaymentProof {
   uploaded_by: number;
   created_at?: string;
   beneficiary_snapshot?: {
+    provider_id?: number;
     provider_name: string;
     services: string[];
-    amount: string;
+    claim_amount?: string;
+    payment_amount?: string;
+    amount_before_payment?: string;
+    amount?: string;
     currency: string;
     payment_reference: string;
     payment_date: string;

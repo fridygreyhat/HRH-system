@@ -4,6 +4,7 @@ import json
 from decimal import Decimal
 
 from fastapi import HTTPException
+from sqlalchemy import or_
 from ..models import Cadre, CSORegionAssignment, FinanceMonthlyReport, Region, StaffAssignment
 from ..core.roles import REGIONAL_FINANCE, FHI360_FINANCE, CSO_FINANCE
 from ..core import audit
@@ -19,6 +20,14 @@ def cso_regions(db, current):
     organizations = current.scope_values("organization_id")
     assigned = {row[0] for row in db.query(CSORegionAssignment.region_id).filter(
         CSORegionAssignment.organization_id.in_(organizations), CSORegionAssignment.is_active.is_(True))}
+    # A signed report is documentation for its named CSO, not permission to
+    # execute payments. Missing/revoked payment routing must not hide that
+    # organization's already-published records. Explicit user region limits
+    # and current organization/cadre grants still apply below and in view().
+    if organizations:
+        assigned |= {row[0] for row in db.query(FinanceMonthlyReport.region_id).filter(
+            or_(*(FinanceMonthlyReport.snapshot["organizations"].has_key(str(org))
+                  for org in organizations)))}
     explicit = regions_for(current)
     return assigned & explicit if explicit else assigned
 

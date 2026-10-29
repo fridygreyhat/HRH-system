@@ -4,6 +4,7 @@ import { qs } from '../api';
 import { useAuth } from '../AuthContext';
 import { ClaimDrawer } from '../components/claims/ClaimDrawer';
 import { CreateClaim } from '../components/claims/CreateClaim';
+import { ServicesProofPaymentDialog } from '../components/claims/ServicesProofPaymentDialog';
 import { RegionalFinanceNextSteps } from '../components/claims/RegionalFinanceNextSteps';
 import { Alert, AsyncState, Field, RouteBadge, StatusBadge } from '../components/ui';
 import { CLAIM_STATUS_LABELS, CLAIM_STATUSES, dateTime, money, PAYMENT_STATUS_LABELS, PAYMENT_STATUSES, routeLabel } from '../format';
@@ -24,6 +25,7 @@ export function Claims() {
   const claims = useApi<ClaimSummary[]>(`/claims${qs({ status, payment_status: paymentStatus, route, period_id: periodId })}`);
   const [openId, setOpenId] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
+  const [servicesProofPayment, setServicesProofPayment] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   const onlyProvider = hasRole('PROVIDER') && !hasRole('REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'RPM', 'OVERSIGHT', 'COMMUNITY_VERIFIER');
@@ -42,6 +44,11 @@ export function Claims() {
           {canCreate && (
             <button className="btn btn-primary" onClick={() => setCreating(true)}>
               Prepare a claim
+            </button>
+          )}
+          {hasRole('FHI360_FINANCE') && (
+            <button className="btn btn-secondary" onClick={() => setServicesProofPayment(true)}>
+              Services proof + payment
             </button>
           )}
           <button className="btn btn-secondary" onClick={claims.reload} disabled={claims.loading}>
@@ -105,7 +112,7 @@ export function Claims() {
                 <tr>
                   <th>#</th>
                   <th>Staff</th>
-                  <th>Category</th>
+                  <th>Services / category</th>
                   <th>Type</th>
                   <th>Period</th>
                   <th>Payment</th>
@@ -128,6 +135,9 @@ export function Claims() {
                     <td>{c.id}</td>
                     <td>{c.staff_name}</td>
                     <td>
+                      {c.service_names && c.service_names.length > 0 && (
+                        <div><strong>{c.service_names.join(', ')}</strong></div>
+                      )}
                       {c.category_name || (c.category_id == null ? 'Category not selected' : `Category #${c.category_id}`)}
                       {c.exception_reason && (
                         <div className="small" style={{ color: 'var(--warn-fg)' }} title={c.exception_reason}>
@@ -165,6 +175,16 @@ export function Claims() {
             setNotice(`Claim #${c.id} created (${CLAIM_STATUS_LABELS[c.status] || c.status}).`);
             claims.reload();
             setOpenId(c.id);
+          }}
+        />
+      )}
+      {servicesProofPayment && (
+        <ServicesProofPaymentDialog
+          onClose={() => setServicesProofPayment(false)}
+          onDone={(result) => {
+            setServicesProofPayment(false);
+            setNotice(`${result.paid_count} Services ${result.paid_count === 1 ? 'claim' : 'claims'} saved with proof.`);
+            claims.reload();
           }}
         />
       )}

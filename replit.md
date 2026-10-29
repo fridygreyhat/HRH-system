@@ -485,7 +485,14 @@ payment pricing” below for the current policy. Services remains payable.
 - Regional Finance reviews and signs off each region, calendar month and work type after RM authorization, covering all CHW, HCP and Data Clerk work in its assigned region. A Regional Finance user must hold all three cadre review scopes to sign off a whole-region report.
 - This is append-only documentation approval, not a claim, pricing, Payroll financial authorization, or payment instruction. Late work changes make the Regional Finance live view stale; a fresh review creates a new revision without changing old signed documents.
 - Assigned CSO Finance users see only the latest signed report data belonging to their CSO, region and cadre scopes. Unapproved work must not leak through older report URLs or file exports. PDF and CSV reflect the same authorized view and include totals, indicators, provider breakdown and approval attribution.
+- A published report naming a user's assigned CSO grants read-only visibility of that CSO's report region even when CSO payment routing has not been configured. Explicit user region limits and cadre grants still apply. Never create payment authority just to make an approved report visible.
 - **Why:** the user needs the whole monthly regional report reviewed before their CSO Finance team can document it, while keeping Payroll report-only and payment routing separate.
+
+### Matched FHI360 Services payment proof
+- Central FHI360 Finance can select up to 25 scoped, routed Services claims and save proof plus matching payment records atomically. The provider names, priced service names and approved amounts must match the current claims. Only outstanding balances are newly recorded; a fully recorded claim awaiting proof is confirmed without another payment record.
+- Finance must attest that the uploaded document actually lists the displayed beneficiaries, services and payment amounts. This is manual verification, not OCR or automatic document-content matching. The app records an external payment; it never initiates a bank or wallet transfer.
+- Full recorded payment plus the checked proof marks each linked Services claim/work log paid. Standalone legacy/community uploads retain their previous behavior. Reconciliation must still be done by someone other than the payment recorder. Preserve finance role, organization, region and cadre boundaries.
+- **Why:** the user wants provider/service names and amounts linked to proof and reflected as paid, without allowing an unrelated upload or a retry to create a false or duplicate payment.
 
 ### Operational approval versus payment pricing
 - Regional Finance accounts that also hold channel-finance roles should start
@@ -505,7 +512,7 @@ payment pricing” below for the current policy. Services remains payable.
   not whole pay-period spans; indicator sums are activity counts, not unique clients.
   **Why:** the user explicitly chose to keep work approvals only for Payroll.
 - Services remains payable: RM may authorize work with missing payment amounts,
-  but Finance must resolve pricing and budget requirements before routing payment.
+  but Finance must resolve daily Services pricing before routing payment; current Services do not require a budget gate.
   Never create a zero-value claim merely to advance an operational approval.
 - Only absent Services financial terms may be quoted from an exact matching
   Region × Cadre × service rate effective on the work date. Conflicting rates

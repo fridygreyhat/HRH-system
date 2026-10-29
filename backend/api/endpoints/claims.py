@@ -79,6 +79,9 @@ def _summary(db: Session, claim: PaymentClaim) -> dict:
     batch = db.get(PayrollBatch, claim.batch_id) if claim.batch_id else None
     return {
         **to_dict(claim, exclude=("calculation_snapshot",)),
+        "service_names": sorted({str(row["activity"]) for row in (claim.calculation_snapshot or {}).get("lines", [])
+                                 if isinstance(row, dict) and row.get("activity")})
+                         if claim.work_type == "SERVICES" else [],
         "staff_name": staff.legal_name,
         "category_name": db.get(ClaimCategory, claim.category_id).name if claim.category_id else None,
         "period_label": period_label(db.get(PayPeriod, claim.period_id)),
@@ -108,7 +111,7 @@ def _detail(db: Session, current: CurrentUser, claim: PaymentClaim) -> dict:
         "components": [to_dict(c) for c in db.query(ClaimComponent).filter(ClaimComponent.claim_id == claim.id)],
         "payments": [to_dict(p) for p in db.query(PaymentRecord).filter(PaymentRecord.claim_id == claim.id).order_by(PaymentRecord.id)] if finance_view else [],
         "proofs": [
-            {**to_dict(p, exclude=("storage_key",)),
+            {**to_dict(p, exclude=("storage_key", "beneficiary_snapshot")),
              **({"beneficiary_snapshot": p.beneficiary_snapshot} if current.has_any(FHI360_FINANCE) and p.beneficiary_snapshot else {})}
             for p in db.query(PaymentProof).filter(PaymentProof.claim_id == claim.id)
         ] if finance_view else [],
@@ -136,7 +139,7 @@ def services_proof_payment_eligible(
     return service_proofs.eligible_claims(db, current)
 
 
-@router.post("/services/proof-payment")
+@router.post("/services/proof-payment", status_code=201)
 async def services_proof_payment(
     file: UploadFile = File(...),
     beneficiaries: str = Form(..., max_length=50_000),

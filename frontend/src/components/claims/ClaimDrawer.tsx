@@ -20,6 +20,7 @@ import { ClaimAudit, ClaimComponent, ClaimDetail, PaymentProof } from '../../typ
 import { AdminAudit } from '../AdminAudit';
 import { Alert, AuditTimeline, Drawer, Facts, Field, Modal, ReasonDialog, RouteBadge, Section, StatusBadge, Tabs } from '../ui';
 import { ClaimTrace } from './ClaimTrace';
+import { ServicesProofPaymentDialog } from './ServicesProofPaymentDialog';
 
 const MAX_PROOF_BYTES = 10 * 1024 * 1024;
 const PROOF_TYPES = ['application/pdf', 'image/png', 'image/jpeg'];
@@ -211,13 +212,18 @@ function UploadProofDialog({ claim, onDone, onClose }: { claim: ClaimDetail; onD
   );
 }
 
-type Dialog = { kind: 'action'; action: string } | { kind: 'record_payment' } | { kind: 'upload_proof' } | null;
+type Dialog =
+  | { kind: 'action'; action: string }
+  | { kind: 'record_payment' }
+  | { kind: 'upload_proof' }
+  | { kind: 'services_proof_payment' }
+  | null;
 
 /** Claim detail drawer: components, budget line, exceptions, audit, workflow and payment actions (server-provided only). */
 export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; onClose: () => void; onChanged?: () => void }) {
   const { hasRole } = useAuth();
   const isRpmWithoutFinanceRole = hasRole('RPM') && !hasRole('REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE');
-  const { data: claim, error, loading, setData } = useApi<ClaimDetail>(`/claims/${claimId}`);
+  const { data: claim, error, loading, setData, reload } = useApi<ClaimDetail>(`/claims/${claimId}`);
   const canSeeBudgetDetails = hasRole('FHI360_FINANCE', 'CSO_FINANCE', 'RPM', 'OVERSIGHT');
   const [dialog, setDialog] = useState<Dialog>(null);
   const [tab, setTab] = useState<'overview' | 'trace'>('overview');
@@ -389,18 +395,27 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
             )}
           </Section>
 
-          {(claim.payments.length > 0 || claim.proofs.length > 0 || paymentActions.length > 0) && (
+          {(claim.payments.length > 0 || claim.proofs.length > 0 || paymentActions.length > 0 || (hasRole('FHI360_FINANCE') && claim.payment_manifest?.can_record_with_proof)) && (
             <Section
               title="Payment"
-              actions={paymentActions.map((a) => (
-                <button
-                  key={a}
-                  className={`btn btn-sm ${a === 'record_payment' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setDialog(a === 'record_payment' || a === 'upload_proof' ? { kind: a } : { kind: 'action', action: a })}
-                >
-                  {CLAIM_ACTION_LABELS[a] || humanize(a)}
-                </button>
-              ))}
+              actions={
+                <>
+                  {paymentActions.map((a) => (
+                    <button
+                      key={a}
+                      className={`btn btn-sm ${a === 'record_payment' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setDialog(a === 'record_payment' || a === 'upload_proof' ? { kind: a } : { kind: 'action', action: a })}
+                    >
+                      {CLAIM_ACTION_LABELS[a] || humanize(a)}
+                    </button>
+                  ))}
+                  {hasRole('FHI360_FINANCE') && claim.payment_manifest?.can_record_with_proof && (
+                    <button className="btn btn-primary btn-sm" onClick={() => setDialog({ kind: 'services_proof_payment' })}>
+                      Services proof + payment
+                    </button>
+                  )}
+                </>
+              }
             >
               <p className="notice notice-info small">
                 Payments are made outside this system and recorded here. Uploading proof alone does not mark a payment as paid; a claim is “Paid” only
@@ -443,6 +458,22 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
                     <li key={p.id} className="row-between">
                       <span>
                         {p.original_filename} <span className="muted small">({fileSize(p.size_bytes)}{p.created_at ? `, ${dateTime(p.created_at)}` : ''})</span>
+                        {p.beneficiary_snapshot && (
+                          <span className="proof-beneficiary-meta">
+                            <strong>{p.beneficiary_snapshot.provider_name}</strong>
+                            {p.beneficiary_snapshot.services?.length ? ` · ${p.beneficiary_snapshot.services.join(', ')}` : ''}
+                            {p.beneficiary_snapshot.provider_id != null && ` · Provider #${p.beneficiary_snapshot.provider_id}`}
+                            {(p.beneficiary_snapshot.claim_amount ?? p.beneficiary_snapshot.amount) != null &&
+                              ` · Claim ${money(p.beneficiary_snapshot.claim_amount ?? p.beneficiary_snapshot.amount, p.beneficiary_snapshot.currency)}`}
+                            {p.beneficiary_snapshot.payment_amount != null &&
+                              ` · Payment ${money(p.beneficiary_snapshot.payment_amount, p.beneficiary_snapshot.currency)}`}
+                            {p.beneficiary_snapshot.amount_before_payment != null &&
+                              ` · Previously recorded ${money(p.beneficiary_snapshot.amount_before_payment, p.beneficiary_snapshot.currency)}`}
+                            {p.beneficiary_snapshot.payment_reference ? ` · Ref ${p.beneficiary_snapshot.payment_reference}` : ''}
+                            {p.beneficiary_snapshot.payment_date ? ` · ${dateOnly(p.beneficiary_snapshot.payment_date)}` : ''}
+                            {p.beneficiary_snapshot.beneficiaries_confirmed && ' · Beneficiaries manually confirmed'}
+                          </span>
+                        )}
                       </span>
                       <span className="row">
                         <button className="btn btn-secondary btn-sm" disabled={proofAction.busy} onClick={() => fetchProof(p, true)}>
@@ -489,6 +520,18 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
       )}
       {claim && dialog?.kind === 'upload_proof' && (
         <UploadProofDialog claim={claim} onClose={() => setDialog(null)} onDone={(c) => updated(c, 'Proof uploaded. This does not by itself mark the claim paid.')} />
+      )}
+      {claim && dialog?.kind === 'services_proof_payment' && claim.payment_manifest && (
+        <ServicesProofPaymentDialog
+          manifests={[claim.payment_manifest]}
+          onClose={() => setDialog(null)}
+          onDone={(result) => {
+            setDialog(null);
+            setNotice(`${result.paid_count} Services claim saved with proof.`);
+            reload();
+            onChanged?.();
+          }}
+        />
       )}
     </Drawer>
   );

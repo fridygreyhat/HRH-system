@@ -3,7 +3,7 @@ from datetime import date
 
 import pytest
 
-from backend.models import FinanceMonthlyReport, PaymentClaim, WorkLogMeasure, utcnow
+from backend.models import CSORegionAssignment, FinanceMonthlyReport, PaymentClaim, WorkLogMeasure, utcnow
 from .test_finance_monthly_reports import all_cadres
 from .test_finance_missing_rates import unpriced_log
 from .test_v22_finance import v22
@@ -56,6 +56,18 @@ def test_monthly_signoff_exports_and_revisions(api, db, period, v22, work_type):
     assert published["state"] == "APPROVED" and published["report"]["totals"]["providers"] == 2
     assert published["can_approve"] is False and published["report"]["totals"]["hours"] == review["report"]["totals"]["hours"]
     assert api.get(old_path, "csofin1")["totals"]["providers"] == 2
+    # Receiving one's own signed documentation is separate from payment
+    # authority. Do not require or silently activate CSO payment routing.
+    authority = db.query(CSORegionAssignment).filter_by(region_id=region, is_active=True).all()
+    for row in authority:
+        row.is_active = False
+    db.commit()
+    assert api.get(path, "csofin1")["report"]["totals"]["providers"] == 2
+    api.get(path, "csofin3", expect=403)
+    assert not db.query(CSORegionAssignment).filter_by(region_id=region, is_active=True).count()
+    for row in authority:
+        row.is_active = True
+    db.commit()
 
     for fmt, content_type, prefix in (("csv", "text/csv", b"\xef\xbb\xbf"),
                                        ("pdf", "application/pdf", b"%PDF")):

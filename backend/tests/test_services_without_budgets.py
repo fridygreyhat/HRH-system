@@ -61,7 +61,7 @@ def test_every_cadre_routes_and_gets_paid_without_a_budget(api, db, empty_period
     claim_id = routed["claim_id"]
     claim = api.get(f"/claims/{claim_id}", "fhifin1")
     assert claim["status"] == "READY" and claim["amount"] == 40000
-    assert claim["payment_manifest"]["services"] == ["[Site::TZN] Service of the day"] if False else claim["payment_manifest"]["services"]
+    assert claim["payment_manifest"]["services"] == [activity["label_en"]]
     assert claim["payment_manifest"]["provider_name"] == claim["staff_name"]
     api.get(f"/claims/{claim_id}", "csofin1", expect=404)
     names = [{
@@ -80,15 +80,14 @@ def test_every_cadre_routes_and_gets_paid_without_a_budget(api, db, empty_period
     assert response.json()["paid_claim_ids"] == [claim_id]
     paid = api.get(f"/claims/{claim_id}", "fhifin1")
     assert paid["payment_status"] == "PAID"
-    assert paid["payment_actions"] == ["reconcile"]
+    assert paid["service_names"] == [activity["label_en"]]
+    assert paid["payment_actions"] == []  # recorder may not reconcile their own payment
     proof = paid["proofs"][0]["beneficiary_snapshot"]
     assert proof["provider_name"] == claim["staff_name"]
     assert proof["services"] == claim["payment_manifest"]["services"]
     assert proof["claim_amount"] == proof["payment_amount"] == "40000.00"
     assert paid["payments"][0]["amount"] == 40000
     assert paid["payments"][0]["payment_reference"] == fields["payment_reference"]
-    api.client.post("/claims/services/proof-payment", headers=headers, data=fields,
-                    files={"file": ("duplicate.pdf", BytesIO(b"%PDF-1.4\nDuplicate proof\n%%EOF"), "application/pdf")})
     duplicate = api.client.post("/claims/services/proof-payment", headers=headers, data=fields,
                                 files={"file": ("duplicate.pdf", BytesIO(b"%PDF-1.4\nDuplicate proof\n%%EOF"), "application/pdf")})
     assert duplicate.status_code == 409

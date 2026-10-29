@@ -7,9 +7,10 @@ from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from ..core.roles import FHI360_FINANCE
-from ..models import PaymentClaim, PaymentProof, PaymentRecord, User, Staff, WorkLog, utcnow
+from ..core import audit
+from ..models import PaymentClaim, PaymentRecord, Staff
 from . import claims as cl, payments
-from .payments import ALLOWED_PROOF_TYPES, paid_total
+from .payments import ALLOWED_PROOF_TYPES
 from .scope import claim_visibility
 
 MAX_BENEFICIARIES = 25
@@ -30,7 +31,7 @@ def manifest(db: Session, current, claim: PaymentClaim) -> dict | None:
     amount = Decimal(str(claim.amount)).quantize(Decimal("0.01"))
     recorded = payments.paid_total(db, claim.id).quantize(Decimal("0.01"))
     outstanding = amount - recorded
-    if outstanding <= 0:
+    if amount <= 0 or outstanding < 0 or (outstanding == 0 and claim.payment_status != "PROOF_REQUIRED"):
         return None
     staff = db.get(Staff, claim.staff_id)
     if not staff:
@@ -44,11 +45,11 @@ def manifest(db: Session, current, claim: PaymentClaim) -> dict | None:
 def eligible_claims(db: Session, current):
     if not current.has_any(FHI360_FINANCE):
         raise HTTPException(403, "Only FHI360 Finance can select centrally paid Services.")
-    claims = db.query(PaymentClaim).join(WorkLog, WorkLog.id == PaymentClaim.work_log_id).filter(
+    claims = db.query(PaymentClaim).filter(
         claim_visibility(current), PaymentClaim.workflow_version >= 2,
         PaymentClaim.work_type == "SERVICES", PaymentClaim.route_code == "A",
         PaymentClaim.status.in_((cl.READY, cl.EXPORTED)),
-        PaymentClaim.payment_status.in_(("PENDING", "PARTIALLY_RECORDED", "PROOF_REQUIRED")),
+        PaymentClaim.payment_status.in_(("NOT_STARTED", "PENDING", "PARTIALLY_RECORDED", "PROOF_REQUIRED", "FAILED")),
     ).order_by(PaymentClaim.period_id.desc(), PaymentClaim.staff_id).limit(200).all()
     return [value for claim in claims if (value := manifest(db, current, claim))]
 
@@ -61,7 +62,9 @@ def _parse_manifest(db, current, items):
         if not isinstance(item, dict) or set(item) != {"claim_id", "provider_name", "service_names", "amount"}:
             raise HTTPException(422, "The beneficiary list has invalid fields. Refresh and select the claims again.")
         try:
-            claim_id = int(item["claim_id"])
+            if not isinstance(item["claim_id"], int) or isinstance(item["claim_id"], bool):
+                raise ValueError()
+            claim_id = item["claim_id"]
         except (TypeError, ValueError):
             raise HTTPException(422, "Each beneficiary must reference a valid claim.")
         if claim_id <= 0 or claim_id in seen:
@@ -70,10 +73,15 @@ def _parse_manifest(db, current, items):
         normalized.append((claim_id, item))
     # Acquire row locks in stable order to avoid deadlocks on overlapping uploads.
     for claim_id, item in sorted(normalized):
-        claim = db.query(PaymentClaim).filter_by(id=claim_id).with_for_update().one_or_none()
+        claim = db.query(PaymentClaim).filter(
+            PaymentClaim.id == claim_id, claim_visibility(current)
+        ).populate_existing().with_for_update().one_or_none()
         if claim is None:
             raise HTTPException(404, "A selected Services claim no longer exists.")
-        reason = payments.executor_check(current, claim) or payments.payable_check(db, claim)
+        reason = payments.executor_check(current, claim)
+        if reason:
+            raise HTTPException(403, reason)
+        reason = payments.payable_check(db, claim)
         expected = manifest(db, current, claim)
         if reason or expected is None:
             raise HTTPException(409, "A selected Services claim is no longer eligible for proof payment.")
@@ -82,7 +90,9 @@ def _parse_manifest(db, current, items):
         except (InvalidOperation, TypeError, ValueError):
             raise HTTPException(422, "The beneficiary amount is invalid.")
         services = item["service_names"]
-        if (item["provider_name"] != expected["provider_name"] or not isinstance(services, list)
+        if not isinstance(services, list) or not all(isinstance(name, str) for name in services):
+            raise HTTPException(422, "Service names must be a list of names.")
+        if (item["provider_name"] != expected["provider_name"]
                 or sorted(set(services)) != expected["services"] or amount != Decimal(expected["amount"])):
             raise HTTPException(409, f"Provider, service names or approved amount for claim {claim.id} changed. Refresh the list.")
         currencies.add(claim.currency)
@@ -98,9 +108,9 @@ async def record_with_proof(db: Session, current, upload: UploadFile, items_json
     if not current.has_any(FHI360_FINANCE):
         raise HTTPException(403, "Only FHI360 Finance can upload proof for centrally paid Services.")
     if not beneficiaries_confirmed:
-        raise HTTPException(422, "Confirm that the proof lists every selected provider, service and full amount.")
+        raise HTTPException(422, "Confirm that the proof lists every selected provider, service and the payment amount shown.")
     reference = (payment_reference or "").strip()
-    if not 3 <= len(reference) <= 200:
+    if not 1 <= len(reference) <= 200:
         raise HTTPException(422, "Enter the payment reference printed on the proof.")
     if payment_method not in (None, "BANK", "MOBILE_WALLET"):
         raise HTTPException(422, "Payment method must be BANK or MOBILE_WALLET.")
@@ -121,7 +131,9 @@ async def record_with_proof(db: Session, current, upload: UploadFile, items_json
             proof.beneficiary_snapshot = {
                 "provider_id": expected["provider_id"], "provider_name": expected["provider_name"],
                 "services": expected["services"], "claim_amount": expected["amount"],
-                "payment_amount": expected["outstanding_amount"], "amount_before_payment": expected["amount_recorded"],
+                "payment_amount": expected["outstanding_amount"] if Decimal(expected["outstanding_amount"]) else expected["amount"],
+                "newly_recorded_amount": expected["outstanding_amount"],
+                "amount_before_payment": expected["amount_recorded"],
                 "currency": expected["currency"], "payment_reference": reference,
                 "payment_date": str(payment_date), "beneficiaries_confirmed": True,
             }
@@ -140,6 +152,9 @@ async def record_with_proof(db: Session, current, upload: UploadFile, items_json
                 # Proof arrived after the full amount was already recorded.
                 if claim.payment_status == "PROOF_REQUIRED":
                     payments.confirm_paid(db, current, claim)
+            audit.record(db, current, "payment_proof", proof.id, "match_services_payment",
+                         after=proof.beneficiary_snapshot,
+                         reason="Finance confirmed the uploaded document matches the listed beneficiary, Services and payment amount.")
             result_claims.append(claim.id)
         db.commit()
     except Exception:
