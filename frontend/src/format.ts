@@ -159,6 +159,7 @@ export const WORKLOG_ACTION_LABELS: Record<string, string> = {
   edit_entry: 'Edited daily entry',
   delete_entry: 'Deleted daily entry',
   submit: 'Submit',
+  recall: 'Recalled submission for editing',
   cancel: 'Cancel work log',
   verify: 'Verify (CTC)',
   return: 'Return to provider',

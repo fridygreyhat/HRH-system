@@ -302,6 +302,7 @@ export function WorkLogEditor({ logId, initialDate, initialMonth, onBack }: { lo
   const { data: log, error, loading, setData, reload } = useApi<WorkLogDetail>(`/worklogs/${logId}`);
   const [selected, setSelected] = useState<string | null>(initialDate || null);
   const [cancelling, setCancelling] = useState(false);
+  const [recalling, setRecalling] = useState(false);
   const flags = useMemo(() => (log ? returnFlags(log) : []), [log]);
   const flaggedDates = useMemo(() => new Set(flags.map((f) => f.entry_date)), [flags]);
   const captureOnEntry = !!me?.client_settings.gps_capture_events.includes('ENTRY');
@@ -346,6 +347,17 @@ export function WorkLogEditor({ logId, initialDate, initialMonth, onBack }: { lo
             </span>
           ))}
         </div>
+        {log.available_actions.includes('recall') && (
+          <section className="card stack">
+            <h3>{lang === 'sw' ? 'Unahitaji kurekebisha taarifa hii?' : 'Need to correct this submission?'}</h3>
+            <p className="muted">{lang === 'sw'
+              ? 'Unaweza kuirudisha ili uhariri ikiwa bado inasubiri mapitio ya CTC. Taarifa za kila siku ulizohifadhi zitabaki. Mapitio ya CTC yakianza, mwombe mkaguzi airejeshe.'
+              : 'You can return it to editing while it is still waiting for CTC review. Your saved daily entries will stay in place. After CTC review begins, ask the reviewer to return it.'}</p>
+            <button className="btn btn-secondary" type="button" onClick={() => setRecalling(true)}>
+              {lang === 'sw' ? 'Rudisha ili kuhariri' : 'Return to editing'}
+            </button>
+          </section>
+        )}
         {log.status === 'APPROVED' && <p className="muted small">{t('approvedNotPaid')}</p>}
       </header>
 
@@ -414,6 +426,26 @@ export function WorkLogEditor({ logId, initialDate, initialMonth, onBack }: { lo
             setCancelling(false);
           }}
           onClose={() => setCancelling(false)}
+        />
+      )}
+      {recalling && (
+        <ReasonDialog
+          title={lang === 'sw' ? 'Urudishe jedwali lililowasilishwa ili kuhariri?' : 'Return submitted timesheet to editing?'}
+          description={lang === 'sw'
+            ? 'Hii italiondoa kwenye foleni ya CTC, itahifadhi taarifa ulizoweka, na kukuruhusu kurekebisha au kukamilisha mwezi kabla ya kuwasilisha tena.'
+            : 'This withdraws it from the CTC queue, keeps the saved entries, and lets you correct or complete the month before submitting again.'}
+          required={false}
+          confirmLabel={lang === 'sw' ? 'Rudisha ili kuhariri' : 'Return to editing'}
+          onConfirm={async (comment) => {
+            const updated = await api.post<WorkLogDetail>(`/worklogs/${log.id}/actions/recall`, {
+              comment: comment || null,
+              expected_version: log.version,
+            });
+            setData(updated);
+            setSelected(null);
+            setRecalling(false);
+          }}
+          onClose={() => setRecalling(false)}
         />
       )}
 

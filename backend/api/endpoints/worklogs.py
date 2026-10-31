@@ -549,7 +549,7 @@ def perform_action(log_id: int, action: str, body: ActionIn = ActionIn(), db: Se
     if action in wf.INTERNAL_ACTIONS:
         raise HTTPException(status_code=400, detail="Use the OTP confirmation endpoint")
     log = _get_log(db, current, log_id, lock=True)
-    if log.workflow_version >= 2 and action not in {"submit", "cancel", "decline"}:
+    if log.workflow_version >= 2 and action not in {"submit", "cancel", "decline", "recall"}:
         # Authorization is checked first, so an unauthorized caller cannot probe
         # validation details or bypass queue-specific confirmation.
         reason = wf.check_action(db, current, log, action)

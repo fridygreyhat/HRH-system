@@ -65,6 +65,9 @@ TRANSITIONS: dict[tuple[str, str], tuple[str, str]] = {
     (DRAFT, "submit"): (PENDING_CTC, PROVIDER),
     (RETURNED, "submit"): (PENDING_CTC, PROVIDER),
     (REJECTED, "submit"): (PENDING_CTC, PROVIDER),
+    # Providers may recall a submission only while it is still waiting for the
+    # first review. Entries stay intact so they can correct and resubmit.
+    (PENDING_CTC, "recall"): (DRAFT, PROVIDER),
     (DRAFT, "cancel"): (CANCELLED, PROVIDER),
     (RETURNED, "cancel"): (CANCELLED, PROVIDER),
     (REJECTED, "cancel"): (CANCELLED, PROVIDER),
@@ -135,7 +138,7 @@ def check_action(db: Session, current: CurrentUser, log: WorkLog, action: str) -
         return f"Requires the {role} role"
     # A corrupt period may be returned/rejected/reopened for correction, but
     # must not advance at any approval stage (including Regional Finance).
-    if action not in {"return", "reject", "reopen", "return_to_reviewer"}:
+    if action not in {"return", "reject", "reopen", "return_to_reviewer", "recall"}:
         from ..core.period_dates import period_date_error
         period = db.get(PayPeriod, log.period_id)
         date_error = period_date_error(period.start_date, period.end_date)
@@ -258,6 +261,10 @@ def transition(
         log.confirmed_version = log.version
     if action == "submit":
         log.submitted_at = now
+    elif action == "recall":
+        log.submitted_at = None
+        log.attested_at = None
+        log.confirmed_version = None
     log.status = next_status
     if log.workflow_version >= 2:
         from . import finance_gate

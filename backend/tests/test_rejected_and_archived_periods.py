@@ -42,6 +42,58 @@ def test_rejection_opens_full_month_and_restarts_review(api, db, period, provide
     api.put(f"/worklogs/{stored.id}/entries/{first}", other, ENTRY["HCP"](first), expect=404)
 
 
+@pytest.mark.parametrize("workflow_version", [1, 2])
+def test_provider_can_recall_unreviewed_submission_and_edit_saved_entries(api, db, period, workflow_version):
+    log = draft_log(api, "hcp1", period)
+    stored = db.get(WorkLog, log["id"])
+    stored.status = "PENDING_CTC_VERIFICATION"
+    stored.workflow_version = workflow_version
+    stored.attested_at = stored.created_at
+    stored.submitted_at = stored.created_at
+    db.commit()
+    entry_dates = [row.entry_date for row in db.query(WorkLogEntry).filter_by(work_log_id=stored.id).all()]
+    path = f"/worklogs/{stored.id}/actions/recall"
+
+    submitted = api.get(f"/worklogs/{stored.id}", "hcp1")
+    assert "recall" in submitted["available_actions"]
+    # Work-log visibility is scoped, so another provider cannot discover it.
+    api.post(path, "hcp2", {"expected_version": stored.version}, expect=404)
+
+    reopened = api.post(path, "hcp1", {
+        "expected_version": stored.version,
+        "comment": "I need to complete the monthly entries",
+    })
+    assert reopened["status"] == "DRAFT"
+    assert reopened["can_edit"] is True
+    assert reopened["submitted_at"] is None
+    assert reopened["attested_at"] is None
+    assert [row.entry_date for row in db.query(WorkLogEntry).filter_by(work_log_id=stored.id).all()] == entry_dates
+    assert db.query(WorkLogAudit).filter_by(work_log_id=stored.id, action="recall").count() == 1
+
+    # A legacy form fixture validates that a saved day can actually be corrected;
+    # the v2 fixture's legacy activity key is intentionally not accepted by its catalog.
+    if workflow_version == 1:
+        first = entry_dates[0]
+        api.put(f"/worklogs/{stored.id}/entries/{first}", "hcp1", ENTRY["HCP"](first))
+
+
+def test_provider_cannot_recall_after_ctc_review_has_moved_the_record_forward(api, db, period):
+    log = draft_log(api, "hcp1", period)
+    stored = db.get(WorkLog, log["id"])
+    stored.status = "PENDING_TECHNICAL_REVIEW"
+    stored.workflow_version = 2
+    db.commit()
+
+    result = api.get(f"/worklogs/{stored.id}", "hcp1")
+    assert "recall" not in result["available_actions"]
+    api.post(
+        f"/worklogs/{stored.id}/actions/recall",
+        "hcp1",
+        {"expected_version": stored.version},
+        expect=409,
+    )
+
+
 def archive(api, period, **updates):
     return api.post(f"/admin/pay-periods/{period['id']}/archive", "admin", {
         "reason": "Restart monthly work after testing",
