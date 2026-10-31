@@ -5,6 +5,7 @@ import { dateOnly } from '../format';
 import { useAction, useApi } from '../hooks';
 import { Named, PayPeriod } from '../types';
 import { Alert, Field, Modal, StatusBadge } from '../components/ui';
+import { ProviderPeriodRecords } from './ProviderPeriodRecords';
 
 interface PayPeriodPayload {
   start_date: string;
@@ -114,6 +115,7 @@ export function PayPeriods() {
   const [notice, setNotice] = useState<string | null>(null);
   const deletion = useAction();
   const [archiving, setArchiving] = useState<PayPeriod | null>(null);
+  const [recordsPeriod, setRecordsPeriod] = useState<PayPeriod | null>(null);
   const [archiveReason, setArchiveReason] = useState('');
   const [archiveConfirmation, setArchiveConfirmation] = useState('');
   const archivePeriod = async (event: React.FormEvent) => {
@@ -197,6 +199,8 @@ export function PayPeriods() {
                     <td>{period.region_id == null ? <span className="badge badge-neutral">Global schedule</span> : period.region_name || 'Regional schedule'}</td>
                     <td><StatusBadge status={period.status} /></td>
                     <td className="num">
+                      {hasRole('SUPER_ADMIN') && <button type="button" className="btn btn-secondary btn-sm"
+                        onClick={() => setRecordsPeriod(period)}>Provider records</button>}
                       {period.can_manage && <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setNotice(null); setEditing(period); }}>Edit</button>}
                       {hasRole('SUPER_ADMIN') && <button type="button" className="btn btn-danger btn-sm" disabled={!period.can_delete || deletion.busy} title={period.can_delete ? 'Delete unused period' : 'In use: archive unpaid periods to restart while retaining history'} onClick={() => removePeriod(period)}>Delete</button>}
                       {hasRole('SUPER_ADMIN') && period.status !== 'ARCHIVED' && <>
@@ -224,6 +228,7 @@ export function PayPeriods() {
           onSaved={refresh}
         />
       )}
+      {recordsPeriod && <ProviderPeriodRecords period={recordsPeriod} onClose={() => setRecordsPeriod(null)} />}
       {archiving && <Modal title="Archive pay period and start again" onClose={() => { if (!deletion.busy) setArchiving(null); }}>
         <form className="stack" onSubmit={archivePeriod}>
           <Alert kind="warn">Archive {archiving.period_label || 'this period'} ({dateOnly(archiving.start_date)} – {dateOnly(archiving.end_date)})?

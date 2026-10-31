@@ -6,6 +6,16 @@ import { api, ApiError } from '../api';
 
 let mockRoles = ['TECHNICAL_OFFICER'];
 let mockDateLocked = false;
+let mockProviderRecords = {
+  data: {
+    period: { id: 2, period_label: 'Regional September', start_date: '2026-09-01', end_date: '2026-09-30', status: 'OPEN', region_name: 'Assigned region' },
+    providers: [{
+      staff_id: 22, staff_name: 'Demo Provider', username: 'hcp.demo', cadre_code: 'HCP', can_reset: true, reset_block_reason: null,
+      work_logs: [{ id: 18, work_type: 'SERVICES', status: 'PENDING_TECHNICAL_REVIEW', entry_count: 2, total_hours: 4, can_reset: true, reset_block_reason: null }],
+    }],
+  },
+  error: null, loading: false, reload: jest.fn().mockResolvedValue(undefined),
+};
 jest.mock('../AuthContext', () => ({
   useAuth: () => ({
     me: { roles: mockRoles },
@@ -19,14 +29,17 @@ jest.mock('../api', () => ({
 }));
 jest.mock('../hooks', () => ({
   ...jest.requireActual('../hooks'),
-  useApi: path => ({
-    data: path === '/admin/pay-period-regions' ? [{ id: 7, name: 'Assigned region' }] : [
-      { id: 1, period_label: 'Global September', start_date: '2026-09-01', end_date: '2026-09-30', region_id: null, status: 'OPEN', can_manage: mockRoles.includes('SUPER_ADMIN') || mockRoles.includes('CENTRAL_ADMIN') },
-      { id: 2, period_label: 'Regional September', start_date: '2026-09-01', end_date: '2026-09-30', region_id: 7, region_name: 'Assigned region', status: 'OPEN', can_manage: true, can_archive: true, can_edit_dates: !mockDateLocked, date_lock_reason: mockDateLocked ? 'Submitted work records protect these dates.' : null },
-      { id: 3, period_label: 'October 2026', start_date: '2026-10-01', end_date: '2026-10-31', region_id: null, status: 'OPEN', can_manage: false, can_delete: false },
-    ],
-    error: null, loading: false, reload: jest.fn().mockResolvedValue(undefined),
-  }),
+  useApi: path => {
+    if (typeof path === 'string' && path.endsWith('/provider-records')) return mockProviderRecords;
+    return {
+      data: path === '/admin/pay-period-regions' ? [{ id: 7, name: 'Assigned region' }] : [
+        { id: 1, period_label: 'Global September', start_date: '2026-09-01', end_date: '2026-09-30', region_id: null, status: 'OPEN', can_manage: mockRoles.includes('SUPER_ADMIN') || mockRoles.includes('CENTRAL_ADMIN') },
+        { id: 2, period_label: 'Regional September', start_date: '2026-09-01', end_date: '2026-09-30', region_id: 7, region_name: 'Assigned region', status: 'OPEN', can_manage: true, can_archive: true, can_edit_dates: !mockDateLocked, date_lock_reason: mockDateLocked ? 'Submitted work records protect these dates.' : null },
+        { id: 3, period_label: 'October 2026', start_date: '2026-10-01', end_date: '2026-10-31', region_id: null, status: 'OPEN', can_manage: false, can_delete: false },
+      ],
+      error: null, loading: false, reload: jest.fn().mockResolvedValue(undefined),
+    };
+  },
 }));
 
 test('Technical Officer sees global periods read-only and can create a period in an assigned region', async () => {
@@ -182,6 +195,41 @@ test('Super Admin must give a reason and confirm the specific period before arch
       reason: 'Restart monthly testing', confirmation: 'ARCHIVE 2',
     });
     expect(container.textContent).toContain('Pay period archived.');
+  } finally {
+    act(() => root.unmount());
+    container.remove();
+  }
+});
+
+test('Super Admin can inspect and reset one provider’s records for a period', async () => {
+  mockRoles = ['SUPER_ADMIN'];
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  api.post.mockClear();
+  api.post.mockResolvedValue({ reset: true });
+  try {
+    act(() => root.render(<PayPeriods />));
+    const periodRow = [...container.querySelectorAll('tr')].find(row => row.textContent.includes('Regional September'));
+    act(() => [...periodRow.querySelectorAll('button')].find(button => button.textContent === 'Provider records').click());
+    expect(container.textContent).toContain('Demo Provider');
+    expect(container.textContent).toContain('approval/audit snapshots remain');
+    act(() => [...container.querySelectorAll('button')].find(button => button.textContent === 'Reset records').click());
+    const form = [...container.querySelectorAll('form')].find(node => node.textContent.includes('Reset Demo Provider'));
+    const submit = form.querySelector('button[type="submit"]');
+    expect(submit.disabled).toBe(true);
+    act(() => {
+      Simulate.change(form.querySelector('textarea'), { target: { value: 'Restart this provider period' } });
+      Simulate.change(form.querySelector('input'), { target: { value: 'RESET hcp.demo 2' } });
+    });
+    expect(submit.disabled).toBe(false);
+    await act(async () => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(api.post).toHaveBeenCalledWith('/admin/pay-periods/2/providers/22/reset-records', {
+      reason: 'Restart this provider period',
+      confirmation: 'RESET hcp.demo 2',
+    });
+    expect(container.textContent).toContain('records were reset');
   } finally {
     act(() => root.unmount());
     container.remove();

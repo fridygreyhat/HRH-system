@@ -91,6 +91,31 @@ export interface PayPeriod {
   date_lock_reason?: string | null;
 }
 
+export interface ProviderPeriodWorkLog {
+  id: number;
+  work_type: 'LEGACY' | 'SERVICES' | 'PAYROLL';
+  status: string;
+  entry_count: number;
+  total_hours: number;
+  can_reset: boolean;
+  reset_block_reason: string | null;
+}
+
+export interface ProviderPeriodRecord {
+  staff_id: number;
+  staff_name: string;
+  username: string;
+  cadre_code: string;
+  work_logs: ProviderPeriodWorkLog[];
+  can_reset: boolean;
+  reset_block_reason: string | null;
+}
+
+export interface ProviderPeriodRecordsResponse {
+  period: Pick<PayPeriod, 'id' | 'period_label' | 'start_date' | 'end_date' | 'status' | 'region_name'>;
+  providers: ProviderPeriodRecord[];
+}
+
 export interface ProviderPaymentDetails {
   staff_id: number;
   bank_name: string | null;
