@@ -25,6 +25,16 @@ def test_private_sql_replacement_is_complete_and_private(tmp_path):
     assert list(target.parent.iterdir()) == [target]
 
 
+def test_prepared_sql_is_one_atomic_statement():
+    sql = build_sql("synthetic-hash-for-test-only")
+    body = "\n".join(line for line in sql.splitlines() if not line.startswith("--")).strip()
+    assert body.startswith("DO $admin_setup$")
+    assert body.endswith("$admin_setup$;")
+    assert body.count("$admin_setup$") == 2
+    assert "COMMIT;" not in body
+    assert "RETURNING id INTO new_admin_id;" in body
+
+
 def test_failed_replacement_preserves_existing_file_and_removes_temporary(tmp_path):
     target = tmp_path / "setup.sql"
     target.write_text("previous-complete-sql")

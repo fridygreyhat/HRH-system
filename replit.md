@@ -49,8 +49,9 @@ not reset the password of an existing account.
 For an explicitly approved **empty** Production database, run
 `python scripts/prepare_production_admin.py` to prepare private admin-only SQL
 at `.data/production-admin-setup.sql`. This command does not connect to a
-database. The entire generated file must be applied manually in the Production
-SQL console. It creates system role definitions and `admin`, refuses to
+database. The entire generated file is one atomic PostgreSQL `DO` statement,
+which must be applied manually in the Production SQL console. It creates
+system role definitions and `admin`, refuses to
 overwrite any existing account, and adds no business setup or demo records.
 Keep the generated file private and delete it after successful verification;
 it contains a password hash and is excluded from Git and publishing.

@@ -14,3 +14,9 @@ A readable production database replica does not by itself establish that a Live 
 **Why:** an account-cleanup investigation could read production records while deployment metadata reported no active publication and the previously supplied Live API returned 404.
 
 **How to apply:** verify the current published URL and application identity before attempting authorized Live changes. Do not redirect production writes into Preview or treat a successful production SELECT as evidence that a Live mutation succeeded.
+
+Do not promise that ordinary republishing will copy Preview records into an already-existing Production database.
+
+**Why:** initial data-copy settings and existing-database publishing are different flows; contradictory documentation summaries led to repeated successful code publishes while required Live accounts were still absent.
+
+**How to apply:** verify the current publishing UI and initial-copy availability before offering that route. For an existing empty database, treat missing accounts and roles as explicit data provisioning, not a password or code-release problem.
