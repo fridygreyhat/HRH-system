@@ -549,3 +549,8 @@ payment pricing” below for the current policy. Services remains payable.
 - Keep identity sequences advancing rather than recycling deleted user IDs. Old signed sessions must never become valid for a different newly created account.
 - Verify resets and workflows only in independently disposable databases; tests must not repopulate the empty Preview or Live database.
 - **Why:** the user explicitly requested clean testing databases, keeping only Super Admin, and asked that Git pull not restore old or trial database content.
+
+### Test code and publishing
+- Keep `backend/tests` in source control for regression checks, but exclude it and `.pytest_cache` from the published bundle through `.replitignore`.
+- Do not copy test fixtures or simulated test behavior into runtime services. The real backend must remain independent of the tests.
+- **Why:** the user chose publishing exclusions instead of deleting the tests, keeping the checks without shipping backend test fixtures.
