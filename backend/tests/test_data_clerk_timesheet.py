@@ -25,17 +25,18 @@ def payload_for(log, activity_key, **extra):
 def test_clerk_daily_roles_are_payroll_and_no_evidence_or_comment_required(api, period, new_workflow):
     log = api.post("/worklogs", "clerk1", {"period_id": period["id"], "work_type": "PAYROLL"})
     assert {a["key"] for a in log["cadre"]["activities"]} == {
-        "daily_attendance", "data_clerk_daily_timesheet", "data_clerk_secondary_facility",
+        "data_clerk_daily_timesheet", "data_clerk_secondary_facility",
     }
     activity = next(a for a in log["cadre"]["activities"] if a["key"] == "data_clerk_daily_timesheet")
-    assert activity["fields"] == activity["required_fields"] == activity["groups"] == []
-    assert log["cadre"]["fields"] == []
+    assert set(activity["required_fields"]) == set(DATA_CLERK_REQUIRED)
+    assert len(activity["groups"]) == 5
+    assert log["cadre"]["fields"]
     path = f"/worklogs/{log['id']}/entries/{period['start_date']}"
     payload = payload_for(log, activity["key"])
     saved = api.put(path, "clerk1", payload)
     assert not saved["entries"][0]["evidence_text"]
     assert not saved["entries"][0]["comment"]
-    assert saved["entries"][0]["measures"] == {}
+    assert saved["entries"][0]["measures"] == payload["measures"]
     api.put(path, "clerk1", {**payload, "evidence_text": "Older evidence", "comment": "Older comment"})
     saved = api.put(path, "clerk1", payload)
     assert saved["entries"][0]["evidence_text"] == "Older evidence"
@@ -52,7 +53,7 @@ def test_secondary_facility_requires_name_and_still_requires_gps(api, period, ne
     saved = api.put(path, "clerk1", payload)
     assert saved["entries"][0]["activity_location"] == "Secondary test facility"
     assert saved["entries"][0]["activity_snapshot"]["requires_location"] is True
-    assert saved["entries"][0]["measures"] == {}
+    assert saved["entries"][0]["measures"] == payload["measures"]
 
 
 def test_only_weekend_clinic_service_and_separate_payroll_record(api, period, new_workflow):
@@ -85,19 +86,20 @@ def test_regional_technical_can_add_later_clerk_services_and_template_rates(api,
               "cadre_id": staff.cadre_id, "region_id": assignment.region_id,
               "rate_value": 100, "effective_start_date": period["start_date"]}
     added = api.post("/rates", "tofficer1", {
-        **common, "item_type": "SERVICES", "form_mode": "SINGLE", "unit_type": "PER_UNIT",
+        **common, "item_type": "SERVICES", "form_mode": "SINGLE", "unit_type": "PER_DAY",
     })
     log = api.post("/worklogs", "clerk1", {"period_id": period["id"], "work_type": "SERVICES"})
     assert added["key"] in {a["key"] for a in log["cadre"]["activities"]}
     saved = api.put(f"/worklogs/{log['id']}/entries/{period['start_date']}", "clerk1",
                     payload_for(log, added["key"]))
     assert saved["entries"][0]["activity_key"] == added["key"]
-    template = api.post("/rates", "tofficer1", {
+    api.post("/rates", "tofficer1", {
         **common, "item_type": "PAYROLL", "template_key": "data_clerk_secondary_facility",
         # Payroll input mode is SINGLE; the selected template supplies its fields.
         "unit_type": "PER_HOUR", "form_mode": "SINGLE",
-    })
+    }, expect=422)
+    payroll = api.post("/worklogs", "clerk1", {"period_id": period["id"], "work_type": "PAYROLL"})
+    template = next(item for item in payroll["cadre"]["activities"] if item["key"] == "data_clerk_secondary_facility")
     assert template["requires_location"] is True
-    assert template["form_mode"] == "CASCADE"
     assert len(template["required_fields"]) == 22
     assert len(template["groups"]) == 5

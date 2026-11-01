@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 
 from .conftest import category_id
-from .test_finance_routing import reviewed_log, channel_body
+from .test_finance_routing import approved_payroll
 from .test_v22_finance import v22, priced_activity, entered_log, to_finance
 
 
@@ -147,34 +147,29 @@ def test_period_region_must_match_budget_region(api, db, period, cso_context):
     api.post("/budgets/lines", "csofin1", line_body(db, regional, org, region), expect=422)
 
 
-def test_revocation_blocks_payors_and_both_routing_entrypoints_without_changing_claim(api, db, period, v22, cso_context):
-    from backend.models import BudgetLine, PaymentClaim
+def test_payroll_remains_a_report_when_cso_authority_changes(api, db, period, v22, cso_context):
+    from backend.models import PaymentClaim, WorkLog
     org, region, _ = cso_context
-    log = reviewed_log(api, db, period, v22, "PAYROLL")
-    body = channel_body(log)
-    claim_id = body["claim_id"]
+    log = approved_payroll(api, db, period)
+    body = {"work_log_id": log["id"], "target_payor_id": org,
+            "review_confirmed": True, "review_type": "PAYROLL"}
     authority(api, org, region, False)
     try:
-        options = api.get(f"/finance/payors?work_log_id={log['id']}", v22["finance"])
-        assert options["eligible_payors"] == [] and "not authorized" in options["routing_exception"]
-        row = next(r for r in api.get("/finance/pending-routing", v22["finance"]) if r["work_log_id"] == log["id"])
-        assert row["eligible_payors"] == [] and row["routing_exception"]
-        api.post("/finance/channel", v22["finance"], body, expect=422)
-        api.post(f"/worklogs/{log['id']}/actions/route_cso", v22["finance"], body, expect=422)
+        assert not any(row["work_log_id"] == log["id"] for row in api.get("/finance/pending-routing", v22["finance"]))
+        api.post("/finance/channel", v22["finance"], body, expect=409)
+        api.post(f"/worklogs/{log['id']}/actions/route_cso", v22["finance"], body, expect=403)
         db.expire_all()
-        claim = db.get(PaymentClaim, claim_id)
-        assert claim.status == "PENDING_ROUTING"
-        assert db.get(BudgetLine, claim.budget_line_id).committed_amount == 0
+        assert db.get(WorkLog, log["id"]).status == "APPROVED"
+        assert db.query(PaymentClaim).filter_by(work_log_id=log["id"]).count() == 0
     finally:
         authority(api, org, region)
-    result = api.post("/finance/channel", v22["finance"], body)
-    assert result["payor_id"] == org and result["status"] == "ROUTED_CSO"
+    api.post("/finance/channel", v22["finance"], body, expect=409)
 
 
-def test_regional_zero_budget_holds_payroll_without_using_global_or_other_region(api, db, period, v22, cso_context):
+def test_regional_zero_budget_does_not_block_payroll_work_reports(api, db, period, v22, cso_context):
     from backend.models import BudgetLine, BudgetTransaction, PaymentClaim
     org, region, other_region = cso_context
-    # Preserve an imported historical global pool: it must not fund new-record regional payroll.
+    # Imported allocations remain intact and are never charged for work reports.
     historical = BudgetLine(
         code="HISTORICAL-" + uuid.uuid4().hex[:8], name="Historical all-region allocation",
         source="CSO", organization_id=org, category_id=category_id(db, "B"), period_id=period["id"],
@@ -186,28 +181,17 @@ def test_regional_zero_budget_holds_payroll_without_using_global_or_other_region
     line.allocated_amount = 0
     db.add(historical)
     db.commit()
-    activity = priced_activity(api, v22, period, kind="PAYROLL", rate=500)
-    pending = to_finance(api, entered_log(api, period, activity))
-    reviewed = api.post(f"/worklogs/{pending['id']}/actions/finance_review", v22["finance"], {
+    approved = approved_payroll(api, db, period)
+    api.post(f"/worklogs/{approved['id']}/actions/finance_review", v22["finance"], {
         "review_confirmed": True, "review_type": "PAYROLL", "category_id": category_id(db, "B"),
-    })
-    held = api.post("/finance/channel", v22["finance"], channel_body(reviewed))
-    assert held["status"] == "BUDGET_HOLD" and held["claim_status"] == "BUDGET_HOLD"
+    }, expect=403)
     db.expire_all()
-    claim = db.get(PaymentClaim, held["claim_id"])
-    assert claim.budget_line_id == line.id
+    assert approved["status"] == "APPROVED"
+    assert db.query(PaymentClaim).filter_by(work_log_id=approved["id"]).count() == 0
     assert historical.committed_amount == 0 and historical.spent_amount == 0
-    assert db.query(BudgetTransaction).filter_by(claim_id=claim.id, kind="COMMIT").count() == 0
+    assert line.committed_amount == 0 and line.spent_amount == 0
     line.allocated_amount = previous
     db.commit()
-    released = api.post("/finance/channel", v22["finance"], {
-        "claim_id": claim.id, "target_payor_id": org, "review_confirmed": True, "review_type": "PAYROLL",
-        "comment": "The regional payroll allocation has been restored",
-    })
-    assert released["claim_id"] == claim.id and released["status"] == "ROUTED_CSO"
-    db.expire_all()
-    assert line.committed_amount == Decimal("1000")
-    assert db.query(BudgetTransaction).filter_by(claim_id=claim.id, kind="COMMIT").count() == 1
 
 
 def test_strict_region_resolution_rejects_missing_or_ambiguous_but_preserves_legacy(db, period, cso_context):

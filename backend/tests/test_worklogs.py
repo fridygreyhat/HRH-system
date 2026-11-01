@@ -67,7 +67,9 @@ def test_every_cadre_follows_the_same_pipeline(api, period, provider):
     assert log["status"] == "PENDING_RPM_AUTHORIZATION"
     log = api.post(f"/worklogs/{log['id']}/actions/authorize", "rpm1")
     assert log["status"] == "APPROVED" and log["approved_at"]
-    assert [a["action"] for a in log["audit"] if a["action"] not in ("opened", "edit_entry")] == (
+    assert log["audit"] == []
+    administrator_view = api.get(f"/worklogs/{log['id']}", "admin")
+    assert [a["action"] for a in administrator_view["audit"] if a["action"] not in ("opened", "edit_entry")] == (
         ["create", "submit", "verify", "confirm_otp", "endorse", "authorize"]
     )
 
@@ -92,7 +94,8 @@ def test_return_requires_reason_restarts_chain_and_notifies(api, period, db):
     flags = [{"entry_date": period["start_date"], "field": "clients_followed_up", "note": "Count does not match register"}]
     log = api.post(f"/worklogs/{log['id']}/actions/return", "tofficer1", {"comment": "Check follow-up count", "flags": flags})
     assert log["status"] == "RETURNED_TO_PROVIDER"
-    assert log["audit"][-1]["details"]["flags"] == flags
+    assert log["audit"] == []
+    assert api.get(f"/worklogs/{log['id']}", "admin")["audit"][-1]["details"]["flags"] == flags
     outbox = db.execute(text("select event_name, related_status from sms_outbox where related_id = :id and event_name = 'WORKLOG_RETURNED'"), {"id": log["id"]}).all()
     assert outbox == [("WORKLOG_RETURNED", "RETURNED_TO_PROVIDER")]
 
@@ -225,7 +228,8 @@ def test_rotation_preserves_history_and_identity(api, db):
 # 21. Audit is append-only and complete
 def test_audit_tables_are_append_only(api, period, db):
     log = submit_and_verify(api, "chw1", period)
-    row = api.get(f"/worklogs/{log['id']}", "chw1")["audit"][-1]
+    assert api.get(f"/worklogs/{log['id']}", "chw1")["audit"] == []
+    row = api.get(f"/worklogs/{log['id']}", "admin")["audit"][-1]
     assert row["actor_name"] and row["actor_role"] == "SUPERVISOR" and row["version"] == 1 and row["timestamp"]
     for table in ("work_log_audit", "claim_audit", "budget_transactions", "audit_events"):
         with pytest.raises(Exception, match="append-only"):

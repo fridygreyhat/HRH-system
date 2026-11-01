@@ -4,6 +4,14 @@ from fastapi.testclient import TestClient
 from backend import replit_app
 
 
+def test_api_documentation_login_url_resolves_under_api_mount():
+    with TestClient(replit_app.app) as client:
+        schema = client.get("/api/openapi.json").json()
+    scheme = schema["components"]["securitySchemes"]["OAuth2PasswordBearer"]
+    assert scheme["flows"]["password"]["tokenUrl"] == "auth/login"
+    assert {"url": "/api"} in schema["servers"]
+
+
 @pytest.mark.parametrize("path", ["", "index.html", "finance-monthly"])
 def test_preview_html_is_not_cached(monkeypatch, tmp_path, path):
     (tmp_path / "index.html").write_text("<html>Current application</html>")

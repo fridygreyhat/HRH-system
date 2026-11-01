@@ -96,6 +96,7 @@ def test_daily_weekly_hour_limits_and_backdating_are_enforced(api, period):
         api.put("/admin/settings/max_weekly_hours", "admin", {"value": 45.0, "reason": "Restore configured limit"})
 
     api.put("/admin/settings/backdate_grace_hours", "admin", {"value": 48, "reason": "Test backdating"})
+    api.put("/admin/settings/backdate_restriction_enabled", "admin", {"value": True, "reason": "Explicitly test the optional backdate restriction"})
     try:
         today = local_today()
         recent_period = api.post("/admin/pay-periods", "central1", {
@@ -109,6 +110,7 @@ def test_daily_weekly_hour_limits_and_backdating_are_enforced(api, period):
         api.put(f"/worklogs/{log['id']}/entries/{old_date}", "chw1", ENTRY["CHW"](old_date), expect=422)
     finally:
         api.put("/admin/settings/backdate_grace_hours", "admin", {"value": 1000000, "reason": "Restore acceptance-test window"})
+        api.put("/admin/settings/backdate_restriction_enabled", "admin", {"value": False, "reason": "Restore unrestricted backdating policy"})
 
 
 def test_secondary_facility_requires_a_name_and_complete_indicators(api, period):

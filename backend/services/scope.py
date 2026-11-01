@@ -103,13 +103,20 @@ def worklog_visibility(current: CurrentUser, include_archived=False):
 
 
 def _worklog_visibility(current: CurrentUser):
+    from ..core.workflow_policy import RM_AUTHORIZED_STATUSES
     from .v22_scope import record_condition
-    if current.has_any(OVERSIGHT, FHI360_FINANCE):
-        if current.unrestricted or OVERSIGHT in current.roles:
-            return true()
-        # Legacy finance visibility is preserved, not extended to every new region/cadre.
-        return or_(WorkLog.workflow_version == 1, record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id))
+    if current.unrestricted or OVERSIGHT in current.roles:
+        return true()
     conditions = [WorkLog.staff_id == current.staff_id]
+    if FHI360_FINANCE in current.roles:
+        # Finance sees authorized work, not draft/submitted clinical records.
+        # Additional operational roles below retain their own reviewer access.
+        conditions.append(or_(
+            WorkLog.workflow_version == 1,
+            and_(record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id),
+                 WorkLog.status.in_(RM_AUTHORIZED_STATUSES),
+                 or_(WorkLog.status != "BUDGET_HOLD", WorkLog.approved_at.is_not(None))),
+        ))
     for role in ROLE_SCOPE_DIMENSIONS:
         subquery = assignments_in_role_scope(current, role)
         if subquery is not None:

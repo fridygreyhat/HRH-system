@@ -20,6 +20,27 @@ def _auth(token):
     return {"Authorization": f"Bearer {token}"}
 
 
+def test_multibyte_password_limits_return_validation_errors(api, client):
+    user = _new_user(api)
+    oversized = "é" * 40  # Within the character limit, but above bcrypt's byte limit.
+    api.post("/admin/users", "admin", {
+        "username": "oversizedpassword", "password": oversized,
+        "full_name": "Password Boundary Test", "phone": "+255799199999",
+        "roles": ["OVERSIGHT"],
+    }, expect=422)
+    api.post(f"/admin/users/{user['id']}/reset-password", "admin", {
+        "new_password": oversized,
+    }, expect=422)
+    token = _login(client, user["username"], "Temp-pass-1").json()["access_token"]
+    response = client.post("/auth/change-password", headers=_auth(token), json={
+        "current_password": "Temp-pass-1", "new_password": oversized,
+    })
+    assert response.status_code == 422
+    # Rejected creation/reset/change requests must not corrupt the original login.
+    assert _login(client, user["username"], "Temp-pass-1").status_code == 200
+    assert _login(client, user["username"], oversized).status_code == 400
+
+
 def test_lockout_after_repeated_failures_and_admin_unlock(api, client, db):
     user = _new_user(api)
     for _ in range(5):

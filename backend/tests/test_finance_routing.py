@@ -20,15 +20,31 @@ def channel_body(log):
     }
 
 
+def approved_payroll(api, db, period):
+    from .test_finance_missing_rates import unpriced_log
+    log, _, _ = unpriced_log(db, period, "chw1", "PAYROLL")
+    approved = api.post(f"/worklogs/{log.id}/actions/authorize", "rpm1", {
+        "review_confirmed": True, "review_type": "PAYROLL",
+    })
+    assert approved["status"] == "APPROVED"
+    assert approved["finance_snapshot"] is None and approved["claims"] == []
+    return approved
+
+
 @pytest.mark.parametrize("kind,channel", [("SERVICES", "FHI360"), ("PAYROLL", "CSO")])
 def test_assignment_queue_channel_and_immutable_audit(api, db, period, v22, kind, channel):
-    from backend.models import AuditEvent, BudgetLine, PaymentClaim, User, WorkLogAudit
+    from backend.models import AuditEvent, BudgetTransaction, PaymentClaim, User, WorkLogAudit
+    if kind == "PAYROLL":
+        log = approved_payroll(api, db, period)
+        assert log["id"] not in {row["work_log_id"] for row in api.get("/finance/pending-routing", v22["finance"])}
+        report = api.get(f"/finance/monthly-summary?month={period['start_date'][:7]}", v22["finance"])
+        assert log["staff_id"] in {row["staff_id"] for row in report["providers"]}
+        return
     log = reviewed_log(api, db, period, v22, kind)
     body = channel_body(log)
     prepared = db.get(PaymentClaim, body["claim_id"])
     assert prepared.status == "PENDING_ROUTING" and prepared.approved_by is None
-    line = db.get(BudgetLine, prepared.budget_line_id)
-    assert float(line.committed_amount) == 0
+    assert prepared.budget_line_id is None
     queue = api.get(f"/finance/pending-routing?region_id={v22['region_id']}&work_type={kind}", v22["finance"])
     row = next(row for row in queue if row["work_log_id"] == log["id"])
     assert row["claim_id"] == prepared.id
@@ -46,7 +62,7 @@ def test_assignment_queue_channel_and_immutable_audit(api, db, period, v22, kind
     assert result["payor_id"] == body["target_payor_id"] and result["channel"] == channel
     assert all(row["work_log_id"] != log["id"] for row in api.get("/finance/pending-routing", v22["finance"]))
     db.expire_all()
-    assert float(line.committed_amount) == float(log["finance_snapshot"]["total"])
+    assert db.query(BudgetTransaction).filter_by(claim_id=prepared.id).count() == 0
     assert prepared.payment_status == "NOT_STARTED"  # channeling is never payment
     actor = db.query(User).filter_by(username=v22["finance"]).one()
     event = db.query(WorkLogAudit).filter_by(work_log_id=log["id"], action="route_fhi360" if kind == "SERVICES" else "route_cso").one()
@@ -57,12 +73,21 @@ def test_assignment_queue_channel_and_immutable_audit(api, db, period, v22, kind
     assert global_event.after["payor_id"] == body["target_payor_id"]
     api.post("/finance/channel", v22["finance"], body, expect=409)
     db.expire_all()
-    assert float(line.committed_amount) == float(log["finance_snapshot"]["total"])
+    assert db.query(BudgetTransaction).filter_by(claim_id=prepared.id).count() == 0
 
 
 @pytest.mark.parametrize("kind", ["SERVICES", "PAYROLL"])
 def test_wrong_payor_confirmation_and_stale_review_rejected(api, db, period, v22, kind):
     from backend.models import Organization, PaymentClaim
+    if kind == "PAYROLL":
+        log = approved_payroll(api, db, period)
+        org = db.query(Organization).filter_by(type="CSO").first()
+        api.post("/finance/channel", v22["finance"], {
+            "work_log_id": log["id"], "target_payor_id": org.id,
+            "review_confirmed": True, "review_type": kind,
+        }, expect=409)
+        assert not log["claims"]
+        return
     log = reviewed_log(api, db, period, v22, kind)
     body = channel_body(log)
     wrong = db.query(Organization).filter(Organization.type == "CSO", Organization.id != body["target_payor_id"]).first()
@@ -95,7 +120,7 @@ def test_cadre_scope_is_enforced_for_queue_choices_and_channel(api, db, period, 
 
 
 def test_return_retires_only_pending_proposal_and_allows_new_review(api, db, period, v22):
-    from backend.models import BudgetLine, PaymentClaim
+    from backend.models import BudgetTransaction, PaymentClaim
     log = reviewed_log(api, db, period, v22)
     body = channel_body(log)
     returned = api.post(f"/worklogs/{log['id']}/actions/return", v22["finance"],
@@ -103,7 +128,8 @@ def test_return_retires_only_pending_proposal_and_allows_new_review(api, db, per
     db.expire_all()
     old = db.get(PaymentClaim, body["claim_id"])
     assert old.status == "CANCELLED" and old.calculation_snapshot
-    assert float(db.get(BudgetLine, old.budget_line_id).committed_amount) == 0
+    assert old.budget_line_id is None
+    assert db.query(BudgetTransaction).filter_by(claim_id=old.id).count() == 0
     assert returned["finance_snapshot"] is None
     pending = to_finance(api, returned)
     reviewed = api.post(f"/worklogs/{log['id']}/actions/finance_review", v22["finance"],
@@ -129,6 +155,13 @@ def test_only_finance_reviewed_new_records_can_be_channeled(api, db, period, v22
 
 @pytest.mark.parametrize("kind", ["SERVICES", "PAYROLL"])
 def test_dashboard_includes_rpm_approved_claims_before_finance_review_without_allowing_early_channel(api, db, period, v22, kind):
+    if kind == "PAYROLL":
+        approved = approved_payroll(api, db, period)
+        assert approved["id"] not in {row["work_log_id"] for row in api.get("/finance/pending-routing?work_type=PAYROLL", v22["finance"])}
+        api.post(f"/worklogs/{approved['id']}/actions/finance_review", v22["finance"], {
+            "review_confirmed": True, "review_type": kind,
+        }, expect=403)
+        return
     activity = priced_activity(api, v22, period, kind=kind)
     pending = to_finance(api, entered_log(api, period, activity))
     assert pending["status"] == "PENDING_FINANCE_REVIEW" and pending["finance_snapshot"] is None

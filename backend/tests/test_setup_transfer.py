@@ -1,5 +1,6 @@
 """Configuration-only transfer is reviewed, scoped to Super Admin and missing-only."""
 import copy
+import pytest
 from fastapi.encoders import jsonable_encoder
 
 from backend.models import (
@@ -9,6 +10,28 @@ from backend.models import (
 from backend.services.setup_transfer import user_data
 
 PREFIX = "/admin/setup-transfer"
+
+
+@pytest.fixture
+def finance_setup_target(db):
+    """A setup-transfer test must not grant roles to later acceptance scenarios."""
+    from backend.models import UserScope
+    finance = db.query(User).filter_by(username="fhifin1").one()
+    user_id = finance.id
+    models = (UserRole, UserReviewCadre, UserScope)
+    original = {
+        model: [
+            {column.key: getattr(row, column.key) for column in model.__table__.columns}
+            for row in db.query(model).filter_by(user_id=user_id)
+        ] for model in models
+    }
+    yield finance
+    db.rollback()
+    for model in models:
+        db.query(model).filter_by(user_id=user_id).delete(synchronize_session=False)
+        for values in original[model]:
+            db.add(model(**values))
+    db.commit()
 
 
 def record(kind, data, key="test-record"):
@@ -92,8 +115,8 @@ def test_changed_document_or_target_requires_fresh_review(api, db):
     assert db.query(FundingSource).filter_by(code="STALE_X").count() == 1
 
 
-def test_roles_and_staff_dependencies_are_atomic_and_passwords_unchanged(api, db):
-    finance = db.query(User).filter_by(username="fhifin1").one()
+def test_roles_and_staff_dependencies_are_atomic_and_passwords_unchanged(api, db, finance_setup_target):
+    finance = finance_setup_target
     before_password, before_active = finance.hashed_password, finance.is_active
     data = user_data(db, finance)
     data["roles"].append("REGIONAL_FINANCE")

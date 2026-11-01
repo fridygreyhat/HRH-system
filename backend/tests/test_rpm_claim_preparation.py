@@ -60,7 +60,7 @@ def test_rpm_claim_is_snapshotted_not_routed_and_reused_by_finance(api, db, peri
     assert claim["payor_org_id"] is None and claim["budget_line_id"] is None
     assert claim["approved_by"] is None and claim["payment_status"] == "NOT_STARTED"
     assert claim["calculation_snapshot"]["operationally_approved_by"]
-    assert len(claim["components"]) == 1 and float(claim["components"][0]["rate"]) == 100
+    assert len(claim["components"]) == 1 and float(claim["components"][0]["rate"]) == 300
     assert db.query(ClaimAudit).filter_by(claim_id=cid, action="rpm_prepare").count() == 1
     # Batch export must exclude this claim, even if other scenarios have ready
     # claims. Roll the export back so this shared acceptance DB is unchanged.
@@ -102,7 +102,7 @@ def test_rpm_claim_is_snapshotted_not_routed_and_reused_by_finance(api, db, peri
     db.expire_all()
     assert db.query(PaymentClaim).filter_by(work_log_id=log["id"]).count() == 1
     assert db.get(PaymentClaim, cid).status == "READY"
-    assert line.committed_amount == before + 300
+    assert line.committed_amount == before
 
 
 @pytest.mark.parametrize("action", ["return", "reject"])

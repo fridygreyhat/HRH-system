@@ -34,12 +34,12 @@ def v22(api, db, monkeypatch, legacy_workflow_default):
     return {"finance": name, "staff_id": staff.id, "cadre_id": staff.cadre_id, "region_id": assignment.region_id}
 
 
-def priced_activity(api, v22, period, kind="SERVICES", mode="SINGLE", rate=100):
+def priced_activity(api, v22, period, kind="SERVICES", mode="SINGLE", rate=300):
     return api.post("/rates", "tofficer1", {
         "label_en": "Test priced activity", "label_sw": "Shughuli ya majaribio",
         "cadre_id": v22["cadre_id"], "region_id": v22["region_id"], "item_type": kind,
         "form_mode": mode, "rate_value": rate, "currency": "TZS",
-        "unit_type": "PER_HOUR" if kind == "PAYROLL" else "PER_UNIT",
+        "unit_type": "PER_DAY",
         "effective_start_date": period["start_date"],
         **({"billable_index": 0} if mode == "CASCADE" else {}),
     })
@@ -132,13 +132,13 @@ def test_activity_revisions_do_not_reprice_existing_entries(api, period, v22):
     assert revision["id"] != activity["id"] and revision["supersedes_id"] == activity["id"]
     old = api.get(f"/worklogs/{log['id']}", "chw1")
     assert float(old["financial_preview"]["total"]) == 300
-    assert float(old["entries"][0]["activity_snapshot"]["rate_value"]) == 100
+    assert float(old["entries"][0]["activity_snapshot"]["rate_value"]) == 300
     # An edit of an existing date retains the original snapshot.
     updated = api.put(f"/worklogs/{log['id']}/entries/{period['start_date']}", "chw1", {
         "activity_key": activity["key"], "hours_worked": 2, "evidence_text": "Corrected count",
         "measures": {activity["fields"][0]: 4},
     })
-    assert float(updated["financial_preview"]["total"]) == 400
+    assert float(updated["financial_preview"]["total"]) == 300
     new_day = str(date.fromisoformat(period["start_date"]) + timedelta(days=1))
     api.put(f"/worklogs/{log['id']}/entries/{new_day}", "chw1", {
         "activity_key": activity["key"], "hours_worked": 2, "evidence_text": "Old version forbidden",
@@ -150,9 +150,9 @@ def test_queue_scope_type_and_cascade_definitions(api, db, period, v22):
     activity = priced_activity(api, v22, period, mode="CASCADE")
     log = entered_log(api, period, activity)
     # Typed records get independent queues and cannot mix service and payroll entries.
-    payroll = priced_activity(api, v22, period, kind="PAYROLL")
+    payroll = api.post("/worklogs", "chw1", {"period_id": period["id"], "work_type": "PAYROLL"})
     api.put(f"/worklogs/{log['id']}/entries/{period['start_date']}", "chw1", {
-        "activity_key": payroll["key"], "hours_worked": 2, "evidence_text": "Wrong item type", "measures": {},
+        "activity_key": payroll["cadre"]["activities"][0]["key"], "hours_worked": 2, "evidence_text": "Wrong item type", "measures": {},
     }, expect=422)
     log = to_finance(api, log)
     staff = api.get("/staff", v22["finance"])
@@ -199,26 +199,21 @@ def test_unpriced_work_blocks_finance_and_manual_claim_bypass(api, db, period, v
     }, expect=409)
 
 
-def test_budget_hold_release_reuses_one_claim_and_one_commitment(api, db, period, v22):
-    from backend.models import BudgetLine, PaymentClaim
+def test_zero_legacy_budget_does_not_hold_or_charge_new_services(api, db, period, v22):
+    from backend.models import BudgetLine, BudgetTransaction, PaymentClaim
     activity = priced_activity(api, v22, period)
     log = to_finance(api, entered_log(api, period, activity))
     line = db.query(BudgetLine).filter_by(category_id=category_id(db, "A"), period_id=period["id"]).one()
-    allocation = line.allocated_amount
     line.allocated_amount = 0
     db.commit()
-    held = route_log(api, db, v22, log, "A")
-    assert held["status"] == "BUDGET_HOLD" and held["claims"][0]["status"] == "BUDGET_HOLD"
-    claim_id = held["claims"][0]["id"]
-    db.expire_all()
-    line.allocated_amount = allocation
-    db.commit()
-    body = {"review_confirmed": True, "review_type": "SERVICES", "comment": "Budget allocation restored"}
-    released = api.post(f"/worklogs/{log['id']}/actions/release", v22["finance"], body)
-    assert released["status"] == "ROUTED_FHI360" and released["claims"][0]["id"] == claim_id
+    routed = route_log(api, db, v22, log, "A")
+    assert routed["status"] == "ROUTED_FHI360" and routed["claims"][0]["status"] == "READY"
+    claim_id = routed["claims"][0]["id"]
     db.expire_all()
     assert db.query(PaymentClaim).filter_by(work_log_id=log["id"]).count() == 1
-    assert float(line.committed_amount) == 300
+    assert float(line.committed_amount) == float(line.spent_amount) == 0
+    assert db.get(PaymentClaim, claim_id).budget_line_id is None
+    assert db.query(BudgetTransaction).filter_by(claim_id=claim_id).count() == 0
 
 
 def test_client_cannot_select_legacy_pipeline_and_old_logs_stay_legacy(api, period, v22, monkeypatch):
@@ -239,17 +234,17 @@ def test_billable_indicator_is_explicit_and_future_revisions_keep_current_rates(
     payload = {
         "label_en": "Explicit billing basis", "label_sw": "Kiwango kilichochaguliwa",
         "cadre_id": v22["cadre_id"], "region_id": v22["region_id"], "item_type": "SERVICES",
-        "form_mode": "CASCADE", "rate_value": 100, "unit_type": "PER_UNIT",
+        "form_mode": "CASCADE", "rate_value": 100, "unit_type": "PER_DAY",
         "effective_start_date": period["start_date"],
     }
-    api.post("/rates", "tofficer1", payload, expect=422)
-    activity = api.post("/rates", "tofficer1", {**payload, "billable_index": 1})
-    assert activity["billable_field"] == activity["fields"][1]
+    api.post("/rates", "tofficer1", {**payload, "unit_type": "PER_UNIT"}, expect=422)
+    activity = api.post("/rates", "tofficer1", payload)
+    assert activity["billable_field"] is None
     log = api.post("/worklogs", "chw1", {"period_id": period["id"], "work_type": "SERVICES"})
     values = dict(zip(activity["fields"], [5, 3, 2, 1]))
     body = {"activity_key": activity["key"], "hours_worked": 2, "evidence_text": "Aggregate cascade", "measures": values}
     first = api.put(f"/worklogs/{log['id']}/entries/{period['start_date']}", "chw1", body)
-    assert float(first["financial_preview"]["total"]) == 300  # selected reached count, not linkage count
+    assert float(first["financial_preview"]["total"]) == 100  # Counts do not multiply a fixed daily payment.
     start = date.fromisoformat(period["start_date"])
     effective = str(start + timedelta(days=2))
     revision = api.post(f"/rates/{activity['id']}/revise", "tofficer1", {"rate_value": 200, "effective_start_date": effective})
@@ -257,4 +252,4 @@ def test_billable_indicator_is_explicit_and_future_revisions_keep_current_rates(
     api.put(f"/worklogs/{log['id']}/entries/{start + timedelta(days=1)}", "chw1", body)
     api.put(f"/worklogs/{log['id']}/entries/{effective}", "chw1", body, expect=422)
     newest = api.put(f"/worklogs/{log['id']}/entries/{effective}", "chw1", {**body, "activity_key": revision["key"]})
-    assert float(newest["financial_preview"]["total"]) == 1200
+    assert float(newest["financial_preview"]["total"]) == 400

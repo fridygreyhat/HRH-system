@@ -6,14 +6,10 @@ from decimal import Decimal
 from fastapi import HTTPException
 
 from ..models import Cadre, Facility, Region, Staff, StaffAssignment, WorkLog, WorkLogEntry, WorkLogMeasure
+from ..core.workflow_policy import RM_AUTHORIZED_STATUSES as RM_AUTHORIZED
 from .forms import cadre_fields
 from .scope import worklog_visibility
 from .v22_scope import record_condition
-
-# Pending finance/routed states are included for historical, already RM-authorized work.
-RM_AUTHORIZED = {"APPROVED", "PENDING_FINANCE_REVIEW", "FINANCE_REVIEWED",
-                 "ROUTED_FHI360", "ROUTED_CSO", "PAID", "BUDGET_HOLD"}
-
 
 def monthly_summary(db, current, month, region_id, work_type, organization_id=None):
     year, number = map(int, month.split("-"))

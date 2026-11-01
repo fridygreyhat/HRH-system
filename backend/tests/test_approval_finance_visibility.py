@@ -3,13 +3,13 @@ from datetime import date, timedelta
 
 import pytest
 
-from backend.models import Staff, StaffAssignment, User, UserReviewCadre, UserScope, WorkLogEntry
+from backend.models import Staff, StaffAssignment, User, UserReviewCadre, UserScope
 from .conftest import category_id
 from .test_ctc_facility_approval import no_provider_sms
 from .test_v22_finance import v22
 
 
-def prepare(api, db, period, v22, provider, kind, historical_pricing=True):
+def prepare(api, db, period, v22, provider, kind):
     staff = db.query(Staff).join(User, User.id == Staff.user_id).filter(User.username == provider).one()
     assignment = db.query(StaffAssignment).filter_by(staff_id=staff.id).first()
     # Test-only reviewer assignments; never broaden real account permissions.
@@ -40,11 +40,6 @@ def prepare(api, db, period, v22, provider, kind, historical_pricing=True):
         "activity_key": activity["key"], "hours_worked": 4,
         "start_time": "08:00", "end_time": "12:00", "measures": values,
     })
-    if kind == "PAYROLL" and historical_pricing:
-        # Model a pre-existing priced snapshot, not a new Payroll-rate UI.
-        entry = db.query(WorkLogEntry).filter_by(work_log_id=log["id"]).one()
-        entry.activity_snapshot = {**entry.activity_snapshot, "rate_value": "25", "unit_type": "PER_HOUR"}
-        db.commit()
     return api.post(f"/worklogs/{log['id']}/actions/submit", provider, {"attest": True})
 
 
@@ -54,7 +49,7 @@ def approve_to_regional_finance(api, log, finance_user):
     for username, action, next_status in (
         ("supervisor1", "verify", "PENDING_TECHNICAL_REVIEW"),
         ("tofficer1", "endorse", "PENDING_RPM_AUTHORIZATION"),
-        ("rpm1", "authorize", "PENDING_FINANCE_REVIEW"),
+        ("rpm1", "authorize", "APPROVED" if kind == "PAYROLL" else "PENDING_FINANCE_REVIEW"),
     ):
         assert log["id"] in {row["id"] for row in api.get(f"/worklogs?queue=true&work_type={kind}", username)}
         assert log["id"] not in {row["id"] for row in api.get(f"/worklogs?queue=true&work_type={other}", username)}
@@ -62,6 +57,10 @@ def approve_to_regional_finance(api, log, finance_user):
         log = api.post(f"/worklogs/{log['id']}/actions/{action}", username, body)
         assert log["status"] == next_status
     queue = api.get(f"/finance/pending-routing?work_type={kind}", finance_user)
+    if kind == "PAYROLL":
+        assert log["id"] not in {row["work_log_id"] for row in queue}
+        assert log["approved_at"] and not log["claims"]
+        return log
     row = next(row for row in queue if row["work_log_id"] == log["id"])
     assert row["finance_review_required"] and row["next_action"] == "REVIEW_AMOUNT"
     assert row["provider_name"] and row["period_label"] and row["cadre_name"] and row["region_name"]
@@ -72,7 +71,17 @@ def approve_to_regional_finance(api, log, finance_user):
 @pytest.mark.parametrize("provider", ["chw1", "hcp1", "clerk1"])
 @pytest.mark.parametrize("kind", ["SERVICES", "PAYROLL"])
 def test_separate_queues_and_correct_finance_payment_visibility(api, db, period, v22, provider, kind):
-    log = approve_to_regional_finance(api, prepare(api, db, period, v22, provider, kind), v22["finance"])
+    submitted = prepare(api, db, period, v22, provider, kind)
+    api.get(f"/worklogs/{submitted['id']}", "fhifin1", expect=404)
+    log = approve_to_regional_finance(api, submitted, v22["finance"])
+    api.get(f"/worklogs/{log['id']}", "fhifin1")
+    if kind == "PAYROLL":
+        report = api.get(f"/finance/monthly-summary?month={period['start_date'][:7]}&work_type=PAYROLL", v22["finance"])
+        assert log["staff_id"] in {row["staff_id"] for row in report["providers"]}
+        api.post(f"/worklogs/{log['id']}/actions/finance_review", v22["finance"], {
+            "review_confirmed": True, "review_type": kind,
+        }, expect=403)
+        return
     body = {"review_confirmed": True, "review_type": kind, "category_id": category_id(db, "A" if kind == "SERVICES" else "B")}
     reviewed = api.post(f"/worklogs/{log['id']}/actions/finance_review", v22["finance"], body)
     assert reviewed["status"] == "FINANCE_REVIEWED"
@@ -91,9 +100,10 @@ def test_separate_queues_and_correct_finance_payment_visibility(api, db, period,
     assert not any(row["work_log_id"] == log["id"] for row in api.get("/finance/pending-routing", v22["finance"]))
 
 
-def test_unpriced_payroll_reaches_finance_but_cannot_be_routed_as_paid(api, db, period, v22):
-    log = approve_to_regional_finance(api, prepare(api, db, period, v22, "chw1", "PAYROLL", historical_pricing=False), v22["finance"])
+def test_unpriced_payroll_is_an_approved_report_not_a_payment_claim(api, db, period, v22):
+    log = approve_to_regional_finance(api, prepare(api, db, period, v22, "chw1", "PAYROLL"), v22["finance"])
     api.post(f"/worklogs/{log['id']}/actions/finance_review", v22["finance"], {
         "review_confirmed": True, "review_type": "PAYROLL", "category_id": category_id(db, "B"),
-    }, expect=422)
-    assert api.get(f"/worklogs/{log['id']}", v22["finance"])["status"] == "PENDING_FINANCE_REVIEW"
+    }, expect=403)
+    assert api.get(f"/worklogs/{log['id']}", v22["finance"])["status"] == "APPROVED"
+    assert not log["claims"]

@@ -14,16 +14,22 @@ from . import config
 from .roles import ALL_ROLES, PROVIDER, SUPER_ADMIN
 
 ALGORITHM = "HS256"
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    encoded = password.encode("utf-8")
+    if len(encoded) > 72:
+        raise HTTPException(status_code=422, detail="Password must not exceed 72 UTF-8 bytes. Use fewer characters for accented letters or symbols.")
+    return bcrypt.hashpw(encoded, bcrypt.gensalt()).decode()
 
 
 def verify_password(password: str, hashed: str) -> bool:
+    encoded = password.encode("utf-8")
+    if len(encoded) > 72:
+        return False
     try:
-        return bcrypt.checkpw(password.encode(), hashed.encode())
+        return bcrypt.checkpw(encoded, hashed.encode())
     except ValueError:
         return False
 

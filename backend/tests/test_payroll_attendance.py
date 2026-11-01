@@ -16,17 +16,19 @@ def test_same_date_payroll_and_services_have_independent_limits_and_approvals(
     service = api.post("/rates", "admin", {
         "label_en": "Independent service", "label_sw": "Huduma tofauti",
         "cadre_id": staff.cadre_id, "region_id": assignment.region_id,
-        "item_type": "SERVICES", "form_mode": "SINGLE", "unit_type": "PER_HOUR",
+        "item_type": "SERVICES", "form_mode": "SINGLE", "unit_type": "PER_DAY",
         "rate_value": 100, "currency": "TZS", "effective_start_date": period["start_date"],
     })
     payroll = api.post("/worklogs", provider, {"period_id": period["id"], "work_type": "PAYROLL"})
-    assert all(not activity["required_fields"] for activity in payroll["cadre"]["activities"])
-    assert payroll["cadre"]["fields"] == []
+    activity = next(item for item in payroll["cadre"]["activities"] if item["required_fields"])
+    field_types = {item["key"]: item["field_type"] for item in payroll["cadre"]["fields"]}
+    measures = {key: False if field_types[key] == "BOOLEAN" else 0 for key in activity["required_fields"]}
     day = period["start_date"]
     path = f"/worklogs/{payroll['id']}/entries/{day}"
-    body = {"activity_key": "daily_attendance", "hours_worked": 8, "measures": {}}
+    body = {"activity_key": activity["key"], "hours_worked": 8,
+            "start_time": "08:00", "end_time": "16:00", "measures": measures}
     payroll = api.put(path, provider, body)
-    api.put(path, provider, {**body, "hours_worked": 8.01}, expect=422)
+    api.put(path, provider, {**body, "hours_worked": 8.01, "end_time": "16:01"}, expect=422)
     services = api.post("/worklogs", provider, {"period_id": period["id"], "work_type": "SERVICES"})
     services = api.put(f"/worklogs/{services['id']}/entries/{day}", provider, {
         "activity_key": service["key"], "hours_worked": 2,
@@ -49,14 +51,14 @@ def test_same_date_payroll_and_services_have_independent_limits_and_approvals(
         api.post(f"/worklogs/{log['id']}/actions/authorize", "rpm1",
                  {**review, "review_type": other}, expect=422)
         approved = api.post(f"/worklogs/{log['id']}/actions/authorize", "rpm1", review)
-        assert approved["status"] == "PENDING_FINANCE_REVIEW"
+        assert approved["status"] == ("APPROVED" if log["work_type"] == "PAYROLL" else "PENDING_FINANCE_REVIEW")
         if log["work_type"] == "PAYROLL":
             assert approved["approved_at"]
             assert not approved["claims"]  # No invented salary or payable zero-value claim.
         else:
-            assert float(approved["claims"][0]["amount"]) == 200
+            assert float(approved["claims"][0]["amount"]) == 100
     if provider == "chw1":
         failed = api.post(f"/worklogs/{payroll['id']}/actions/finance_review", v22["finance"], {
             "review_confirmed": True, "review_type": "PAYROLL", "category_id": category_id(db, "B"),
-        }, expect=422)
-        assert "rate" in failed["detail"]
+        }, expect=403)
+        assert "finance_review" in failed["detail"]
