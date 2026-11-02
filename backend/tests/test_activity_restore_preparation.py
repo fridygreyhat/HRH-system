@@ -1,6 +1,6 @@
 """Activity recovery must remain explicit, missing-only, and free of demo data."""
 
-from scripts.prepare_activity_restore import build_sql, configuration
+from scripts.prepare_activity_restore import build_plain_sqls, build_sql, configuration
 
 
 def test_configuration_includes_all_current_cadre_fields():
@@ -34,3 +34,17 @@ def test_restore_is_atomic_missing_only_and_has_no_operational_data():
     assert "CREATE TABLE" not in sql and "ALTER TABLE" not in sql
     for table in ("users", "activity_rates", "work_logs", "pay_periods", "claims", "staff"):
         assert f"INSERT INTO public.{table}" not in sql
+
+
+def test_plain_console_alternative_uses_two_missing_only_insert_statements():
+    cadres, fields = build_plain_sqls()
+    assert cadres.startswith("INSERT INTO public.cadres")
+    assert "ON CONFLICT (code) DO NOTHING" in cadres
+    assert "INSERT INTO public.cadre_form_fields" in fields
+    assert "ON CONFLICT (cadre_id, key) DO NOTHING" in fields
+    assert "JOIN public.cadres c ON c.code = f.cadre_code" in fields
+    for sql in (cadres, fields):
+        assert "DO $" not in sql and "BEGIN;" not in sql and "COMMIT;" not in sql
+        assert "RETURNING" in sql
+        for table in ("users", "activity_rates", "work_logs", "pay_periods", "claims", "staff"):
+            assert f"INSERT INTO public.{table}" not in sql

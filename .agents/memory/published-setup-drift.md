@@ -26,3 +26,9 @@ Before giving manual Production restore instructions, check whether the owner's 
 **Why:** a valid restore statement was refused by the interface's modification restriction; changing the statement or stopping the published app does not establish write permission.
 
 **How to apply:** consult the current database documentation for the Production editing control, and keep owner-run edits distinct from the agent's read-only Production replica access. Never claim a restore succeeded until Live records are verified.
+
+If the owner confirms a plain INSERT works after a procedural restore was refused, continue with plain data statements instead of repeatedly asking them to toggle editing or republish.
+
+**Why:** the owner successfully restored the Production regions with a plain INSERT after earlier DO-block transfer attempts remained blocked. This establishes a working statement path, not the precise cause of the previous rejection.
+
+**How to apply:** use ordered, missing-only INSERTs and verify their results read-only. Keep configuration recovery separate from old submitted work and credentials.
