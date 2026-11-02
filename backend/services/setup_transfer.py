@@ -14,7 +14,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from ..core import audit, config
 from ..core.security import hash_password
 from ..models import (
-    ActivityRate, Cadre, District, Facility, FundingSource, Organization, PayPeriod,
+    ActivityRate, Cadre, District, Facility, FundingSource, Organization, PaymentRoute, PayPeriod,
     Region, Role, Section, Staff, StaffAssignment, User, UserReviewCadre, UserRole,
     UserScope, Ward,
 )
@@ -23,13 +23,14 @@ from .setup_transfer_schema import (
     tanzanian_phone_lookup_values,
 )
 
-PRIORITY = {"organization": 0, "funding_source": 1, "facility": 2, "pay_period": 3,
-            "user_setup": 4, "service_rate": 5}
+PRIORITY = {"organization": 0, "funding_source": 1, "payment_route": 2, "facility": 3,
+            "pay_period": 4, "user_setup": 5, "service_rate": 6}
 WARNINGS = [
     "Setup only: no passwords, bank details, work logs, approvals, reports, payments or proof files.",
     "New accounts are inactive. Activate and reset their passwords in Users before sign-in.",
     "Existing roles, placements, rates and records are never removed or overwritten.",
     "Missing organizations and facilities must be selected with dependent user setup.",
+    "Payment routes transfer as selectable reference data only; claim categories and their route assignments are not changed.",
     "CSO payment authority is not transferred. Configure it separately after review.",
 ]
 
@@ -130,6 +131,8 @@ def export_document(db):
         add("organization", row.name, dict(name=row.name, code=row.code, type=row.type))
     for row in db.query(FundingSource).order_by(FundingSource.id):
         add("funding_source", row.name, dict(name=row.name, code=row.code))
+    for row in db.query(PaymentRoute).order_by(PaymentRoute.code):
+        add("payment_route", row.name, dict(code=row.code, name=row.name, description=row.description))
     for row in db.query(Facility).filter_by(is_active=True).order_by(Facility.id):
         add("facility", row.name, {**facility_ref(db, row), **{k: getattr(row, k) for k in (
             "facility_type", "geofence_lat", "geofence_lon", "geofence_radius_meters")}})
@@ -250,6 +253,11 @@ def existing_record(db, record):
         if not row and db.query(FundingSource).filter_by(name=d["name"]).first():
             raise ValueError("Funding name has a different code")
         return row
+    if kind == "payment_route":
+        row = db.query(PaymentRoute).filter_by(code=d["code"]).one_or_none()
+        if row and not same_fields(row, d):
+            raise ValueError("Payment route code has a different name or description")
+        return row
     if kind == "facility":
         row = db.query(Facility).filter_by(ward_id=ward_id(db, d), name=d["name"]).one_or_none()
         if row and (not row.is_active or row.facility_type != d["facility_type"] or not same_fields(row, geofence_values(d))):
@@ -337,7 +345,7 @@ def plan(db, document):
 def fingerprint(db):
     """Include reviewed target configuration only; never credentials or financial records."""
     state = []
-    for model in (Organization, FundingSource, Facility, Region, District, Ward, Cadre, Section,
+    for model in (Organization, FundingSource, PaymentRoute, Facility, Region, District, Ward, Cadre, Section,
                   User, UserRole, UserScope, UserReviewCadre, Staff, StaffAssignment, PayPeriod, ActivityRate):
         excluded = {"hashed_password", "email", "bank_name", "bank_account_number", "bank_branch",
                     "mobile_money_number", "payment_account", "payment_provider", "payment_method",
@@ -400,6 +408,8 @@ def create_record(db, current, record):
         db.add(Organization(**d, is_active=True))
     elif kind == "funding_source":
         db.add(FundingSource(**d))
+    elif kind == "payment_route":
+        db.add(PaymentRoute(**d))
     elif kind == "facility":
         db.add(Facility(name=d["name"], ward_id=ward_id(db, d), facility_type=d["facility_type"],
                         **geofence_values(d), is_active=True))
@@ -423,7 +433,7 @@ def apply(db, current, document, selected_ids, token, reason):
     try:
         db.execute(text("SET LOCAL lock_timeout = '5s'"))
         db.execute(text("SELECT pg_advisory_xact_lock(746839210)"))
-        db.execute(text("LOCK TABLE organizations, funding_sources, facilities, regions, districts, wards, cadres, sections, "
+        db.execute(text("LOCK TABLE organizations, funding_sources, payment_routes, facilities, regions, districts, wards, cadres, sections, "
                         "users, user_roles, user_scopes, user_review_cadres, staff, staff_assignments, pay_periods, activity_rates "
                         "IN SHARE ROW EXCLUSIVE MODE"))
     except DBAPIError as exc:

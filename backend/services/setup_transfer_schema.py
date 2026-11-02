@@ -44,6 +44,12 @@ class FundingData(Strict):
     name: str = Field(min_length=1, max_length=255)
 
 
+class PaymentRouteData(Strict):
+    code: Literal["A", "B", "C"]
+    name: str = Field(min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=2000)
+
+
 class FacilityData(FacilityRef):
     facility_type: str | None = Field(default=None, max_length=50)
     geofence_lat: Decimal | None = Field(default=None, ge=-90, le=90, max_digits=10, decimal_places=8)
@@ -195,7 +201,7 @@ class RateData(Strict):
 
 
 DATA_TYPES = {
-    "organization": OrganizationData, "funding_source": FundingData,
+    "organization": OrganizationData, "funding_source": FundingData, "payment_route": PaymentRouteData,
     "facility": FacilityData, "pay_period": PeriodData, "user_setup": UserData,
     "service_rate": RateData,
 }
@@ -203,7 +209,7 @@ DATA_TYPES = {
 
 class TransferRecord(Strict):
     id: str = Field(min_length=1, max_length=100)
-    kind: Literal["organization", "funding_source", "facility", "pay_period", "user_setup", "service_rate"]
+    kind: Literal["organization", "funding_source", "payment_route", "facility", "pay_period", "user_setup", "service_rate"]
     label: str = Field(min_length=1, max_length=255)
     data: dict
 

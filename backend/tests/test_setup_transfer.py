@@ -4,7 +4,7 @@ import pytest
 from fastapi.encoders import jsonable_encoder
 
 from backend.models import (
-    ActivityRate, AuditEvent, Cadre, FundingSource, Organization, PaymentClaim, PaymentRecord,
+    ActivityRate, AuditEvent, Cadre, FundingSource, Organization, PaymentClaim, PaymentRecord, PaymentRoute,
     PayPeriod, Region, Role, Staff, StaffAssignment, User, UserReviewCadre, UserRole, WorkLog,
 )
 from backend.services.setup_transfer import user_data
@@ -57,8 +57,9 @@ def apply(api, doc, reviewed, selected=None, expect=None, **extra):
 def test_export_excludes_credentials_payments_and_admins(api, db):
     exported = api.get(PREFIX + "/export", "admin")
     assert exported["version"] == 1 and exported["records"]
-    assert all(r["kind"] in {"organization", "funding_source", "facility", "pay_period", "user_setup", "service_rate"}
+    assert all(r["kind"] in {"organization", "funding_source", "payment_route", "facility", "pay_period", "user_setup", "service_rate"}
                for r in exported["records"])
+    assert {r["data"]["code"] for r in exported["records"] if r["kind"] == "payment_route"} == {"A", "B", "C"}
     assert not any(r["kind"] == "user_setup" and r["data"]["username"] == "admin" for r in exported["records"])
     forbidden = {"hashed_password", "password", "access_token", "bank_account_number", "payment_account",
                  "bank_branch", "mobile_money_number", "finance_snapshot", "beneficiary_snapshot"}
@@ -113,6 +114,40 @@ def test_changed_document_or_target_requires_fresh_review(api, db):
     assert not db.query(FundingSource).filter_by(code="STALE_X").first()
     apply(api, doc, review(api, doc))
     assert db.query(FundingSource).filter_by(code="STALE_X").count() == 1
+
+
+def test_missing_payment_route_can_be_transferred_without_overwriting_existing(api, db):
+    original = db.query(PaymentRoute).filter_by(code="C").one()
+    original_values = {"code": original.code, "name": original.name, "description": original.description}
+    doc = document(record("payment_route", original_values, "payment-route-c"))
+    created_id = None
+    try:
+        # Simulate an empty Live catalogue while preserving the referenced row for safe restoration.
+        original.code = "TMP"
+        db.commit()
+        reviewed = review(api, doc)
+        assert reviewed["items"][0]["state"] == "MISSING"
+        result = apply(api, doc, reviewed, ["payment-route-c"])
+        assert result["applied"] == 1
+        created = db.query(PaymentRoute).filter_by(code="C").one()
+        created_id = created.id
+        assert created.name == original_values["name"]
+        assert created.description == original_values["description"]
+        visible_routes = api.get("/admin/payment-routes", "admin")
+        assert any(route["code"] == "C" and route["name"] == original_values["name"] for route in visible_routes)
+
+        changed = document(record("payment_route", {
+            **original_values, "name": "Different route name",
+        }, "payment-route-c-conflict"))
+        assert review(api, changed)["items"][0]["state"] == "CONFLICT"
+    finally:
+        if created_id is not None:
+            db.query(PaymentRoute).filter_by(id=created_id).delete(synchronize_session=False)
+        db.expire_all()
+        original.code = original_values["code"]
+        original.name = original_values["name"]
+        original.description = original_values["description"]
+        db.commit()
 
 
 def test_roles_and_staff_dependencies_are_atomic_and_passwords_unchanged(api, db, finance_setup_target):

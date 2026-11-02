@@ -56,3 +56,17 @@ mtime_ms = 1793641244182
 storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:ed939ae9-0e6e-4d6e-8f84-28741b8df599/bf9922ba-8812-4863-a526-c24f3cde7e69/f61dfbfc-dc7e-4a01-a719-cb545190dafe"
 storage_version_token = "1793641248986793"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "wY4VHM5wCGBUdj-7K2B9M"
+uri = "file://.data/payment-routes-transfer.json"
+type = "unspecified"
+title = "Payment routes for Live transfer"
+description = "Validated setup-transfer JSON for routes A, B, and C. Route choices only; it does not alter claim categories, approvals, or payments."
+logical_id = "2953b2bb-5579-45b8-b387-c53666b4024c"
+content_hash = "sha256:aeb5affadf7ac4fb472a8edc470ea2229f9e2a7b48140d8965212adce151caf8"
+size = 1266
+mtime_ms = 1793641703511
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:ed939ae9-0e6e-4d6e-8f84-28741b8df599/2953b2bb-5579-45b8-b387-c53666b4024c/10a9973b-84c7-48fe-8e23-953f98fdb90c"
+storage_version_token = "1793641749666622"
+content_type = "application/octet-stream"
