@@ -506,6 +506,15 @@ payment pricing” below for the current policy. Services remains payable.
 - **Why:** the user wants provider/service names and amounts linked to proof and reflected as paid, without allowing an unrelated upload or a retry to create a false or duplicate payment.
 
 ### Super Admin setup transfer
+- For recovery from a saved setup export after an admin-only reset, use
+  `python scripts/prepare_testing_restore.py <saved-export.json>`. It prepares
+  missing-only cadre/indicator/geography/section/payment-route foundation SQL
+  and a validated JSON for the existing Super Admin Setup transfer screen.
+  Apply the foundation manually to the intended database with editing enabled,
+  then review/select/apply the JSON through the normal authenticated screen.
+  The JSON excludes previous pay periods; it never imports work, approvals,
+  payments, passwords or CSO payment authority. Imported users remain inactive
+  until an administrator activates them and resets their passwords.
 - If a clean database is missing the three standard cadre/activity forms, run
   `python scripts/prepare_activity_restore.py` and manually apply the generated
   `.data/activity-configuration-restore.sql` in that database's SQL console.

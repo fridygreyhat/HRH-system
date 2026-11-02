@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "quC011_DQWnkYRLGf7zrX"
+uri = "file://.data/testing-setup-restore.json"
+type = "unspecified"
+title = "Reviewed testing setup restore"
+description = "Configuration data for Super Admin Setup transfer: 19 operational accounts, organizations, funding sources, facilities and fixed service rates. Excludes old pay periods, submitted work, passwords and payments."
+logical_id = "071df133-7835-4265-8c04-88bbcf1c4c1a"
+content_hash = "sha256:8248a3d12e5bdc6cbc87a291f6b55f5defd45e4f8acad4fdcc90fe2306265a20"
+size = 28369
+mtime_ms = 1793605844534
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:ed939ae9-0e6e-4d6e-8f84-28741b8df599/071df133-7835-4265-8c04-88bbcf1c4c1a/71229e6e-7e90-4fb0-9daf-c6e9c89635b5"
+storage_version_token = "1793605899829004"
+content_type = "application/octet-stream"
