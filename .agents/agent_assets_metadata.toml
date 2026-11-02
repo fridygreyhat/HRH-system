@@ -42,3 +42,17 @@ mtime_ms = 1793624171479
 storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:ed939ae9-0e6e-4d6e-8f84-28741b8df599/c3d4dccb-0112-446a-a1e9-c46cc8c1eed6/a4a1ae63-22bc-4680-84dd-fb9e8d116afa"
 storage_version_token = "1793624356470579"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "415DInF8-iKE06TSRitmI"
+uri = "file://.data/funding-sources-transfer.json"
+type = "unspecified"
+title = "Funding sources for Live transfer"
+description = "Validated setup-transfer JSON containing only PnP, Supply Chain, and EpiC funding sources. It does not include category assignments or payment data."
+logical_id = "bf9922ba-8812-4863-a526-c24f3cde7e69"
+content_hash = "sha256:0fc06730f258a8aa1c27a84941cb1e7f68031db0c048094287a248f30e425475"
+size = 785
+mtime_ms = 1793641244182
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:ed939ae9-0e6e-4d6e-8f84-28741b8df599/bf9922ba-8812-4863-a526-c24f3cde7e69/f61dfbfc-dc7e-4a01-a719-cb545190dafe"
+storage_version_token = "1793641248986793"
+content_type = "application/octet-stream"
