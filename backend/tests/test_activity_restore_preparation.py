@@ -1,6 +1,6 @@
 """Activity recovery must remain explicit, missing-only, and free of demo data."""
 
-from scripts.prepare_activity_restore import build_plain_sqls, build_sql, configuration
+from scripts.prepare_activity_restore import build_plain_sqls, build_single_statement, build_sql, configuration
 
 
 def test_configuration_includes_all_current_cadre_fields():
@@ -48,3 +48,19 @@ def test_plain_console_alternative_uses_two_missing_only_insert_statements():
         assert "RETURNING" in sql
         for table in ("users", "activity_rates", "work_logs", "pay_periods", "claims", "staff"):
             assert f"INSERT INTO public.{table}" not in sql
+
+
+def test_single_statement_restores_parents_before_fields_and_reports_counts():
+    sql = build_single_statement()
+    assert sql.count(";") == 1
+    assert "DO $" not in sql
+    assert "UNION ALL SELECT id, code FROM added_cadres" in sql
+    assert "JOIN target_cadres c ON c.code = f.cadre_code" in sql
+    assert "AS fields_after_restore" in sql
+    assert "FROM added_fields f WHERE f.cadre_id = c.id" in sql
+    assert "ON CONFLICT (code) DO NOTHING" in sql
+    assert "ON CONFLICT (cadre_id, key) DO NOTHING" in sql
+    for forbidden in ("UPDATE ", "DELETE ", "CREATE TABLE", "ALTER TABLE"):
+        assert forbidden not in sql
+    for table in ("users", "activity_rates", "work_logs", "pay_periods", "claims", "staff"):
+        assert f"INSERT INTO public.{table}" not in sql

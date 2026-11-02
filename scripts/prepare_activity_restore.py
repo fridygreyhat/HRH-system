@@ -128,15 +128,44 @@ def build_plain_sqls():
     return cadre_sql, field_sql
 
 
+def build_single_statement():
+    """Restore parent cadres and child fields atomically, reporting final counts.
+
+    Data-modifying CTEs share a snapshot. Newly inserted parent IDs must come
+    from RETURNING, and the report must include both existing and returned fields.
+    """
+    cadres, fields = build_plain_sqls()
+    cadres = cadres.rsplit("\nRETURNING", 1)[0]
+    fields = "\n".join(line for line in fields.splitlines() if not line.startswith("--"))
+    fields = fields.rsplit("\nRETURNING", 1)[0]
+    fields = fields.replace("JOIN public.cadres c", "JOIN target_cadres c")
+    codes = ", ".join(literal(row["code"]) for row in configuration())
+    return (
+        "-- Run this COMPLETE statement in Production. Existing records are preserved.\n"
+        "WITH added_cadres AS (\n" + cadres + "\nRETURNING id, code\n),\n"
+        "target_cadres AS (\n"
+        f"SELECT id, code FROM public.cadres WHERE code IN ({codes})\n"
+        "UNION ALL SELECT id, code FROM added_cadres\n),\n"
+        "added_fields AS (\n" + fields + "\nRETURNING cadre_id, key\n)\n"
+        "SELECT c.code,\n"
+        " (SELECT count(*) FROM public.cadre_form_fields f WHERE f.cadre_id = c.id)\n"
+        " + (SELECT count(*) FROM added_fields f WHERE f.cadre_id = c.id)\n"
+        " AS fields_after_restore\n"
+        "FROM target_cadres c ORDER BY c.code;\n"
+    )
+
+
 def main():
     destination = ROOT / ".data" / "activity-configuration-restore.sql"
     write_private(destination, build_sql())
     cadre_sql, field_sql = build_plain_sqls()
     write_private(ROOT / ".data/cadre-selection-restore.sql", cadre_sql)
     write_private(ROOT / ".data/cadre-fields-restore.sql", field_sql)
+    write_private(ROOT / ".data/cadre-forms-restore.sql", build_single_statement())
     rows = configuration()
     print("Prepared: .data/activity-configuration-restore.sql")
     print("Plain INSERT alternative: .data/cadre-selection-restore.sql, then .data/cadre-fields-restore.sql")
+    print("Single-statement alternative: .data/cadre-forms-restore.sql (returns field counts per cadre)")
     print(f"Contains {len(rows)} cadre templates and {sum(len(row['fields']) for row in rows)} indicator definitions.")
     print("No database was modified. Apply manually in the Production SQL console.")
 

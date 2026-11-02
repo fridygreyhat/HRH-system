@@ -32,3 +32,9 @@ If the owner confirms a plain INSERT works after a procedural restore was refuse
 **Why:** the owner successfully restored the Production regions with a plain INSERT after earlier DO-block transfer attempts remained blocked. This establishes a working statement path, not the precise cause of the previous rejection.
 
 **How to apply:** use ordered, missing-only INSERTs and verify their results read-only. Keep configuration recovery separate from old submitted work and credentials.
+
+A console result of “OK” does not establish that configuration was restored.
+
+**Why:** the owner ran a child-field INSERT before creating its parent cadres. The statement joined against an empty cadre table, succeeded with zero rows, and left all registration forms empty.
+
+**How to apply:** verify both parent and field counts. Where possible, offer one atomic owner-run restore that includes missing parents and returns per-cadre field counts, rather than relying on manual statement ordering.

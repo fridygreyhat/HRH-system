@@ -533,6 +533,9 @@ payment pricing” below for the current policy. Services remains payable.
   the same preparation also produces `.data/cadre-selection-restore.sql` and
   `.data/cadre-fields-restore.sql`. Run these two single statements separately,
   in that order, and verify all three cadres and their indicator fields afterward.
+  Alternatively, `.data/cadre-forms-restore.sql` restores missing cadres and
+  fields in one owner-run statement and returns per-cadre field counts. Copy
+  the entire statement; it preserves existing configuration and contains no work records.
 - Development and live databases hold independent setup data. Publishing code is not a setup-data synchronization operation. Use the Super Admin **Setup transfer** screen to export, review and explicitly select missing setup on the target site.
 - Transfer operational account roles/scopes/cadres, linked provider setup and non-overlapping placements, organizations, facilities with their geofences, programme sources, open periods and fixed daily Services rates only. Exclude administrator accounts, credentials, bank/mobile payment details, work, approvals, financial records, signed reports, proof files and CSO payment authority.
 - Existing values, passwords and access are never removed or overwritten. Additional target roles, identity differences, conflicting rates, overlapping placements or periods require manual review. In particular, do not create another period over an existing closed global/regional period; review/reopen it manually.
