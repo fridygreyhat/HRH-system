@@ -506,6 +506,13 @@ payment pricing” below for the current policy. Services remains payable.
 - **Why:** the user wants provider/service names and amounts linked to proof and reflected as paid, without allowing an unrelated upload or a retry to create a false or duplicate payment.
 
 ### Super Admin setup transfer
+- To restore the saved national geography separately, run
+  `python scripts/prepare_geography_restore.py`, then manually apply
+  `.data/production-geography-restore.sql` to the intended Production database
+  with editing enabled. This atomic missing-only data restore preserves location
+  IDs and facility links and refuses ambiguous duplicate names. Its saved source
+  has 31 regions, 172 councils/districts and 3,644 wards, with the age limitations
+  documented in `backend/data/README.md`. It does not run at startup or publish.
 - For recovery from a saved setup export after an admin-only reset, use
   `python scripts/prepare_testing_restore.py <saved-export.json>`. It prepares
   missing-only cadre/indicator/geography/section/payment-route foundation SQL
