@@ -506,6 +506,13 @@ payment pricing” below for the current policy. Services remains payable.
 - **Why:** the user wants provider/service names and amounts linked to proof and reflected as paid, without allowing an unrelated upload or a retry to create a false or duplicate payment.
 
 ### Super Admin setup transfer
+- If a clean database is missing the three standard cadre/activity forms, run
+  `python scripts/prepare_activity_restore.py` and manually apply the generated
+  `.data/activity-configuration-restore.sql` in that database's SQL console.
+  It is one atomic data-only statement using the maintained form definitions,
+  adding missing cadres and indicator fields without overwriting existing setup.
+  It does not restore custom regional service rates, create demo records, change
+  credentials, migrate schemas, or run at application startup.
 - Development and live databases hold independent setup data. Publishing code is not a setup-data synchronization operation. Use the Super Admin **Setup transfer** screen to export, review and explicitly select missing setup on the target site.
 - Transfer operational account roles/scopes/cadres, linked provider setup and non-overlapping placements, organizations, facilities with their geofences, programme sources, open periods and fixed daily Services rates only. Exclude administrator accounts, credentials, bank/mobile payment details, work, approvals, financial records, signed reports, proof files and CSO payment authority.
 - Existing values, passwords and access are never removed or overwritten. Additional target roles, identity differences, conflicting rates, overlapping placements or periods require manual review. In particular, do not create another period over an existing closed global/regional period; review/reopen it manually.
