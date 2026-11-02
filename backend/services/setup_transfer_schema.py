@@ -1,6 +1,7 @@
 """Strict, credential-free configuration transfer format."""
 from datetime import date
 from decimal import Decimal
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -8,6 +9,21 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 class Strict(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+
+def normalize_tanzanian_phone(value):
+    """Accept legacy local mobile numbers, but serialize their E.164 equivalent."""
+    if isinstance(value, str) and re.fullmatch(r"0[67]\d{8}", value):
+        return "+255" + value[1:]
+    return value
+
+
+def tanzanian_phone_lookup_values(value):
+    normalized = normalize_tanzanian_phone(value)
+    values = [normalized]
+    if isinstance(normalized, str) and re.fullmatch(r"\+255[67]\d{8}", normalized):
+        values.append("0" + normalized[4:])
+    return values
 
 
 class FacilityRef(Strict):
@@ -126,6 +142,11 @@ class UserData(Strict):
     review_cadres: list[Literal["CHW", "HCP", "DATA_CLERK"]] = Field(max_length=3)
     scopes: list[ScopeData] = Field(max_length=100)
     staff: StaffData | None = None
+
+    @field_validator("phone", mode="before")
+    @classmethod
+    def normalize_legacy_tanzanian_phone(cls, value):
+        return normalize_tanzanian_phone(value)
 
     @model_validator(mode="after")
     def permissions(self):

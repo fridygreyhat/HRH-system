@@ -156,6 +156,33 @@ def test_new_provider_created_inactive_with_linked_staff_and_no_known_password(a
     assert review(api, doc)["items"][0]["state"] == "EXISTS"
 
 
+def test_existing_provider_import_accepts_legacy_tanzanian_number_without_changing_identity(api, db):
+    provider = db.query(User).filter_by(username="hcp1").one()
+    before_phone, before_password = provider.phone, provider.hashed_password
+    data = user_data(db, provider)
+    assert data["phone"].startswith("+255")
+    data["phone"] = "0" + data["phone"][4:]
+    doc = document(record("user_setup", data, "legacy-local-phone"))
+    reviewed = review(api, doc)
+    assert reviewed["items"][0]["state"] == "EXISTS"
+    apply(api, doc, reviewed, expect=409)
+    db.expire_all()
+    assert provider.phone == before_phone
+    assert provider.hashed_password == before_password
+
+    new = user_data(db, provider)
+    new.update(username="transfer.local-phone", full_name="Transfer Local Phone",
+               phone="0758390922")
+    new["staff"]["first_name"] = "Transfer"
+    new["staff"]["last_name"] = "Local Phone"
+    new_doc = document(record("user_setup", new, "new-local-phone"))
+    assert review(api, new_doc)["items"][0]["state"] == "MISSING"
+    apply(api, new_doc, review(api, new_doc))
+    created = db.query(User).filter_by(username="transfer.local-phone").one()
+    assert created.phone == "+255758390922"
+    assert not created.is_active and created.must_change_password
+
+
 def test_conflicts_never_overwrite_existing_placements_or_rates(api, db):
     provider = db.query(User).filter_by(username="hcp1").one()
     data = user_data(db, provider)

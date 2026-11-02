@@ -533,6 +533,14 @@ payment pricing” below for the current policy. Services remains payable.
   retaining operational users, linked staff/placements and dependent organizations/
   facilities only. It excludes old work, approvals, periods, rates and funding sources.
   Keep files containing user details private and ignored by Git.
+  For a one-time reconciliation against an existing Live setup, supply a read-only
+  comparison snapshot and explicit identity/location choices:
+  `--live-snapshot <private-snapshot.csv> --match-live-user=saved-login=live-login`
+  and `--match-live-facility=saved-name=live-name`. Review any remaining conflicts
+  rather than guessing. A matched account keeps its Live login, phone, password and
+  existing roles; a matched facility keeps its current type and linked location.
+  Tanzania local-format mobile numbers are normalized in the transfer document;
+  existing stored login numbers are not rewritten.
 - If a clean database is missing the three standard cadre/activity forms, run
   `python scripts/prepare_activity_restore.py` and manually apply the generated
   `.data/activity-configuration-restore.sql` in that database's SQL console.

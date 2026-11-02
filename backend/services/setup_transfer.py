@@ -18,7 +18,10 @@ from ..models import (
     Region, Role, Section, Staff, StaffAssignment, User, UserReviewCadre, UserRole,
     UserScope, Ward,
 )
-from .setup_transfer_schema import DATA_TYPES, TRANSFER_ROLES, TransferDocument
+from .setup_transfer_schema import (
+    DATA_TYPES, TRANSFER_ROLES, TransferDocument, normalize_tanzanian_phone,
+    tanzanian_phone_lookup_values,
+)
 
 PRIORITY = {"organization": 0, "funding_source": 1, "facility": 2, "pay_period": 3,
             "user_setup": 4, "service_rate": 5}
@@ -183,13 +186,20 @@ def geofence_values(data):
 
 def user_changes(db, data):
     user = db.query(User).filter_by(username=data["username"]).one_or_none()
-    phone_owner = db.query(User).filter_by(phone=data["phone"]).one_or_none()
+    phone_matches = db.query(User).filter(
+        User.phone.in_(tanzanian_phone_lookup_values(data["phone"]))
+    ).limit(2).all()
+    if len(phone_matches) > 1:
+        raise ValueError("Phone number matches multiple existing accounts; resolve manually")
+    phone_owner = phone_matches[0] if phone_matches else None
     if phone_owner and (not user or phone_owner.id != user.id):
         raise ValueError("Phone number belongs to another account")
     if not user:
         return None, ["New inactive account; activation and password reset required"]
     actual = user_data(db, user)  # Administrator and unsupported-scope protection.
-    if (actual["phone"], actual["full_name"]) != (data["phone"], data["full_name"]):
+    if (normalize_tanzanian_phone(actual["phone"]), actual["full_name"]) != (
+        normalize_tanzanian_phone(data["phone"]), data["full_name"]
+    ):
         raise ValueError("Existing account identity differs; edit manually")
     extra_roles = sorted(set(actual["roles"]) - set(data["roles"]))
     if extra_roles:
