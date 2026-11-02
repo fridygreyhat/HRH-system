@@ -506,6 +506,12 @@ payment pricing” below for the current policy. Services remains payable.
 - **Why:** the user wants provider/service names and amounts linked to proof and reflected as paid, without allowing an unrelated upload or a retry to create a false or duplicate payment.
 
 ### Super Admin setup transfer
+- The version-controlled `database/cadre-forms.sql` contains the standard cadre
+  and indicator reference records for future deployments. Follow `database/README.md`
+  to apply it explicitly to the intended database after the schema exists.
+  Keep it synchronized with the maintained definitions using
+  `python scripts/prepare_activity_restore.py --print-reference`; the preparation
+  tests check for drift. It contains no accounts or work and is not a publish/startup hook.
 - To restore the saved national geography separately, run
   `python scripts/prepare_geography_restore.py`, then manually apply
   `.data/production-geography-restore.sql` to the intended Production database

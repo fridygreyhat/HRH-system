@@ -4,6 +4,7 @@ Run manually, then apply the generated single statement in the target SQL consol
 No startup hooks, schema changes, accounts, rates, work records or demo data.
 """
 
+import argparse
 import json
 from pathlib import Path
 import sys
@@ -156,6 +157,15 @@ def build_single_statement():
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--print-reference", action="store_true",
+        help="Print only the reusable cadre/form SQL; do not connect to any database.",
+    )
+    args = parser.parse_args()
+    if args.print_reference:
+        print(build_single_statement(), end="")
+        return
     destination = ROOT / ".data" / "activity-configuration-restore.sql"
     write_private(destination, build_sql())
     cadre_sql, field_sql = build_plain_sqls()

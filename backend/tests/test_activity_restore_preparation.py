@@ -1,5 +1,7 @@
 """Activity recovery must remain explicit, missing-only, and free of demo data."""
 
+from pathlib import Path
+
 from scripts.prepare_activity_restore import build_plain_sqls, build_single_statement, build_sql, configuration
 
 
@@ -64,3 +66,8 @@ def test_single_statement_restores_parents_before_fields_and_reports_counts():
         assert forbidden not in sql
     for table in ("users", "activity_rates", "work_logs", "pay_periods", "claims", "staff"):
         assert f"INSERT INTO public.{table}" not in sql
+
+
+def test_versioned_reference_sql_matches_current_form_configuration():
+    root = Path(__file__).resolve().parents[2]
+    assert (root / "database/cadre-forms.sql").read_text(encoding="utf-8") == build_single_statement()

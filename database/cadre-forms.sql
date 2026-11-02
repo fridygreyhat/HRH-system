@@ -1,0 +1,136 @@
+-- Run this COMPLETE statement in Production. Existing records are preserved.
+WITH added_cadres AS (
+INSERT INTO public.cadres
+(code, name, form_title, hours_mode, uses_facility_geofence,
+ requires_facility_endorsement, technical_reviewer_title,
+ occupation_options, uses_section, is_active)
+VALUES
+('CHW', 'Community Health Worker', 'EpiC Project Weekly Work Log-Sheet – CHW', 'DIRECT', FALSE, FALSE, 'Senior Regional Technical Officer, Community Engagement', '[]'::jsonb, FALSE, TRUE),
+('DATA_CLERK', 'Data Clerk', 'Weekly Work Log-Sheet – Data Clerks', 'START_END', TRUE, FALSE, 'Regional Strategic Information Officer', '["Data Clerk", "Data Entry Volunteer", "ART Nurse / Clinician", "Other"]'::jsonb, TRUE, TRUE),
+('HCP', 'Health Care Provider', 'EpiC Project Weekly Work Log-Sheet', 'START_END', TRUE, FALSE, 'Senior Regional Technical Officer, Care & Treatment', '["Nurse", "Clinician", "Lab Tech", "Other"]'::jsonb, TRUE, TRUE)
+ON CONFLICT (code) DO NOTHING
+RETURNING id, code
+),
+target_cadres AS (
+SELECT id, code FROM public.cadres WHERE code IN ('CHW', 'DATA_CLERK', 'HCP')
+UNION ALL SELECT id, code FROM added_cadres
+),
+added_fields AS (
+INSERT INTO public.cadre_form_fields
+(cadre_id, key, label_en, label_sw, field_type, sort_order, is_active)
+SELECT c.id, f.key, f.label_en, f.label_sw, f.field_type, f.sort_order, TRUE
+FROM (VALUES
+('CHW', 'clients_screened_hiv_tb', 'Clients screened for HIV and TB testing indicators', 'Idadi ya Wateja Waliochunguzwa viashiria vya upimaji wa VVU na TB', 'INTEGER', 0),
+('CHW', 'clients_linked_hiv_tb_testing', 'Clients linked to HIV and TB testing services', 'Idadi ya wateja waliunganishwa na huduma ya upimaji wa VVU na TB', 'INTEGER', 1),
+('CHW', 'ltfu_clients_assigned', 'Lost-to-follow-up clients assigned for tracing', 'Idadi ya wateja waliopotea kwenye huduma uliopewa kuwafuatilia', 'INTEGER', 2),
+('CHW', 'clients_followed_up', 'Clients followed up', 'Idadi ya wateja uliowafuatilia', 'INTEGER', 3),
+('CHW', 'clients_returned_to_care', 'Clients returned to care and treatment services', 'Idadi ya Wateja Waliorudi kwenye Huduma za tiba na matunzo', 'INTEGER', 4),
+('CHW', 'chw_hiv_counselled', 'Clients counselled about HIV', 'Wateja waliopata ushauri kuhusu VVU', 'INTEGER', 5),
+('CHW', 'chw_hiv_eligible', 'Clients eligible for HIV testing', 'Wateja waliokidhi vigezo vya upimaji wa VVU', 'INTEGER', 6),
+('CHW', 'chw_hiv_positive', 'Clients newly identified HIV positive', 'Wateja wapya waliopatikana na VVU', 'INTEGER', 7),
+('CHW', 'chw_hiv_linked_art', 'Clients linked to ART care', 'Wateja waliounganishwa na huduma za ART', 'INTEGER', 8),
+('CHW', 'chw_art_escort_referrals', 'ART escort referrals completed', 'Rufaa za kusindikiza kwenye huduma za ART', 'INTEGER', 9),
+('CHW', 'chw_lcm_enrollments', 'Clients newly enrolled in six-month LCM', 'Wateja wapya walioingizwa kwenye LCM ya miezi sita', 'INTEGER', 10),
+('CHW', 'chw_tb_screened', 'Clients screened for TB', 'Wateja waliochunguzwa kuhusu TB', 'INTEGER', 11),
+('CHW', 'chw_tb_symptomatic', 'Clients with TB symptoms', 'Wateja walioonyesha dalili za TB', 'INTEGER', 12),
+('CHW', 'chw_appointment_calls', 'Clients called to attend services', 'Wateja waliopigiwa simu kufika huduma', 'INTEGER', 13),
+('CHW', 'chw_appointments_attended', 'Clients attending on scheduled dates', 'Wateja waliohudhuria tarehe waliyopangiwa', 'INTEGER', 14),
+('CHW', 'chw_missap_followups', 'Missed appointment follow-ups (MISSAP)', 'Ufuatiliaji wa waliokosa miadi (MISSAP)', 'INTEGER', 15),
+('CHW', 'chw_hvl_followups', 'Clients followed up for HVL sampling', 'Wateja waliofuatiliwa kwa kipimo cha HVL', 'INTEGER', 16),
+('CHW', 'chw_dbs_followups', 'Children followed up for DBS sampling', 'Watoto waliofuatiliwa kwa kipimo cha DBS', 'INTEGER', 17),
+('CHW', 'chw_special_clinic_expected', 'Expected Client Attendees', 'Wateja waliotarajiwa kuhudhuria', 'INTEGER', 18),
+('CHW', 'chw_special_clinic_served', 'Clients attended and served', 'Wateja waliohudhuria na kuhudumiwa', 'INTEGER', 19),
+('CHW', 'chw_tb_contacts_listed', 'TB Case Contacts Listed (Household and close contacts of the TB client)', 'Watu wa kaya na watu wa karibu wa mteja wa TB walioorodheshwa', 'INTEGER', 20),
+('CHW', 'chw_tb_contacts_screened', 'TB Contacts Reached and Screened for TB', 'Watu waliokuwa karibu na mteja wa TB waliofikiwa na kuchunguzwa TB', 'INTEGER', 21),
+('CHW', 'chw_tb_contacts_presumptive', 'Presumptive TB Contacts Identified', 'Watu waliokuwa karibu na mteja wa TB waliotambuliwa kuwa na dalili za TB', 'INTEGER', 22),
+('CHW', 'chw_tb_contact_samples_transported', 'Samples collected and transported for TB confirmation/Investigation', 'Sampuli zilizokusanywa na kusafirishwa kwa uchunguzi au uthibitisho wa TB', 'INTEGER', 23),
+('CHW', 'chw_tb_contacts_started_referred', 'TB Cases Diagnosed and Started/Referred for TB Treatment', 'Wagonjwa waliothibitishwa kuwa na TB na kuanzishiwa au kupewa rufaa ya matibabu', 'INTEGER', 24),
+('CHW', 'chw_self_tests_distributed', 'HIV self-test kits distributed (HTS_SELF)', 'Vipimo vya kujipima VVU vilivyosambazwa', 'INTEGER', 25),
+('DATA_CLERK', 'ctc_clients_registered', 'Number of CTC clients registered per day', 'Idadi ya wateja wa CTC waliosajiliwa kwa siku', 'INTEGER', 0),
+('DATA_CLERK', 'ctc_visits_updated', 'Number of CTC visits updated in the database per day', 'Idadi ya mahudhurio ya CTC yaliyosasishwa kwenye kanzidata kwa siku', 'INTEGER', 1),
+('DATA_CLERK', 'hts_clients_registered', 'HTS data entered in the HTS module', 'Takwimu za HTS zilizoingizwa kwenye moduli', 'INTEGER', 12),
+('DATA_CLERK', 'pharmacy_visits_entered', 'Dispensing records entered in CTC-2 PMD', 'Rekodi za dawa zilizoingizwa kwenye PMD', 'INTEGER', 7),
+('DATA_CLERK', 'ctc_hts_dataset_uploaded', 'CTC and HTS dataset uploaded (Yes/No)', 'Takwimu za CTC na HTS zimepakiwa (Ndiyo/Hapana)', 'BOOLEAN', 4),
+('DATA_CLERK', 'ctc_transfers_in', 'CTC clients transferred in', 'Wateja waliohamishiwa kuingia CTC', 'INTEGER', 5),
+('DATA_CLERK', 'ctc_appointments_expected', 'CTC appointments expected', 'Miadi ya CTC iliyotarajiwa', 'INTEGER', 6),
+('DATA_CLERK', 'ctc_clients_tb_screened', 'CTC clients screened for TB', 'Wateja wa CTC waliochunguzwa TB', 'INTEGER', 8),
+('DATA_CLERK', 'ctc_tpt_eligible', 'CTC clients eligible for TPT', 'Wateja wa CTC wanaostahili TPT', 'INTEGER', 9),
+('DATA_CLERK', 'ctc_tpt_initiated', 'CTC clients initiated on TPT', 'Wateja wa CTC walioanzishiwa TPT', 'INTEGER', 10),
+('DATA_CLERK', 'hei_visits_updated', 'HEI visits entered in CTC-2', 'Ziara za HEI zilizoingizwa CTC-2', 'INTEGER', 11),
+('DATA_CLERK', 'hts_clients_positive', 'HTS clients found HIV positive', 'Wateja wa HTS waliopatikana na VVU', 'INTEGER', 13),
+('DATA_CLERK', 'ctc_elicited_contacts', 'Elicited contacts entered in CTC-2', 'Waliotajwa walioingizwa kwenye CTC-2', 'INTEGER', 14),
+('DATA_CLERK', 'ctc_hvl_eligible', 'CTC clients eligible for HVL samples', 'Wateja wa CTC wanaostahili sampuli ya HVL', 'INTEGER', 15),
+('DATA_CLERK', 'ctc_eid_eligible', 'HEI eligible for EID samples', 'Watoto walio katika hatari wanaostahili sampuli ya EID', 'INTEGER', 16),
+('DATA_CLERK', 'ctc_hvl_eid_requests', 'HVL/EID test requests entered and uploaded', 'Maombi ya vipimo vya HVL/EID yaliyoingizwa na kupakiwa', 'INTEGER', 17),
+('DATA_CLERK', 'ctc_hvl_eid_results_received', 'HVL/EID results received and updated', 'Majibu ya HVL/EID yaliyopokelewa na kusasishwa', 'INTEGER', 18),
+('DATA_CLERK', 'ctc_hvl_requests', 'HVL requests registered and uploaded to CTC-3', 'Maombi ya HVL yaliyosajiliwa na kupakiwa CTC-3', 'INTEGER', 19),
+('DATA_CLERK', 'ctc_eid_requests', 'EID requests registered and uploaded to CTC-3', 'Maombi ya EID yaliyosajiliwa na kupakiwa CTC-3', 'INTEGER', 20),
+('DATA_CLERK', 'ctc_hvl_results_received', 'HVL results received and updated in CTC-2', 'Majibu ya HVL yaliyopokelewa na kusasishwa CTC-2', 'INTEGER', 21),
+('DATA_CLERK', 'ctc_eid_results_received', 'EID results received and updated in HEI profile', 'Majibu ya EID yaliyopokelewa na kusasishwa kwenye HEI', 'INTEGER', 22),
+('DATA_CLERK', 'ctc_full_backup', 'CTC-2 full backup saved externally (Yes/No)', 'Nakala kamili ya CTC-2 imehifadhiwa nje (Ndiyo/Hapana)', 'BOOLEAN', 23),
+('DATA_CLERK', 'ctc_monthly_portal_submission', 'Monthly Portal dataset submitted (Yes/No)', 'Takwimu zimewasilishwa kwenye Monthly Portal (Ndiyo/Hapana)', 'BOOLEAN', 24),
+('DATA_CLERK', 'ctc_nashcop_raw_export', 'NASHCoP comprehensive raw export (Yes/No)', 'Takwimu ghafi za NASHCoP zimesafirishwa (Ndiyo/Hapana)', 'BOOLEAN', 25),
+('DATA_CLERK', 'ctc_nashcop_aggregate_export', 'NASHCoP aggregate export (Yes/No)', 'Takwimu jumla za NASHCoP zimesafirishwa (Ndiyo/Hapana)', 'BOOLEAN', 26),
+('DATA_CLERK', 'ctc_eligible_lists_shared', 'Weekly eligible-client lists shared with HCPs', 'Orodha za wateja wanaostahili zimeshirikiwa na HCP', 'INTEGER', 27),
+('DATA_CLERK', 'ctc_hvl_eid_results_shared', 'HVL/EID results shared with HCPs (Yes/No)', 'Majibu ya HVL/EID yameshirikiwa na HCP (Ndiyo/Hapana)', 'BOOLEAN', 28),
+('DATA_CLERK', 'ctc_secondary_facility', 'Data-entry support provided at a secondary facility (Yes/No)', 'Msaada wa takwimu umetolewa kituo kingine (Ndiyo/Hapana)', 'BOOLEAN', 29),
+('HCP', 'clients_reached_community', 'Number of Clients Reached (For Community)', 'Idadi ya wateja waliofikiwa (jamii)', 'INTEGER', 0),
+('HCP', 'clients_tested_hiv', 'Number of clients Tested For HIV', 'Idadi ya wateja waliopimwa VVU', 'INTEGER', 1),
+('HCP', 'clients_tested_index', 'Number of clients tested – Index', 'Idadi ya wateja waliopimwa – Index', 'INTEGER', 2),
+('HCP', 'clients_tested_sns', 'Number of clients tested – SNS', 'Idadi ya wateja waliopimwa – SNS', 'INTEGER', 3),
+('HCP', 'clients_tested_opitc', 'Number of clients tested – oPITC', 'Idadi ya wateja waliopimwa – oPITC', 'INTEGER', 4),
+('HCP', 'clients_tested_positive_new', 'Number of clients tested Positive (New cases)', 'Idadi ya wateja waliokutwa na VVU (wapya)', 'INTEGER', 5),
+('HCP', 'clients_known_cases', 'Number of clients Known cases', 'Idadi ya wateja wanaojulikana kuwa na VVU', 'INTEGER', 6),
+('HCP', 'hiv_positive_linked_art', 'Number of HIV+ Clients Linked to ART', 'Idadi ya wateja wenye VVU walioanzishiwa ART', 'INTEGER', 7),
+('HCP', 'hivst_distributed', 'Number of HIVST Oral/Blood distributed', 'Idadi ya vipimo binafsi vya VVU (mdomo/damu) vilivyogawiwa', 'INTEGER', 8),
+('HCP', 'clients_attended_ctc', 'Number of Clients attended CTC Clinic', 'Idadi ya wateja waliohudhuria kliniki ya CTC', 'INTEGER', 9),
+('HCP', 'tb_contacts_traced', 'Number of TB contacts traced', 'Idadi ya watu wa karibu wa wagonjwa wa TB waliofuatiliwa', 'INTEGER', 10),
+('HCP', 'tb_samples_collected', 'Number of samples collected for TB diagnosis', 'Idadi ya sampuli zilizochukuliwa kwa uchunguzi wa TB', 'INTEGER', 11),
+('HCP', 'weekend_clinic_attended', 'Number of clients who attended the weekend clinic', 'Idadi ya wateja waliohudhuria kliniki ya mwisho wa wiki', 'INTEGER', 12),
+('HCP', 'hcp_index_appointments', 'Index contacts with appointments', 'Watu waliotajwa wenye miadi', 'INTEGER', 13),
+('HCP', 'hcp_index_positive', 'Index contacts newly HIV positive', 'Watu waliotajwa waliopatikana wapya na VVU', 'INTEGER', 14),
+('HCP', 'hcp_sns_appointments', 'SNS-RNR contacts with appointments', 'Watu wa SNS-RNR wenye miadi', 'INTEGER', 15),
+('HCP', 'hcp_sns_positive', 'SNS-RNR contacts newly HIV positive', 'Watu wa SNS-RNR waliopatikana wapya na VVU', 'INTEGER', 16),
+('HCP', 'hcp_tb_contacts_screened', 'TB contacts reached and screened', 'Waliokaribiana na TB waliofikiwa na kuchunguzwa', 'INTEGER', 17),
+('HCP', 'hcp_tb_contacts_presumptive', 'Presumptive TB cases in contact tracing', 'Waliobainika na dalili za TB kwenye ufuatiliaji', 'INTEGER', 18),
+('HCP', 'hcp_tb_contacts_diagnosed_started', 'TB contacts diagnosed and started/referred', 'Waliothibitishwa na kuanza/kuelekezwa matibabu', 'INTEGER', 19),
+('HCP', 'hcp_special_clinic_expected', 'Expected special/weekend clinic attendees', 'Wateja waliotarajiwa kliniki maalum/mwisho wa wiki', 'INTEGER', 20),
+('HCP', 'hcp_tb_population_mobilized', 'Population mobilized for active TB case finding', 'Jamii iliyohamasishwa kwa uchunguzi wa TB', 'INTEGER', 21),
+('HCP', 'hcp_tb_population_screened', 'Population screened for TB symptoms', 'Jamii iliyochunguzwa dalili za TB', 'INTEGER', 22),
+('HCP', 'hcp_tb_active_presumptive', 'Presumptive TB cases from active case finding', 'Waliobainika na dalili kwenye uchunguzi wa jamii', 'INTEGER', 23),
+('HCP', 'hcp_tb_active_diagnosed_started', 'TB cases diagnosed and started/referred', 'Waliothibitishwa na kuanza/kuelekezwa matibabu', 'INTEGER', 24),
+('HCP', 'hcp_inmates_reached', 'Inmates reached for quarterly screening', 'Wafungwa waliofikiwa kwa uchunguzi wa robo mwaka', 'INTEGER', 25),
+('HCP', 'hcp_inmates_screened', 'Inmates screened for TB symptoms', 'Wafungwa waliochunguzwa dalili za TB', 'INTEGER', 26),
+('HCP', 'hcp_inmates_symptomatic', 'Inmates with TB symptoms', 'Wafungwa walioonyesha dalili za TB', 'INTEGER', 27),
+('HCP', 'hcp_inmates_presumptive', 'Presumptive TB inmates identified', 'Wafungwa waliobainika na dalili za TB', 'INTEGER', 28),
+('HCP', 'hcp_inmates_diagnosed_started', 'Inmates diagnosed and started/referred', 'Wafungwa waliothibitishwa na kuanza/kuelekezwa matibabu', 'INTEGER', 29),
+('HCP', 'hcp_opd_attendees', 'OPD attendees', 'Wagonjwa waliohudhuria OPD', 'INTEGER', 30),
+('HCP', 'hcp_opd_screened', 'OPD attendees screened for HTS/TB', 'Wagonjwa wa OPD waliochunguzwa HTS/TB', 'INTEGER', 31),
+('HCP', 'hcp_opd_presumptive_tb', 'Presumptive TB cases identified in OPD', 'Wagonjwa wa OPD waliobainika na dalili za TB', 'INTEGER', 32),
+('HCP', 'hcp_opd_tb_diagnosed_started', 'OPD TB cases diagnosed and started/referred', 'Wagonjwa wa OPD waliothibitishwa na kuanza/kuelekezwa matibabu', 'INTEGER', 33),
+('HCP', 'hcp_art_initiated', 'Clients newly initiated on ART', 'Wateja wapya walioanzishiwa ART', 'INTEGER', 34),
+('HCP', 'hcp_art_refill_appointments_served', 'ART refill appointments served', 'Miadi ya kujaza dawa za ART iliyohudumiwa', 'INTEGER', 35),
+('HCP', 'hcp_cd4_samples_taken', 'CD4 samples taken', 'Sampuli za CD4 zilizochukuliwa', 'INTEGER', 36),
+('HCP', 'hcp_hvl_samples_taken', 'HVL samples taken', 'Sampuli za HVL zilizochukuliwa', 'INTEGER', 37),
+('HCP', 'hcp_lab_samples_received', 'HVL/DBS/CD4 samples received', 'Sampuli za HVL/DBS/CD4 zilizopokelewa', 'INTEGER', 38),
+('HCP', 'hcp_lab_samples_processed', 'HVL/DBS/CD4 samples processed', 'Sampuli za HVL/DBS/CD4 zilizochakatwa', 'INTEGER', 39),
+('HCP', 'hcp_lab_results_disbursed', 'HVL/DBS/CD4 results disbursed', 'Majibu ya HVL/DBS/CD4 yaliyotolewa', 'INTEGER', 40),
+('HCP', 'hcp_lab_hvl_received', 'HVL samples received', 'HVL sampuli zilizopokelewa', 'INTEGER', 41),
+('HCP', 'hcp_lab_hvl_processed', 'HVL samples processed', 'HVL sampuli zilizochakatwa', 'INTEGER', 42),
+('HCP', 'hcp_lab_hvl_disbursed', 'HVL results disbursed', 'HVL majibu yaliyotolewa', 'INTEGER', 43),
+('HCP', 'hcp_lab_dbs_received', 'DBS samples received', 'DBS sampuli zilizopokelewa', 'INTEGER', 44),
+('HCP', 'hcp_lab_dbs_processed', 'DBS samples processed', 'DBS sampuli zilizochakatwa', 'INTEGER', 45),
+('HCP', 'hcp_lab_dbs_disbursed', 'DBS results disbursed', 'DBS majibu yaliyotolewa', 'INTEGER', 46),
+('HCP', 'hcp_lab_cd4_received', 'CD4 samples received', 'CD4 sampuli zilizopokelewa', 'INTEGER', 47),
+('HCP', 'hcp_lab_cd4_processed', 'CD4 samples processed', 'CD4 sampuli zilizochakatwa', 'INTEGER', 48),
+('HCP', 'hcp_lab_cd4_disbursed', 'CD4 results disbursed', 'CD4 majibu yaliyotolewa', 'INTEGER', 49)
+) AS f(cadre_code, key, label_en, label_sw, field_type, sort_order)
+JOIN target_cadres c ON c.code = f.cadre_code
+ON CONFLICT (cadre_id, key) DO NOTHING
+RETURNING cadre_id, key
+)
+SELECT c.code,
+ (SELECT count(*) FROM public.cadre_form_fields f WHERE f.cadre_id = c.id)
+ + (SELECT count(*) FROM added_fields f WHERE f.cadre_id = c.id)
+ AS fields_after_restore
+FROM target_cadres c ORDER BY c.code;

@@ -38,3 +38,9 @@ A console result of “OK” does not establish that configuration was restored.
 **Why:** the owner ran a child-field INSERT before creating its parent cadres. The statement joined against an empty cadre table, succeeded with zero rows, and left all registration forms empty.
 
 **How to apply:** verify both parent and field counts. Where possible, offer one atomic owner-run restore that includes missing parents and returns per-cadre field counts, rather than relying on manual statement ordering.
+
+Keep standard cadre/form setup in a version-controlled database reference file for future Live deployments, not only temporary recovery output.
+
+**Why:** the user asked that “all this changes also should reflect when want to deploy letter to live database put them on database file.”
+
+**How to apply:** include updated reference definitions with configuration changes and document the explicit target-database import. Do not silently copy testing records or imply that ordinary publishing imports existing-database data.
