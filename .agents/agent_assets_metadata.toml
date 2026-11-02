@@ -14,3 +14,17 @@ mtime_ms = 1793605844534
 storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:ed939ae9-0e6e-4d6e-8f84-28741b8df599/071df133-7835-4265-8c04-88bbcf1c4c1a/71229e6e-7e90-4fb0-9daf-c6e9c89635b5"
 storage_version_token = "1793605899829004"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "E2EWGPtraIJpOH2000k5p"
+uri = "file://.data/user-setup-restore.json"
+type = "unspecified"
+title = "Previous users — setup-only Production transfer"
+description = "19 operational accounts with staff links, roles, scopes and placement setup, plus required organizations and facilities. No passwords, pay periods, timesheets, approvals, claims or payments. Review through Super Admin Setup transfer; imported accounts require activation and a password reset."
+logical_id = "264ca4ac-3ab1-4894-aaec-e32b43bcc129"
+content_hash = "sha256:8c73fef4c17bcb927d4f5ddf99e834d1f89e68d67c395e31c9cd9099530ed549"
+size = 22805
+mtime_ms = 1793622119166
+storage_uri = "gcs://replit-rams-assets-riker/rams/assets/repl:ed939ae9-0e6e-4d6e-8f84-28741b8df599/264ca4ac-3ab1-4894-aaec-e32b43bcc129/bb71dafa-e178-40d3-84ed-ed88ca300889"
+storage_version_token = "1793622206075306"
+content_type = "application/octet-stream"

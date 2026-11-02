@@ -528,6 +528,11 @@ payment pricing” below for the current policy. Services remains payable.
   The JSON excludes previous pay periods; it never imports work, approvals,
   payments, passwords or CSO payment authority. Imported users remain inactive
   until an administrator activates them and resets their passwords.
+  For user-only recovery, add `--users-only`. This prepares
+  `.data/user-restore-foundation.sql` and `.data/user-setup-restore.json`,
+  retaining operational users, linked staff/placements and dependent organizations/
+  facilities only. It excludes old work, approvals, periods, rates and funding sources.
+  Keep files containing user details private and ignored by Git.
 - If a clean database is missing the three standard cadre/activity forms, run
   `python scripts/prepare_activity_restore.py` and manually apply the generated
   `.data/activity-configuration-restore.sql` in that database's SQL console.

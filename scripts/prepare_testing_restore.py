@@ -31,6 +31,25 @@ def recovery_document(source):
     return TransferDocument.model_validate(result)
 
 
+def user_recovery_document(source):
+    """Recover operational users and their placement dependencies, never work."""
+    result = recovery_document(source).model_dump(mode="json")
+    result["records"] = [
+        record for record in result["records"]
+        if record["kind"] in {"user_setup", "organization", "facility"}
+    ]
+    if not any(record["kind"] == "user_setup" for record in result["records"]):
+        raise ValueError("The saved setup contains no recoverable operational users.")
+    result["warnings"] = [
+        "User setup and dependent organizations/facilities only; no previous work or approvals.",
+        "No pay periods, funding sources, service rates, claims, payments or credentials.",
+        "Imported accounts are inactive; activate and reset passwords in Users before sign-in.",
+        "Existing accounts, credentials and setup are never overwritten.",
+        "CSO payment authority must be configured separately after review.",
+    ]
+    return TransferDocument.model_validate(result)
+
+
 def geography(document):
     regions, districts, wards = set(), set(), set()
 
@@ -104,14 +123,18 @@ def foundation_sql(document):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path, help="Previously exported setup JSON")
+    parser.add_argument("--users-only", action="store_true", help="Recover only users and their placement dependencies")
     args = parser.parse_args()
-    document = recovery_document(json.loads(args.source.read_text(encoding="utf-8")))
-    write_private(ROOT / ".data/testing-foundation.sql", foundation_sql(document))
-    write_private(ROOT / ".data/testing-setup-restore.json", document.model_dump_json(indent=2))
+    recover = user_recovery_document if args.users_only else recovery_document
+    document = recover(json.loads(args.source.read_text(encoding="utf-8")))
+    foundation_name = "user-restore-foundation.sql" if args.users_only else "testing-foundation.sql"
+    document_name = "user-setup-restore.json" if args.users_only else "testing-setup-restore.json"
+    write_private(ROOT / ".data" / foundation_name, foundation_sql(document))
+    write_private(ROOT / ".data" / document_name, document.model_dump_json(indent=2))
     counts = {}
     for record in document.records:
         counts[record.kind] = counts.get(record.kind, 0) + 1
-    print("Prepared .data/testing-foundation.sql and .data/testing-setup-restore.json")
+    print(f"Prepared .data/{foundation_name} and .data/{document_name}")
     print("Saved configuration record counts:", counts)
     print("No database modified. No passwords or previous work included.")
 
