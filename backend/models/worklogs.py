@@ -74,6 +74,7 @@ class WorkLog(Base):
 class WorkLogEntry(Base):
     __tablename__ = "work_log_entries"
     __table_args__ = (
+        Index("ix_work_log_entries_month_reporting", "entry_date", "work_log_id"),
         UniqueConstraint("work_log_id", "entry_date"),
         CheckConstraint("hours_worked > 0 AND hours_worked <= 24", name="hours"),
     )

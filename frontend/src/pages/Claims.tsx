@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ApprovalFinanceGuide } from '../components/worklogs/ApprovalFinanceGuide';
-import { qs } from '../api';
+import { api, qs, saveBlob } from '../api';
 import { useAuth } from '../AuthContext';
 import { ClaimDrawer } from '../components/claims/ClaimDrawer';
 import { CreateClaim } from '../components/claims/CreateClaim';
 import { ServicesProofPaymentDialog } from '../components/claims/ServicesProofPaymentDialog';
 import { RegionalFinanceNextSteps } from '../components/claims/RegionalFinanceNextSteps';
 import { Alert, AsyncState, Field, RouteBadge, StatusBadge } from '../components/ui';
-import { CLAIM_STATUS_LABELS, CLAIM_STATUSES, dateTime, money, PAYMENT_STATUS_LABELS, PAYMENT_STATUSES, routeLabel } from '../format';
+import { CLAIM_STATUS_LABELS, CLAIM_STATUSES, dateTime, money, PAYMENT_STATUS_LABELS, PAYMENT_STATUSES, routeLabel, todayLocal } from '../format';
 import { useApi } from '../hooks';
 import { ClaimSummary, PayPeriod } from '../types';
 
@@ -21,12 +21,27 @@ export function Claims() {
   const [paymentStatus, setPaymentStatus] = useState('');
   const [route, setRoute] = useState('');
   const [periodId, setPeriodId] = useState('');
+  const [page, setPage] = useState(0);
+  useEffect(() => setPage(0), [status, paymentStatus, route, periodId]);
   const periods = useApi<PayPeriod[]>('/admin/pay-periods');
-  const claims = useApi<ClaimSummary[]>(`/claims${qs({ status, payment_status: paymentStatus, route, period_id: periodId })}`);
+  const claims = useApi<ClaimSummary[]>(`/claims${qs({ status, payment_status: paymentStatus, route, period_id: periodId, offset: page * 100, limit: 100 })}`);
   const [openId, setOpenId] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
   const [servicesProofPayment, setServicesProofPayment] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [exportMonth, setExportMonth] = useState(todayLocal().slice(0, 7));
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const downloadServices = async (format: 'csv' | 'pdf') => {
+    setExportBusy(true);
+    setExportError('');
+    try {
+      saveBlob(await api.blob(`/finance/services-payment-report/export${qs({ month: exportMonth, format })}`,
+        'GET', `services-payment-${exportMonth}.${format}`));
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : 'Could not download the Services report.');
+    } finally { setExportBusy(false); }
+  };
 
   const onlyProvider = hasRole('PROVIDER') && !hasRole('REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'RPM', 'OVERSIGHT', 'COMMUNITY_VERIFIER');
 
@@ -58,6 +73,17 @@ export function Claims() {
       </header>
 
       {regionalFinance && <RegionalFinanceNextSteps />}
+
+      {hasRole('FHI360_FINANCE') && <section className="card stack" aria-label="Services payment documentation">
+        <h2>Services payment report</h2>
+        <p className="muted small">Routed Services across your assigned regions and cadres, including facilities, providers, service days, amounts and mobile numbers. Only the highest fixed service amount per day is payable. Payment status remains separate.</p>
+        <div className="row">
+          <Field label="Services report month"><input type="month" required value={exportMonth} onChange={e => setExportMonth(e.target.value)} /></Field>
+          <button className="btn btn-secondary" disabled={exportBusy || !exportMonth} onClick={() => downloadServices('csv')}>Download Services CSV</button>
+          <button className="btn btn-secondary" disabled={exportBusy || !exportMonth} onClick={() => downloadServices('pdf')}>Download Services PDF</button>
+        </div>
+        <Alert>{exportError}</Alert>
+      </section>}
 
       <div className="filters" role="search">
         <Field label="Claim status">
@@ -166,6 +192,12 @@ export function Claims() {
           </div>
         )}
       </AsyncState>
+
+      <nav className="row" aria-label="Claims pages">
+        <button className="btn btn-secondary" disabled={claims.loading || page === 0} onClick={() => setPage(page - 1)}>Previous claims</button>
+        <span>Page {page + 1}</span>
+        <button className="btn btn-secondary" disabled={claims.loading || (claims.data?.length || 0) < 100} onClick={() => setPage(page + 1)}>Next claims</button>
+      </nav>
 
       {creating && (
         <CreateClaim

@@ -10,7 +10,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 
 
 def _cell(value):
-    text = str(value or "")
+    text = "" if value is None else str(value)
     # Excel treats even leading whitespace followed by a formula operator as executable.
     return "'" + text if text.lstrip().startswith(("=", "+", "-", "@")) else text
 

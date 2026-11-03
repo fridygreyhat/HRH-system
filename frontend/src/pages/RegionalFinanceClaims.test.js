@@ -4,6 +4,7 @@ import { act } from 'react-dom/test-utils';
 import { Claims } from './Claims';
 import { CreateClaim } from '../components/claims/CreateClaim';
 import { useApi } from '../hooks';
+import * as apiModule from '../api';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let mockRoles = [];
@@ -18,7 +19,49 @@ jest.mock('../components/claims/ClaimDrawer', () => ({
   ClaimDrawer: () => null, ComponentsTable: () => null,
 }));
 
-beforeEach(() => { mockRoles = ['REGIONAL_FINANCE', 'FHI360_FINANCE']; useApi.mockClear(); window.location.hash = ''; });
+beforeEach(() => {
+  mockRoles = ['REGIONAL_FINANCE', 'FHI360_FINANCE'];
+  useApi.mockClear();
+  useApi.mockImplementation(() => ({ data: [], error: null, loading: false, reload: jest.fn() }));
+  window.location.hash = '';
+});
+
+test('Central Finance downloads a month-specific Services report; CSO has no Services export', async () => {
+  const download = jest.spyOn(apiModule.api, 'blob').mockResolvedValue({ blob: new Blob(), filename: 'services.csv' });
+  const save = jest.spyOn(apiModule, 'saveBlob').mockImplementation(() => {});
+  mockRoles = ['FHI360_FINANCE'];
+  const { container, close } = render(<Claims />);
+  try {
+    const button = [...container.querySelectorAll('button')].find(b => b.textContent === 'Download Services CSV');
+    expect(button).toBeTruthy();
+    await act(async () => button.click());
+    expect(download).toHaveBeenCalledWith(expect.stringMatching(/^\/finance\/services-payment-report\/export\?month=\d{4}-\d{2}&format=csv$/),
+      'GET', expect.any(String));
+    expect(save).toHaveBeenCalled();
+  } finally {
+    close(); download.mockRestore(); save.mockRestore();
+  }
+  mockRoles = ['CSO_FINANCE'];
+  const cso = render(<Claims />);
+  try { expect(cso.container.textContent).not.toContain('Download Services CSV'); }
+  finally { cso.close(); }
+});
+
+test('finance can page beyond the first claims without losing filters', () => {
+  useApi.mockImplementation(path => ({
+    data: path.startsWith('/claims?') ? Array.from({ length: 100 }, (_, i) => ({
+      id: i + 1, staff_name: 'Provider', status: 'READY', payment_status: 'NOT_STARTED',
+      amount: 40000, amount_paid: 0, currency: 'TZS',
+    })) : [],
+    error: null, loading: false, reload: jest.fn(),
+  }));
+  const { container, close } = render(<Claims />);
+  try {
+    act(() => [...container.querySelectorAll('button')].find(b => b.textContent === 'Next claims').click());
+    expect(useApi).toHaveBeenCalledWith(expect.stringContaining('offset=100&limit=100'));
+    expect(container.textContent).toContain('Page 2');
+  } finally { close(); }
+});
 
 function render(ui) {
   const container = document.createElement('div');

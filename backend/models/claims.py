@@ -88,6 +88,7 @@ class RateRule(Base):
 class PaymentClaim(Base):
     __tablename__ = "payment_claims"
     __table_args__ = (
+        Index("ix_payment_claims_services_reporting", "work_type", "route_code", "status"),
         CheckConstraint(f"route_code IS NULL OR route_code IN {ROUTE_CODES}", name="route"),
         CheckConstraint("amount >= 0", name="amount"),
         CheckConstraint(
@@ -112,7 +113,7 @@ class PaymentClaim(Base):
     staff_id = Column(Integer, ForeignKey("staff.id"), nullable=False, index=True)
     category_id = Column(Integer, ForeignKey("claim_categories.id"))
     period_id = Column(Integer, ForeignKey("pay_periods.id"), nullable=False)
-    assignment_id = Column(Integer, ForeignKey("staff_assignments.id"))
+    assignment_id = Column(Integer, ForeignKey("staff_assignments.id"), index=True)
     community_area_id = Column(Integer, ForeignKey("community_areas.id"))
     route_code = Column(String(5))
     funding_source_id = Column(Integer, ForeignKey("funding_sources.id"))

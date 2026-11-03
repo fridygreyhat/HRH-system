@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
@@ -170,6 +170,8 @@ def list_claims(
     route: Optional[str] = None,
     period_id: Optional[int] = None,
     work_type: Optional[str] = None,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=500, ge=1, le=500),
     db: Session = Depends(get_db),
     current: CurrentUser = Depends(get_current_user),
 ):
@@ -177,7 +179,7 @@ def list_claims(
     for column, value in ((PaymentClaim.status, status), (PaymentClaim.payment_status, payment_status), (PaymentClaim.route_code, route), (PaymentClaim.period_id, period_id), (PaymentClaim.work_type, work_type)):
         if value:
             query = query.filter(column == value)
-    return [_summary(db, c) for c in query.order_by(PaymentClaim.updated_at.desc()).limit(500)]
+    return [_summary(db, c) for c in query.order_by(PaymentClaim.updated_at.desc(), PaymentClaim.id.desc()).offset(offset).limit(limit)]
 
 
 @router.get("/eligible-worklogs")

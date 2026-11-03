@@ -28,6 +28,22 @@ class MonthlyApprovalIn(BaseModel):
     expected_digest: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
 
 
+@router.get("/services-payment-report/export")
+def export_services_payment_report(
+    month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    region_id: Optional[int] = Query(default=None, gt=0),
+    format: Literal["csv", "pdf"] = "csv",
+    db: Session = Depends(get_db),
+    current=Depends(require_roles(FHI360_FINANCE)),
+):
+    from ...services import services_finance_exports as exports
+    rows = exports.rows(db, current, month, region_id)
+    payload = exports.csv_file(rows) if format == "csv" else exports.pdf_file(rows, month)
+    return Response(payload, media_type="text/csv; charset=utf-8" if format == "csv" else "application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="services-payment-{month}.{format}"',
+                             "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+
 @router.get("/monthly-report")
 def monthly_report(
     month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),

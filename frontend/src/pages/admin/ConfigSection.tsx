@@ -99,10 +99,10 @@ export const TABLES: TableSpec[] = [
       {
         key: 'facility_type', label: 'Facility ownership / type', type: 'select',
         options: [
-          { value: 'PUBLIC', label: 'Public' },
-          { value: 'POLICE', label: 'Police' },
-          { value: 'PRISON', label: 'Prison' },
-          { value: 'PNP', label: 'PNP' },
+          { value: 'PUBLIC', label: 'Public facility' },
+          { value: 'POLICE', label: 'Police facility' },
+          { value: 'PRISON', label: 'Prison facility' },
+          { value: 'PNP', label: 'Police and Prison facilities (PnP)' },
         ],
         preserveExistingOption: true,
         hint: 'Classify the facility here, not under funding sources. Existing type values are preserved when editing.',
