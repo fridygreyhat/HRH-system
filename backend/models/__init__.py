@@ -30,3 +30,4 @@ from .notifications import SMSTemplate, SMSOutbox
 from .audit import AuditEvent, SystemSetting
 from .activities import ActivityRate
 from .finance_reports import FinanceMonthlyReport
+from .monthly_budgets import MonthlyServiceBudget, MonthlyServiceBudgetCharge

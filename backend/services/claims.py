@@ -416,6 +416,8 @@ def perform(db: Session, current: CurrentUser, claim: PaymentClaim, action: str,
     elif action == "mark_ready":
         claim.status = READY
     elif action == "cancel":
+        from .monthly_service_budgets import release
+        release(db, current, claim)
         if old in COMMITTED_STATUSES and claim.budget_line_id:
             budgets.release(db, claim.budget_line_id, claim.amount, claim.id, current.id, f"Claim cancelled: {comment}")
         claim.status = CANCELLED

@@ -31,6 +31,8 @@ def ready_claim(api, db, period, finance, provider):
     source = db.query(FundingSource).filter_by(name="PnP").one()
     body = {"review_confirmed": True, "review_type": "SERVICES", "funding_source_id": source.id}
     log = api.post(f"/worklogs/{log['id']}/actions/finance_review", finance, body)
+    from .monthly_budget_setup import ensure_monthly_budgets
+    ensure_monthly_budgets(db, log["id"], finance)
     routed = api.post("/finance/channel", finance, {
         "central_reviewer_id": db.query(User).filter_by(username="fhifin1").one().id,
         **body, "work_log_id": log["id"],

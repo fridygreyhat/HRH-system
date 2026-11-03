@@ -12,6 +12,7 @@ import { CommunityClaims } from './pages/CommunityClaims';
 import { CsoPortal } from './pages/CsoPortal';
 import { Dashboard } from './pages/Dashboard';
 import { FinanceMonthlyReport } from './pages/FinanceMonthlyReport';
+import { MonthlyServicesBudgets } from './pages/MonthlyServicesBudgets';
 import { ChangePasswordForm, ForcedPasswordChange } from './pages/ChangePassword';
 import { Login } from './pages/Login';
 import { MyWorkLogs } from './pages/MyWorkLogs';
@@ -77,6 +78,7 @@ export const PAGES: Page[] = [
     render: () => <Claims />,
   },
   { key: 'batches', label: 'Payroll batches', description: 'Exports, FHI360 → CSO handoffs and receipts', icon: 'layers', group: 'Finance', roles: ['FHI360_FINANCE', 'CSO_FINANCE', 'OVERSIGHT'], render: () => <Batches /> },
+  { key: 'budgets', label: 'Budget', description: 'Monthly regional Services budgets and submission deductions', icon: 'wallet', group: 'Finance', roles: ['REGIONAL_FINANCE', 'FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <MonthlyServicesBudgets /> },
   { key: 'cso', label: 'CSO payments', description: 'Your pending payments, proof and reconciliation', icon: 'wallet', group: 'Finance', roles: ['CSO_FINANCE'], render: () => <CsoPortal /> },
   { key: 'community-claims', label: 'Community claims', description: 'Period-based community claims and direct payment', icon: 'users', group: 'Finance', roles: ['PROVIDER', 'COMMUNITY_VERIFIER', 'TECHNICAL_OFFICER', 'CSO_FINANCE', 'OVERSIGHT', 'SUPER_ADMIN'], render: () => <CommunityClaims /> },
   {

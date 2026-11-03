@@ -496,12 +496,16 @@ keeping rates editable and deletable, without rewriting financial history.
 - Uncommitted Services reviews can be corrected without repeating provider/CTC/technical/RM work approval. Routing checks the saved funding identity, payment organization and current review token; changes require fresh Finance review.
 - Payroll remains report-only; programme/category selection, pricing, budgets and payment routing do not apply to new Payroll reports. Paid and committed historical claims remain protected.
 
-### Current payment policy: no budget section
-- The user asked to remove the Budget section and pay Services using the configured fixed daily amount. New Services have no allocation requirement, budget hold, commitment or budget spend. Multiple services on the same provider-date pay only the highest configured daily amount, once.
-- **Why:** the user wants amounts per service, not budget administration. Do not reintroduce budget controls to resolve finance setup errors.
-- Services route: provider → facility CTC → Technical → RM → Regional Finance review and explicit FHI360 selection → payment recording/proof → paid confirmation and reconciliation. Preserve region/cadre/facility access boundaries.
+### Current payment policy: monthly regional Services budgets
+- Regional Finance uploads a budget document and enters its total for each region, calendar month and currency in the Budget tab. PDF, XLSX or UTF-8 CSV attachments are supporting documentation, not automatic amount imports. Central Finance has scoped read/download access; only Regional Finance or Super Admin may upload or revise totals.
+- Deduct the payable Services amount immediately when Regional Finance submits to the named Central Finance reviewer. Do not wait for payment and do not deduct again when a payment or proof is recorded. Missing/insufficient budgets block the entire submission atomically. Dates worked determine the calendar-month breakdown, not a pay-period label.
+- Multiple services on the same provider-date pay only the highest configured daily amount, once. Keep amounts frozen in the claim; monthly ceilings do not replace fixed daily pricing. Payroll remains report-only and has no regional budget deduction.
+- Use locked, refreshed budget balances, stable lock ordering and unique claim/month deductions. An unpaid cancellation restores its deductions once; recorded payments prevent restoration. A revised total cannot fall below current deductions. Keep audit records and claim-linked deduction history.
+- Existing routed/paid claims are not retroactively charged. Enforce monthly budgets on new submissions, including pending reviews prepared before the budget feature was restored. Preserve historical fixed amounts, ledger entries and paid statuses.
+- **Why:** the user explicitly restored monthly regional Services budgets and chose “Deduct immediately on submission,” superseding the earlier request to remove budgets.
+- Services route: provider → facility CTC → Technical → RM → Regional Finance review and explicit FHI360/named reviewer selection with monthly deduction → Central Finance approval → payment recording/proof → paid confirmation and reconciliation. Preserve region/cadre/facility access boundaries.
 - Separate direct community claims retain provider → community verifier → independent assigned CSO Finance → payment/proof, using their approved captured rates without a new regional budget requirement.
-- Preserve legacy allocations, paid snapshots and committed financial ledger history. Historical payment/cancellation bookkeeping may still update an existing committed line; new budget-free claims must never create or charge one.
+- Preserve legacy allocations, paid snapshots and committed financial ledger history. Historical payment/cancellation bookkeeping may still update an existing committed line; new monthly regional deductions use their own ledger, not legacy category/pay-period allocations.
 - Older budget/routing descriptions below are historical wherever they conflict with this policy.
 
 ### Monthly regional report sign-off

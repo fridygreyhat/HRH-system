@@ -6,7 +6,7 @@ import { PAGES } from './App';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-test('budget allocation paths and hashes no longer resolve to an application page', () => {
+test('the restored Budget tab points to monthly regional Services budgets', () => {
   const original = window.location.pathname + window.location.search + window.location.hash;
   window.history.replaceState(null, '', '/budget/allocate');
   const container = document.createElement('div');
@@ -23,7 +23,7 @@ test('budget allocation paths and hashes no longer resolve to an application pag
       window.dispatchEvent(new Event('hashchange'));
     });
     expect(container.textContent).toBe('budgets:');
-    expect(PAGES.some(page => page.key === 'budgets')).toBe(false);
+    expect(PAGES.find(page => page.key === 'budgets').roles).toEqual(['REGIONAL_FINANCE', 'FHI360_FINANCE', 'SUPER_ADMIN']);
   } finally {
     act(() => root.unmount());
     window.history.replaceState(null, '', original);

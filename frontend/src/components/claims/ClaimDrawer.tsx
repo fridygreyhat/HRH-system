@@ -262,7 +262,7 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
   const paid = claim && (claim.payment_status === 'PAID' || claim.payment_status === 'RECONCILED');
   const financeReviewPending = claim?.status === 'PENDING_FINANCE_REVIEW';
   const paymentActions = claim && !isRpmWithoutFinanceRole && !financeReviewPending ? claim.payment_actions : [];
-  const noBudgetPolicy = claim?.payment_policy === 'FIXED_DAILY_NO_BUDGET' || claim?.payment_policy === 'APPROVED_AMOUNTS_NO_BUDGET';
+  const noBudgetPolicy = claim?.payment_policy === 'FIXED_DAILY_MONTHLY_REGIONAL_BUDGET' || claim?.payment_policy === 'FIXED_DAILY_NO_BUDGET' || claim?.payment_policy === 'APPROVED_AMOUNTS_NO_BUDGET';
   const budget = claim && !noBudgetPolicy && canSeeBudgetDetails && claim.budget_line && claim.budget_line.id === claim.budget_line_id
     ? claim.budget_line
     : undefined;
@@ -579,13 +579,13 @@ function actionHelp(action: string, claim: ClaimDetail): string {
       if (noBudgetPolicyForClaim(claim)) {
         return claim.work_type === 'COMMUNITY'
           ? 'Approve the verified community claim using its captured approved-rate amount. No regional budget allocation is required; payment is recorded separately with proof.'
-          : 'Approve the reviewed Services amount. No budget allocation is required; payment, proof and reconciliation are recorded separately.';
+          : 'Approve the reviewed Services amount. Any required monthly deduction occurs at Regional Finance submission; payment, proof and reconciliation are recorded separately.';
       }
       return `Approving commits ${money(claim.amount, claim.currency)} against the budget line. If the line is short the claim is held.`;
     case 'send_back':
       return 'The claim returns to “Validation needed” with your reason shown as its exception.';
     case 'cancel':
-      if (noBudgetPolicyForClaim(claim)) return 'Cancel this claim. No budget commitment is created; external payments and proof remain separate records.';
+      if (noBudgetPolicyForClaim(claim)) return 'Cancel this unpaid claim. Any monthly Services budget deduction is restored; external payments and proof remain separate records.';
       return 'Cancelling releases any committed budget. This cannot be undone.';
     case 'confirm_paid':
       return 'Confirm that the recorded payments and uploaded proof cover the full amount.';
@@ -608,7 +608,7 @@ function actionHelp(action: string, claim: ClaimDetail): string {
 }
 
 function noBudgetPolicyForClaim(claim: ClaimDetail): boolean {
-  return claim.payment_policy === 'FIXED_DAILY_NO_BUDGET'
+  return claim.payment_policy === 'FIXED_DAILY_MONTHLY_REGIONAL_BUDGET' || claim.payment_policy === 'FIXED_DAILY_NO_BUDGET'
     || claim.payment_policy === 'APPROVED_AMOUNTS_NO_BUDGET'
     || (claim.work_type === 'COMMUNITY' && claim.budget_line_id == null);
 }

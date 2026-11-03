@@ -1,4 +1,4 @@
-"""Current Services routes use approved daily amounts, never allocations."""
+"""Services retain fixed daily amounts; monthly regional budgets replace legacy lines."""
 from io import BytesIO
 import json
 import calendar
@@ -28,12 +28,11 @@ def empty_period(api):
 
 
 @pytest.mark.parametrize("provider", ["chw1", "hcp1", "clerk1"])
-def test_every_cadre_routes_and_gets_paid_without_a_budget(api, db, empty_period, v22, provider):
+def test_every_cadre_uses_monthly_budget_not_legacy_category_allocations(api, db, empty_period, v22, provider):
     period = empty_period
     for user in (v22["finance"], "tofficer1", "rpm1", "fhifin1", "fhifin2"):
         all_cadres(db, user)
-    # This period has no allocation at all; neither review nor payment may
-    # create a line, commitment, hold or spend entry to make the flow succeed.
+    # The monthly regional ceiling is separate from legacy per-category lines.
     assert db.query(BudgetLine).filter_by(period_id=period["id"]).count() == 0
     api.put("/provider-details/me", provider, {"mobile_money_number": "+255700123456"})
     activity = daily_rate(api, db, period, provider, 40000)
@@ -49,9 +48,11 @@ def test_every_cadre_routes_and_gets_paid_without_a_budget(api, db, empty_period
     source = db.query(FundingSource).filter_by(name="PnP").one()
     body = {"review_confirmed": True, "review_type": "SERVICES", "funding_source_id": source.id}
     log = api.post(f"/worklogs/{log['id']}/actions/finance_review", v22["finance"], body)
-    assert log["finance_snapshot"]["payment_policy"] == "FIXED_DAILY_NO_BUDGET"
+    assert log["finance_snapshot"]["payment_policy"] == "FIXED_DAILY_MONTHLY_REGIONAL_BUDGET"
     assert log["finance_snapshot"]["budget_line_id"] is None
     assert float(log["finance_snapshot"]["total"]) == 40000
+    from .monthly_budget_setup import ensure_monthly_budgets
+    ensure_monthly_budgets(db, log["id"], v22["finance"])
     routed = api.post("/finance/channel", v22["finance"], {
         "central_reviewer_id": db.query(User).filter_by(username="fhifin1").one().id,
         **body, "work_log_id": log["id"],

@@ -27,6 +27,8 @@ def reviewed(api, db, period, context, provider="chw1"):
     log = api.post(f"/worklogs/{log['id']}/actions/finance_review", context["finance"], {
         "review_confirmed": True, "review_type": "SERVICES", "funding_source_id": source.id,
     })
+    from .monthly_budget_setup import ensure_monthly_budgets
+    ensure_monthly_budgets(db, log["id"], context["finance"])
     return log, {
         "work_log_id": log["id"], "target_payor_id": log["finance_snapshot"]["payor_org_id"],
         "review_confirmed": True, "review_type": "SERVICES", "expected_version": log["version"],

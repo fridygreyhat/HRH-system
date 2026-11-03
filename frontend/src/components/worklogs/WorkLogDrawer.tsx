@@ -298,7 +298,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
   const reviewedContextDirty = hasLegacySnapshot
     && reviewedFinanceContextChanged(fundingSourceId, savedSourceId);
   const availableFundingSources = supportedServiceFundingSources(fundingSources.data || []);
-  const fixedDailyNoBudget = log?.finance_snapshot?.payment_policy === FIXED_DAILY_NO_BUDGET;
+  const fixedDailyNoBudget = [FIXED_DAILY_NO_BUDGET, 'FIXED_DAILY_MONTHLY_REGIONAL_BUDGET'].includes(String(log?.finance_snapshot?.payment_policy || ''));
 
   return (
     <Drawer title={log ? `${log.staff_name} · ${log.period_label}` : `Work log #${logId}`} onClose={onClose} wide>
@@ -491,6 +491,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
                   {fundingSource && <p><strong>Funding source:</strong> {fundingSource.name}</p>}
                   {snapshot.payment_policy !== FIXED_DAILY_NO_BUDGET && <p><strong>Historical finance category:</strong> {category}</p>}
                   {snapshot.payment_policy === FIXED_DAILY_NO_BUDGET && <p><strong>Payment policy:</strong> Fixed daily amount · highest eligible amount per day · no budget allocation.</p>}
+                  {snapshot.payment_policy === 'FIXED_DAILY_MONTHLY_REGIONAL_BUDGET' && <p><strong>Payment policy:</strong> Highest fixed service amount per day. The payable amount is deducted from this region’s budget for the dates worked when submitted to Central Finance. <a href="#/budgets">View monthly Services budgets</a>.</p>}
                   {!financeSummaryOnly && lines.length > 0 && <div className="table-wrap"><table>
                     <thead><tr><th>Date</th><th>Activity / component</th><th className="num">Units</th><th className="num">Rate</th><th className="num">Amount</th></tr></thead>
                     <tbody>{lines.map((line, index) => <tr key={String(line.entry_id ?? line.id ?? index)}>

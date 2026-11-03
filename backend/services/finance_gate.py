@@ -254,7 +254,7 @@ def review(db, current, log, category_id, funding_source_id=None):
         "funding_source_id": category.funding_source_id,
         "funding_source_name": db.get(FundingSource, category.funding_source_id).name,
         "review_token": uuid4().hex,
-        "payment_policy": "FIXED_DAILY_NO_BUDGET",
+        "payment_policy": "FIXED_DAILY_MONTHLY_REGIONAL_BUDGET",
     })
     claim = _prepare_claim(db, current, log, category, owner, line, route)
     claims.audit(db, current, claim, "finance_prepare", REGIONAL_FINANCE,
@@ -335,8 +335,8 @@ def route(db, current, log, channel, target_payor_id=None, expected_review_token
         raise HTTPException(409, "Regional Finance must review the amount before routing")
     if expected_review_token is not None and expected_review_token != snapshot.get("review_token"):
         raise HTTPException(409, "Another Finance review changed this payment setup. Refresh and verify the current funding source and category before routing.")
-    if snapshot.get("payment_policy") != "FIXED_DAILY_NO_BUDGET":
-        raise HTTPException(409, "Review the Services amount again to use fixed daily payments without a budget.")
+    if snapshot.get("payment_policy") not in {"FIXED_DAILY_NO_BUDGET", "FIXED_DAILY_MONTHLY_REGIONAL_BUDGET"}:
+        raise HTTPException(409, "Review the Services fixed daily payment amount again before submitting.")
     if target_payor_id is None:
         raise HTTPException(422, "Select the destination payor explicitly before channeling")
     if target_payor_id not in {owner.id for owner in eligible_payors(db, log, lock=True)}:
@@ -355,12 +355,17 @@ def route(db, current, log, channel, target_payor_id=None, expected_review_token
         raise HTTPException(409, "Funding source changed after review. Review the Services payment setup again before routing.")
     claim = _prepare_claim(db, current, log, category, owner, line, route_code)
     old = claim.status
-    details = {"payment_policy": "FIXED_DAILY_NO_BUDGET", "budget_required": False}
+    details = {"payment_policy": "FIXED_DAILY_MONTHLY_REGIONAL_BUDGET", "budget_required": True}
     details.update(target_payor_id=owner.id, target_payor_name=owner.name, actor_id=current.id,
                    channeled_at=utcnow().isoformat(), claim_id=claim.id)
     claim.status = claims.READY
     from . import central_review
     reviewer = central_review.assign(db, current, log, claim, central_reviewer_id)
+    from .monthly_service_budgets import deduct
+    deduct(db, current, claim)
+    claim.calculation_snapshot = {**claim.calculation_snapshot,
+                                  "payment_policy": "FIXED_DAILY_MONTHLY_REGIONAL_BUDGET",
+                                  "budget_deducted_on_submission": True}
     details.update(central_reviewer_id=reviewer.id, central_reviewer_name=reviewer.full_name)
     claim.approved_by = current.id
     claim.approved_at = utcnow()
