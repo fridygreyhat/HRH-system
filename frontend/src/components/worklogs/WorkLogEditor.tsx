@@ -3,7 +3,7 @@ import { AdminAudit } from '../AdminAudit';
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api';
 import { useAuth } from '../../AuthContext';
-import { dateOnly, datesBetween, dayOfMonth, money, num, periodDateError, todayLocal, WORKLOG_ACTION_LABELS, weekday } from '../../format';
+import { dateOnly, datesBetween, dayOfMonth, money, num, periodDateError, todayLocal, WORKLOG_ACTION_LABELS, weekday, workHours } from '../../format';
 import { useAction, useApi } from '../../hooks';
 import { navigate } from '../../nav';
 import { PayoutEstimateData, Section as SectionRow, WorkLogDetail } from '../../types';
@@ -161,7 +161,7 @@ export function DayCalendar({
         <h3 id="cal-title">{t('calendar')}</h3>
         <span className="muted small">
           {lang === 'sw' ? 'Jumla ya kipindi' : 'Period total'} ·{' '}
-          {num(log.entries.length)} {t('days').toLowerCase()} · {num(log.totals.hours)} {t('hours').toLowerCase()}
+          {num(log.entries.length)} {t('days').toLowerCase()} · {workHours(log.totals.hours)} {t('hours').toLowerCase()}
         </span>
       </div>
       <p className="muted small">{log.can_edit ? t('calendarHint') : t('locked')}</p>
@@ -207,7 +207,7 @@ export function DayCalendar({
           const sunday = sundayOff && new Date(`${d}T00:00:00Z`).getUTCDay() === 0;
           const disabled = future || (!log.can_edit && !entry) || (chwPayroll && sunday && !entry);
           const classes = ['day', entry ? 'has-entry' : '', flaggedDates.has(d) ? 'is-flagged' : '', selected === d ? 'is-selected' : ''].filter(Boolean).join(' ');
-          const state = future ? t('future') : chwPayroll && sunday && !entry ? (lang === 'sw' ? 'Jumapili hairuhusiwi' : 'Sunday excluded') : flaggedDates.has(d) ? t('flagged') : entry ? `${t('recorded')}: ${num(entry.hours_worked)} h` : '';
+          const state = future ? t('future') : chwPayroll && sunday && !entry ? (lang === 'sw' ? 'Jumapili hairuhusiwi' : 'Sunday excluded') : flaggedDates.has(d) ? t('flagged') : entry ? `${t('recorded')}: ${workHours(entry.hours_worked)}` : '';
           return (
             <button
               key={d}
@@ -219,7 +219,7 @@ export function DayCalendar({
               onClick={() => onSelect(d)}
             >
               <span className="day-num">{dayOfMonth(d)}</span>
-              <span className="day-meta">{entry ? `${num(entry.hours_worked)}h` : flaggedDates.has(d) ? '!' : ''}</span>
+              <span className="day-meta">{entry ? workHours(entry.hours_worked) : flaggedDates.has(d) ? '!' : ''}</span>
             </button>
           );
         })}

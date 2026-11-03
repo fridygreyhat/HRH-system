@@ -10,6 +10,15 @@ const numberFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }
 export const num = (n: number | string | null | undefined): string =>
   n === null || n === undefined || n === '' ? '—' : numberFormat.format(Number(n));
 
+/** Work durations: whole hours or hours/minutes, never rounded whole-hour pay. */
+export const workHours = (value: number | string | null | undefined): string => {
+  if (value === null || value === undefined || value === '' || !Number.isFinite(Number(value))) return '—';
+  const totalMinutes = Math.round(Number(value) * 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes ? `${hours} h ${minutes} min` : num(hours);
+};
+
 export const money = (amount: number | string | null | undefined, currency = 'TZS'): string =>
   amount === null || amount === undefined ? '—' : `${currency} ${numberFormat.format(Number(amount))}`;
 

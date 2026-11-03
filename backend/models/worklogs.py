@@ -85,7 +85,7 @@ class WorkLogEntry(Base):
     activity_snapshot = Column(JSONB)
     start_time = Column(Time)
     end_time = Column(Time)
-    hours_worked = Column(Numeric(5, 2), nullable=False)
+    hours_worked = Column(Numeric(10, 6), nullable=False)
     evidence_text = Column(Text, nullable=False)
     comment = Column(Text)
     gps_lat = Column(Numeric(10, 8))

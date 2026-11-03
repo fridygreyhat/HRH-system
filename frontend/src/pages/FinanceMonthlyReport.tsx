@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { api, qs, saveBlob } from '../api';
 import { useAuth } from '../AuthContext';
 import { Alert, AsyncState, Field, Modal } from '../components/ui';
-import { todayLocal, num } from '../format';
+import { todayLocal, num, workHours } from '../format';
 import { useApi } from '../hooks';
 import { Named } from '../types';
 import './finance-monthly-report.css';
@@ -107,7 +107,7 @@ function ProviderGroup({
           <p className="finance-overview-kicker">{cadre.code}</p>
           <h3 id={`${groupId}-heading`}>{cadre.name}</h3>
           <p className="finance-group-total-note">
-            {num(cadre.provider_count)} providers · {num(cadre.days)} days · {num(cadre.hours)} hours
+            {num(cadre.provider_count)} providers · {num(cadre.days)} days · {workHours(cadre.hours)} hours
             <span>Cadre totals stay fixed when this list is searched.</span>
           </p>
         </div>
@@ -140,7 +140,7 @@ function ProviderGroup({
               </div>
               <div className="finance-provider-metrics">
                 <span><small>Days</small><strong>{num(provider.days)}</strong></span>
-                <span><small>Hours</small><strong>{num(provider.hours)}</strong></span>
+                <span><small>Hours</small><strong>{workHours(provider.hours)}</strong></span>
               </div>
             </li>
           ))}
@@ -320,15 +320,15 @@ export function FinanceMonthlyReport() {
       {previewOpen && summary.data && <Modal title="Regional report · approval print preview" onClose={() => setPreviewOpen(false)}>
         <article className="paper regional-approval-preview">
           <h1>{monthName(month)} · {workType} · {regions.data?.find(region => String(region.id) === regionId)?.name}</h1>
-          <p>{num(summary.data.totals.providers)} providers · {num(summary.data.totals.days)} work days · {num(summary.data.totals.hours)} hours</p>
+          <p>{num(summary.data.totals.providers)} providers · {num(summary.data.totals.days)} work days · {workHours(summary.data.totals.hours)} hours</p>
           {providerGroups.map(({ cadre, providers: rows }) => <section key={cadre.code}>
             <h2>{cadre.name}</h2>
-            <p>{num(cadre.days)} days · {num(cadre.hours)} hours</p>
+            <p>{num(cadre.days)} days · {workHours(cadre.hours)} hours</p>
             <IndicatorList indicators={cadre.indicators} />
             <table>
               <thead><tr><th>Provider</th><th>Facility</th><th>Days</th><th>Hours</th><th>Indicators</th></tr></thead>
               <tbody>{rows.map(provider => <tr key={provider.staff_id}>
-                <td>{provider.provider_name}</td><td>{provider.facility_name}</td><td>{num(provider.days)}</td><td>{num(provider.hours)}</td>
+                <td>{provider.provider_name}</td><td>{provider.facility_name}</td><td>{num(provider.days)}</td><td>{workHours(provider.hours)}</td>
                 <td><IndicatorList indicators={provider.indicators} /></td>
               </tr>)}</tbody>
             </table>
@@ -362,7 +362,7 @@ export function FinanceMonthlyReport() {
                   <h2>{monthName(data.month)}</h2>
                 </div>
                 <div className="finance-total"><span>Providers</span><strong>{num(data.totals.providers)}</strong></div>
-                <div className="finance-total"><span>Total hours</span><strong>{num(data.totals.hours)}<small>hrs</small></strong></div>
+                <div className="finance-total"><span>Total hours</span><strong>{workHours(data.totals.hours)}<small>hrs</small></strong></div>
                 <div className="finance-total"><span>Work days</span><strong>{num(data.totals.days)}</strong></div>
                 <div className="finance-total"><span>Approved logs</span><strong>{num(data.totals.logs)}</strong></div>
               </section>
@@ -380,7 +380,7 @@ export function FinanceMonthlyReport() {
                         <th scope="row"><strong>{cadre.name}</strong><span className="finance-subline">{cadre.code}</span></th>
                         <td className="num">{num(cadre.provider_count)}</td>
                         <td className="num">{num(cadre.days)}</td>
-                        <td className="num finance-hours">{num(cadre.hours)}</td>
+                        <td className="num finance-hours">{workHours(cadre.hours)}</td>
                         <td><IndicatorList indicators={cadre.indicators} /></td>
                       </tr>
                     ))}</tbody>

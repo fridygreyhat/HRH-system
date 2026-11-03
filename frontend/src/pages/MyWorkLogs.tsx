@@ -4,7 +4,7 @@ import { api } from '../api';
 import { useAuth } from '../AuthContext';
 import { WorkLogEditor } from '../components/worklogs/WorkLogEditor';
 import { Alert, AsyncState, Field, StatusBadge } from '../components/ui';
-import { num, todayLocal } from '../format';
+import { num, todayLocal, workHours } from '../format';
 import { useAction, useApi } from '../hooks';
 import { PayPeriod, WorkLogDetail, WorkLogSummary } from '../types';
 import { resolveWorkLogMonth, workMonthLabel } from './workLogStart';
@@ -190,7 +190,7 @@ export function MyWorkLogs() {
                 </div>
                 <MiniStepper status={l.status} />
                 <div className="muted small">
-                  {num(l.entry_count)} {t('days').toLowerCase()} · {num(l.total_hours)} {t('hours').toLowerCase()} · #{l.id}
+                  {num(l.entry_count)} {t('days').toLowerCase()} · {workHours(l.total_hours)} {t('hours').toLowerCase()} · #{l.id}
                 </div>
               </button>
             ))}

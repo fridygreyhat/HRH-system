@@ -18,6 +18,7 @@ import {
   timeShort,
   WORKLOG_ACTION_LABELS,
   WORKLOG_REASON_REQUIRED,
+  workHours,
 } from '../../format';
 import { useApi } from '../../hooks';
 import { navigate } from '../../nav';
@@ -143,7 +144,7 @@ function VersionModal({ log, version, onClose }: { log: WorkLogDetail; version: 
                       {dateOnly(e.date)}
                       {e.start_time ? <div className="muted small">{`${timeShort(e.start_time)}–${timeShort(e.end_time)}`}</div> : null}
                     </td>
-                    <td className="num">{num(e.hours)}</td>
+                    <td className="num">{workHours(e.hours)}</td>
                     {log.cadre.fields.map((f) => (
                       <td key={f.key} className="num">
                         {e.measures[f.key] === undefined ? '—' : f.field_type === 'BOOLEAN' ? (Number(e.measures[f.key]) ? 'Yes' : 'No') : num(e.measures[f.key])}
@@ -157,7 +158,7 @@ function VersionModal({ log, version, onClose }: { log: WorkLogDetail; version: 
               <tfoot>
                 <tr>
                   <th>Total ({num(s.totals.days)} days)</th>
-                  <th className="num">{num(s.totals.hours)}</th>
+                  <th className="num">{workHours(s.totals.hours)}</th>
                   {log.cadre.fields.map((f) => (
                     <th key={f.key} className="num">
                       {num(s.totals.measures[f.key] ?? 0)}
@@ -203,6 +204,9 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
   const reviewMarker = useRef<HTMLDivElement | null>(null);
   const fundingSources = useApi<FundingSource[]>(log?.workflow_version === 2 && log.work_type === 'SERVICES' && (Boolean(log.finance_snapshot) || log.available_actions.includes('finance_review')) ? '/admin/funding-sources' : null);
   const routingActionAvailable = Boolean(log?.available_actions.some((item) => item === 'route_fhi360' || item === 'route_cso'));
+  const regionalDecision = !!log && ['PENDING_FINANCE_REVIEW', 'FINANCE_REVIEWED'].includes(log.status);
+  const decisionLabel = (value: string) => regionalDecision && value === 'return' ? 'Return to cadre Technical'
+    : regionalDecision && value === 'reject' ? 'Reject to provider' : actionDisplayLabel(value, Boolean(log?.finance_snapshot));
   const payors = useApi<FinancePayorsResponse>(routingActionAvailable ? `/finance/payors?work_log_id=${logId}` : null);
   const centralReviewers = useApi<{ id: number; name: string; username: string }[]>(routingActionAvailable ? `/finance/central-reviewers?work_log_id=${logId}` : null);
 
@@ -269,7 +273,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
         } : {}),
       });
       setData(result);
-      setNotice(`${WORKLOG_ACTION_LABELS[action] || humanize(action)}: done.`);
+      setNotice(`${decisionLabel(action)}: done.`);
       setDevOtp(result.otp?.dev_otp || null);
       setAction(null);
       setFlags([]);
@@ -328,7 +332,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
             </div>
             {(log.review_summary?.months || []).map((month) => (
               <div key={month.month} className="stack">
-                <h4>{month.month} · {num(month.days)} days · {num(Number(month.hours))} hours</h4>
+                <h4>{month.month} · {num(month.days)} days · {workHours(month.hours)} hours</h4>
                 <dl className="totals-list">
                   {log.cadre.fields.filter((field) => Number(month.metrics[field.key] ?? 0) > 0).map((field) => (
                     <div key={field.key}>
@@ -564,7 +568,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
               <div className="row">
                 {log.available_actions.filter((a) => (!isRpmWithoutFinanceRole || !['route_fhi360', 'route_cso', 'paid'].includes(a)) && !(a === 'hold' && fixedDailyNoBudget)).map((a) => (
                   <button key={a} className={`btn ${DESTRUCTIVE_ACTIONS.has(a) ? 'btn-secondary' : 'btn-primary'}`} disabled={!reviewReached || !reviewConfirmed || (a === 'finance_review' && log.work_type === 'SERVICES' && !canSubmitServiceFinanceReview(fundingSourceId, availableFundingSources, reviewReached, reviewConfirmed)) || ((a === 'route_fhi360' || a === 'route_cso') && !canRouteReviewedFinanceContext(reviewedContextDirty))} onClick={() => setAction(a)}>
-                    {actionDisplayLabel(a, Boolean(log.finance_snapshot))}
+                    {decisionLabel(a)}
                   </button>
                 ))}
               </div>
@@ -575,11 +579,11 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
 
       {log && action && (
         <ReasonDialog
-          title={actionDisplayLabel(action, Boolean(log.finance_snapshot))}
-          description={ACTION_HELP[action]}
+          title={decisionLabel(action)}
+          description={regionalDecision && action === 'return' ? 'Send back to the Technical reviewer for this provider’s cadre and region. Technical and RM must review again before Finance.' : regionalDecision && action === 'reject' ? 'Reject to the provider for correction and resubmission through the work approval chain.' : ACTION_HELP[action]}
           required={WORKLOG_REASON_REQUIRED.has(action)}
           danger={DESTRUCTIVE_ACTIONS.has(action)}
-          confirmLabel={actionDisplayLabel(action, Boolean(log.finance_snapshot))}
+          confirmLabel={decisionLabel(action)}
           onConfirm={perform}
           onClose={() => {
             setAction(null);

@@ -625,6 +625,11 @@ keeping rates editable and deletable, without rewriting financial history.
 - Verify resets and workflows only in independently disposable databases; tests must not repopulate the empty Preview or Live database.
 - **Why:** the user explicitly requested clean testing databases, keeping only Super Admin, and asked that Git pull not restore old or trial database content.
 
+### Finance corrections and work duration
+- Regional Finance returns Services to the provider's cadre/region Technical queue, not directly to the provider. Technical must endorse and RM must authorize again. Reject sends work to the editable provider and resubmission restarts CTC review. Retire pending financial claims and clear the old finance review before either correction path; never bypass routed/paid claim protection.
+- Display work duration as whole hours plus minutes, not decimal hours. Direct-entry forms separate whole hours and minutes. Preserve fractional-hour storage for accurate totals and financial history; new elapsed-time calculations retain six decimals rather than rounding each day to hundredths.
+- **Why:** the user requested Finance-to-Technical returns, rejection back to providers, and no decimal hours on timesheets or Services. Minutes must not be lost by rounding work to whole hours.
+
 ### Test code and publishing
 - Keep `backend/tests` in source control for regression checks, but exclude it and `.pytest_cache` from the published bundle through `.replitignore`.
 - Do not copy test fixtures or simulated test behavior into runtime services. The real backend must remain independent of the tests.

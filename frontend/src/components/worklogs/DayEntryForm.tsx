@@ -106,7 +106,9 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
     : selectedActivity
       ? selectedActivity.fields.flatMap((key) => log.cadre.fields.filter((field) => field.key === key))
       : isHcp ? [] : log.cadre.fields;
-  const [hours, setHours] = useState(entry ? String(Number(entry.hours_worked)) : '');
+  const initialMinutes = entry ? Math.round(Number(entry.hours_worked) * 60) : 0;
+  const [hours, setHours] = useState(entry ? String(Math.floor(initialMinutes / 60)) : '');
+  const [minutes, setMinutes] = useState(String(initialMinutes % 60));
   const [activityLocation, setActivityLocation] = useState(entry?.activity_location || '');
   const [start, setStart] = useState(entry?.start_time?.slice(0, 5) || '');
   const [end, setEnd] = useState(entry?.end_time?.slice(0, 5) || '');
@@ -178,7 +180,14 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
           [key, typeof value === 'boolean' ? value : Number(value)])),
       })) } : {}),
     };
-    if (direct) payload.hours_worked = Number(hours);
+    if (direct) {
+      const duration = Number(hours) + Number(minutes) / 60;
+      if (!Number.isInteger(Number(hours)) || !Number.isInteger(Number(minutes)) || duration < minimumHours || duration > maximumHours) {
+        setValidationError(`Enter hours and minutes between ${minimumHours} and ${maximumHours} hours.`);
+        return;
+      }
+      payload.hours_worked = Number(duration.toFixed(6));
+    }
     else {
       payload.start_time = start;
       payload.end_time = end;
@@ -284,7 +293,12 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
 
       {direct ? (
         <Field label={<FieldLabel field={{ label_en: 'Hours worked', label_sw: 'Masaa uliyofanya kazi' }} lang={lang} />} className={flaggedFields.has('hours') ? 'flagged-field' : undefined}>
-          <input type="number" inputMode="decimal" min={minimumHours} max={maximumHours} step="0.25" required value={hours} onChange={(e) => setHours(e.target.value)} />
+          <div className="grid-2">
+            <input aria-label="Whole hours worked" type="number" inputMode="numeric" min="0" max={maximumHours} step="1" required value={hours} onChange={(e) => setHours(e.target.value)} />
+            <select aria-label="Minutes worked" value={minutes} onChange={event => setMinutes(event.target.value)}>
+              {Array.from({ length: 60 }, (_, minute) => <option key={minute} value={minute}>{minute} min</option>)}
+            </select>
+          </div>
         </Field>
       ) : (
         <div className={`grid-2${flaggedFields.has('hours') ? ' flagged-field' : ''}`}>

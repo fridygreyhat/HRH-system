@@ -4,7 +4,7 @@ import { useAuth } from '../AuthContext';
 import { AsyncState, Field, StatusBadge, Tabs } from '../components/ui';
 import { WorkLogDrawer } from '../components/worklogs/WorkLogDrawer';
 import { ApprovalFinanceGuide } from '../components/worklogs/ApprovalFinanceGuide';
-import { dateTime, hoursAge, num, WORKLOG_STATUS_LABELS, WORKLOG_STATUSES } from '../format';
+import { dateTime, hoursAge, num, WORKLOG_STATUS_LABELS, WORKLOG_STATUSES, workHours } from '../format';
 import { useApi } from '../hooks';
 import { Cadre, PayPeriod, WorkLogSummary } from '../types';
 import { navigate } from '../nav';
@@ -53,7 +53,7 @@ function LogTable({ rows, queue, onOpen }: { rows: WorkLogSummary[]; queue: bool
                   <StatusBadge kind="log" status={l.status} bare />
                 </td>
                 <td className="num">{num(l.entry_count)}</td>
-                <td className="num">{num(l.total_hours)}</td>
+                <td className="num">{workHours(l.total_hours)}</td>
                 <td className="nowrap small">
                   {queue || overdue || l.status.startsWith('PENDING') ? (
                     <span className={overdue ? 'over-48' : undefined}>

@@ -32,6 +32,24 @@ const renderForm = (code, entry) => {
 };
 const button = text => Array.from(container.querySelectorAll('button')).find(b => b.textContent === text);
 
+test('direct work duration uses whole hours and minutes without decimal inputs', async () => {
+  const log = logFor('CHW');
+  log.cadre.hours_mode = 'DIRECT';
+  log.cadre.activities = [{ key: 'clinic', label_en: 'Clinic', fields: [], required_fields: [], item_type: 'SERVICES' }];
+  act(() => root.render(<DayEntryForm log={log} date="2026-10-23"
+    entry={{ activity_key: 'clinic', hours_worked: 7.5, measures: {} }}
+    flags={[]} captureOnEntry={false} onSaved={jest.fn()} onClose={jest.fn()} />));
+  const hours = container.querySelector('input[aria-label="Whole hours worked"]');
+  const minutes = container.querySelector('select[aria-label="Minutes worked"]');
+  expect(hours.value).toBe('7');
+  expect(hours.step).toBe('1');
+  expect(minutes.value).toBe('30');
+  act(() => Simulate.change(minutes, { target: { value: '17' } }));
+  await captureGps();
+  await submitDay();
+  expect(api.put.mock.calls[0][1].hours_worked).toBe(7.283333);
+});
+
 test('CHW TB Contact tracing renders and saves all five service indicators', async () => {
   const log = logFor('CHW');
   log.workflow_version = 2;

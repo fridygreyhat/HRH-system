@@ -71,7 +71,7 @@ test('monthly report keeps calendar month, separate work type and cadre aggregat
   try {
     expect(requestedPath).toContain('month=');
     expect(requestedPath).toContain('work_type=PAYROLL');
-    expect(container.textContent).toContain('102.5');
+    expect(container.textContent).toContain('102 h 30 min');
     expect(container.textContent).toContain('Community Health Worker');
     expect(container.textContent).toContain('Health Care Provider');
     expect(container.textContent).toContain('Home visits');

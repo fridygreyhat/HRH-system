@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { Alert } from '../components/ui';
-import { dateOnly, dateTime, datesBetween, dayOfMonth, num, periodDateError, timeShort, weekday } from '../format';
+import { dateOnly, dateTime, datesBetween, dayOfMonth, num, periodDateError, timeShort, weekday, workHours } from '../format';
 import { useApi } from '../hooks';
 import { WorkLogAudit, WorkLogDetail } from '../types';
 
@@ -113,8 +113,8 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
   rows.push({
     sw: 'Masaa uliyofanya kazi',
     en: 'Hours worked',
-    cell: (d) => (byDate.has(d) ? num(byDate.get(d)?.hours_worked) : ''),
-    total: num(entries.reduce((sum, entry) => sum + Number(entry.hours_worked || 0), 0)),
+    cell: (d) => (byDate.has(d) ? workHours(byDate.get(d)?.hours_worked) : ''),
+    total: workHours(entries.reduce((sum, entry) => sum + Number(entry.hours_worked || 0), 0)),
   });
   log.cadre.fields.forEach((f) => {
     rows.push({

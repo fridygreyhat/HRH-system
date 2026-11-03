@@ -105,9 +105,10 @@ def transitions_for(log):
         (PENDING_RPM, "authorize"): (PENDING_FINANCE, RPM),
         (PENDING_FINANCE, "finance_review"): (FINANCE_REVIEWED, REGIONAL_FINANCE),
         (FINANCE_REVIEWED, "finance_review"): (FINANCE_REVIEWED, REGIONAL_FINANCE),
-        (PENDING_FINANCE, "return"): (RETURNED, REGIONAL_FINANCE),
+        (PENDING_FINANCE, "return"): (PENDING_TECH, REGIONAL_FINANCE),
         (PENDING_FINANCE, "reject"): (REJECTED, REGIONAL_FINANCE),
-        (FINANCE_REVIEWED, "return"): (RETURNED, REGIONAL_FINANCE),
+        (FINANCE_REVIEWED, "return"): (PENDING_TECH, REGIONAL_FINANCE),
+        (FINANCE_REVIEWED, "reject"): (REJECTED, REGIONAL_FINANCE),
         (FINANCE_REVIEWED, "route_fhi360"): (ROUTED_FHI360, REGIONAL_FINANCE),
         (FINANCE_REVIEWED, "route_cso"): (ROUTED_CSO, REGIONAL_FINANCE),
         **({
@@ -281,10 +282,11 @@ def transition(
             details = {**(details or {}), **finance_gate.route(db, current, log, log.finance_snapshot["channel"], log.finance_snapshot["payor_org_id"], (details or {}).get("expected_review_token"), (details or {}).get("central_reviewer_id"))}
         elif action == "release":
             log.status = PENDING_FINANCE
-        elif next_status in {RETURNED, REJECTED}:
+        elif next_status in {RETURNED, REJECTED} or (role == REGIONAL_FINANCE and action == "return"):
             finance_gate.cancel_pending(db, current, log, comment)
             log.finance_snapshot = None
             log.routed_channel = None
+            log.approved_at = None
     log.status_changed_at = now
     if next_status in {RETURNED, REJECTED}:
         log.confirmed_version = None
@@ -346,7 +348,7 @@ def _notify(db: Session, log: WorkLog, action: str, comment: Optional[str]) -> N
     if log.status == PENDING_CTC:
         to_role(SUPERVISOR, "WORKLOG_RETURNED_TO_REVIEWER" if action == "return_to_reviewer" else "WORKLOG_SUBMITTED")
     elif log.status == PENDING_TECH:
-        to_role(TECHNICAL_OFFICER, "WORKLOG_RETURNED_TO_REVIEWER" if action == "return_to_reviewer" else "WORKLOG_CONFIRMED")
+        to_role(TECHNICAL_OFFICER, "WORKLOG_RETURNED_TO_REVIEWER" if action in {"return", "return_to_reviewer"} else "WORKLOG_CONFIRMED")
     elif log.status == PENDING_RPM and action == "endorse":
         to_role(RPM, "WORKLOG_ENDORSED")
     elif log.status == PENDING_FINANCE:

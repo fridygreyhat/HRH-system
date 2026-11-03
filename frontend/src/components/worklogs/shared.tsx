@@ -1,6 +1,6 @@
 import React from 'react';
 import { bilingual } from '../../i18n';
-import { dateOnly, num, timeShort, weekday } from '../../format';
+import { dateOnly, num, timeShort, weekday, workHours } from '../../format';
 import { Cadre, CadreField, Lang, ReturnFlag, WorkLogAudit, WorkLogDetail, WorkLogEntry } from '../../types';
 import { LocationBadge } from '../ui';
 
@@ -99,7 +99,7 @@ export function EntriesView({ log, lang, flags = [] }: { log: WorkLogDetail; lan
                     {timeShort(e.start_time)}–{timeShort(e.end_time)}
                   </td>
                 )}
-                <td className={`num${isFlagged(flags, e.entry_date, 'hours') ? ' flagged' : ''}`}>{num(e.hours_worked)}</td>
+                <td className={`num${isFlagged(flags, e.entry_date, 'hours') ? ' flagged' : ''}`}>{workHours(e.hours_worked)}</td>
                 <td>
                   <strong>{activityFor(e.activity_key)?.[lang === 'sw' ? 'label_sw' : 'label_en'] || '—'}</strong>
                   {(e.activity_snapshot?.additional_services || []).map(service => <div key={service.activity.key} className="small">
@@ -159,7 +159,7 @@ export function EntriesView({ log, lang, flags = [] }: { log: WorkLogDetail; lan
             <Coordinates entry={e} />
             <dl>
               <dt>Hours{startEnd ? ` (${timeShort(e.start_time)}–${timeShort(e.end_time)})` : ''}</dt>
-              <dd className={isFlagged(flags, e.entry_date, 'hours') ? 'flagged-field' : undefined}>{num(e.hours_worked)}</dd>
+              <dd className={isFlagged(flags, e.entry_date, 'hours') ? 'flagged-field' : undefined}>{workHours(e.hours_worked)}</dd>
               {activityFor(e.activity_key) && (
                 <>
                   <dt>Activity</dt>
@@ -199,7 +199,7 @@ export function TotalsPanel({ log, lang, title }: { log: WorkLogDetail; lang: La
         </div>
         <div>
           <dt>{lang === 'sw' ? 'Masaa / Hours' : 'Hours / Masaa'}</dt>
-          <dd>{num(log.totals.hours)}</dd>
+          <dd>{workHours(log.totals.hours)}</dd>
         </div>
         {log.cadre.fields.filter((f) => Number(log.totals.measures[f.key] ?? 0) > 0).map((f) => (
           <div key={f.key}>

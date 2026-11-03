@@ -77,7 +77,7 @@ class EntryIn(BaseModel):
     activity_location: Optional[str] = Field(default=None, max_length=255)
     start_time: Optional[time] = None
     end_time: Optional[time] = None
-    hours_worked: Optional[Decimal] = Field(default=None, gt=0, le=24)
+    hours_worked: Optional[Decimal] = Field(default=None, gt=0, le=24, allow_inf_nan=False)
     evidence_text: Optional[str] = Field(default=None, max_length=2000)
     comment: Optional[str] = Field(default=None, max_length=1000)
     measures: dict[str, Union[bool, int, float]] = {}
@@ -407,14 +407,18 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
     if direct_hours:
         if body.hours_worked is None:
             raise HTTPException(status_code=422, detail="Hours worked is required")
-        hours, start, end = body.hours_worked, None, None
+        hours, start, end = body.hours_worked.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP), None, None
+        if hours <= 0:
+            raise HTTPException(422, "Work duration must be greater than zero.")
     else:
         if not (body.start_time and body.end_time):
             raise HTTPException(status_code=422, detail="Start and end time are required")
         start_dt, end_dt = datetime.combine(entry_date, body.start_time), datetime.combine(entry_date, body.end_time)
         if end_dt <= start_dt:
             raise HTTPException(status_code=422, detail="End time must be after start time (same day)")
-        hours = Decimal((end_dt - start_dt).total_seconds() / 3600).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        # Decimal division avoids binary floating-point error; six decimals
+        # keep minute totals accurate across a full month.
+        hours = (Decimal(str((end_dt - start_dt).total_seconds())) / Decimal(3600)).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
         start, end = body.start_time, body.end_time
 
     fields = {f.key: f for f in log_fields(db, log)}

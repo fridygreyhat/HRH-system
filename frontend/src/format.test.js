@@ -1,4 +1,12 @@
-import { datesBetween, periodDateError, roleLabel, WORKLOG_STATUS_LABELS, WORKLOG_ACTION_LABELS } from './format';
+import { datesBetween, periodDateError, roleLabel, WORKLOG_STATUS_LABELS, WORKLOG_ACTION_LABELS, workHours } from './format';
+
+test.each([
+  [8, '8'], [7.5, '7 h 30 min'], ['7.25', '7 h 15 min'],
+  [0.016667, '0 h 1 min'], [0.999999, '1'], [102.5, '102 h 30 min'],
+  [null, '—'],
+])('work hours %s are shown without decimals', (value, expected) => {
+  expect(workHours(value)).toBe(expected);
+});
 
 test('the existing RPM role is displayed as RM without changing its permission code', () => {
   expect(roleLabel('RPM')).toBe('Regional Manager (RM)');
