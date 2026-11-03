@@ -60,6 +60,12 @@ function mountReport() {
   return { container, root, unmount: () => { act(() => root.unmount()); container.remove(); } };
 }
 
+function reviewPreview(container) {
+  act(() => [...container.querySelectorAll('button')].find(button => button.textContent === 'Review approval print preview').click());
+  expect(container.querySelector('[role="dialog"]').textContent).toContain('approval print preview');
+  act(() => [...container.querySelectorAll('button')].find(button => button.textContent === 'I have reviewed this preview').click());
+}
+
 test('monthly report keeps calendar month, separate work type and cadre aggregates without daily logs', () => {
   const { container, unmount } = mountReport();
   try {
@@ -87,6 +93,7 @@ test('regional report requires an explicit review confirmation before document s
     expect(approve.disabled).toBe(true);
     const region = container.querySelector('select[aria-label="Region"]');
     act(() => Simulate.change(region, { target: { value: '7' } }));
+    reviewPreview(container);
     const checkbox = container.querySelector('.finance-confirm-check input');
     act(() => Simulate.change(checkbox, { target: { checked: true } }));
     const button = Array.from(container.querySelectorAll('button')).find(item => item.textContent.includes('Sign off report'));
@@ -131,6 +138,7 @@ test('stale sign-off conflict refreshes the report and keeps a visible error', a
   api.post.mockRejectedValueOnce(Object.assign(new Error('Report changed; refresh and review again.'), { status: 409 }));
   const { container, unmount } = mountReport();
   try {
+    reviewPreview(container);
     const checkbox = container.querySelector('.finance-confirm-check input');
     act(() => Simulate.change(checkbox, { target: { checked: true } }));
     const button = Array.from(container.querySelectorAll('button')).find(item => item.textContent.includes('Sign off report'));

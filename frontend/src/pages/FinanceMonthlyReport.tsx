@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api, qs, saveBlob } from '../api';
 import { useAuth } from '../AuthContext';
-import { Alert, AsyncState, Field } from '../components/ui';
+import { Alert, AsyncState, Field, Modal } from '../components/ui';
 import { todayLocal, num } from '../format';
 import { useApi } from '../hooks';
 import { Named } from '../types';
@@ -166,6 +166,8 @@ export function FinanceMonthlyReport() {
   const [workType, setWorkType] = useState<WorkType>('PAYROLL');
   const [regionId, setRegionId] = useState('');
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewReviewed, setPreviewReviewed] = useState(false);
   const [actionError, setActionError] = useState('');
   const [approving, setApproving] = useState(false);
   const [exporting, setExporting] = useState<'csv' | 'pdf' | null>(null);
@@ -181,6 +183,9 @@ export function FinanceMonthlyReport() {
   };
   const providers = useMemo(() => summary.data?.providers || [], [summary.data]);
   useEffect(() => { setReviewConfirmed(false); setActionError(''); }, [month, workType, regionId]);
+  useEffect(() => {
+    setPreviewOpen(false); setPreviewReviewed(false); setReviewConfirmed(false);
+  }, [month, workType, regionId, reportState.data?.digest]);
   useEffect(() => {
     if (!regionId && regions.data?.length === 1) setRegionId(String(regions.data[0].id));
   }, [regionId, regions.data]);
@@ -219,7 +224,7 @@ export function FinanceMonthlyReport() {
   };
 
   const approve = async () => {
-    if (!regionId || !reportState.data?.digest || !reviewConfirmed) return;
+    if (!regionId || !reportState.data?.digest || !reviewConfirmed || !previewReviewed) return;
     setApproving(true);
     setActionError('');
     try {
@@ -298,11 +303,12 @@ export function FinanceMonthlyReport() {
           </div>
           {canSignOff && (
             <div className="finance-signoff-control">
+              <button type="button" className="btn btn-secondary" disabled={!regionId || reportState.loading} onClick={() => setPreviewOpen(true)}>Review approval print preview</button>
               <label className="finance-confirm-check">
-                <input type="checkbox" checked={reviewConfirmed} onChange={(event) => setReviewConfirmed(event.target.checked)} />
+                <input type="checkbox" checked={reviewConfirmed} disabled={!previewReviewed} onChange={(event) => setReviewConfirmed(event.target.checked)} />
                 <span>I reviewed this regional report and confirm it as a document sign-off.</span>
               </label>
-              <button type="button" className="btn btn-primary" onClick={approve} disabled={!regionId || !reviewConfirmed || approving || reportState.loading}>
+              <button type="button" className="btn btn-primary" onClick={approve} disabled={!regionId || !previewReviewed || !reviewConfirmed || approving || reportState.loading}>
                 {approving ? 'Signing off…' : approval ? 'Confirm updated sign-off' : 'Sign off report'}
               </button>
             </div>
@@ -311,6 +317,29 @@ export function FinanceMonthlyReport() {
         </section>
       )}
       {actionError && <Alert kind="warn">{actionError}</Alert>}
+      {previewOpen && summary.data && <Modal title="Regional report · approval print preview" onClose={() => setPreviewOpen(false)}>
+        <article className="paper regional-approval-preview">
+          <h1>{monthName(month)} · {workType} · {regions.data?.find(region => String(region.id) === regionId)?.name}</h1>
+          <p>{num(summary.data.totals.providers)} providers · {num(summary.data.totals.days)} work days · {num(summary.data.totals.hours)} hours</p>
+          {providerGroups.map(({ cadre, providers: rows }) => <section key={cadre.code}>
+            <h2>{cadre.name}</h2>
+            <p>{num(cadre.days)} days · {num(cadre.hours)} hours</p>
+            <IndicatorList indicators={cadre.indicators} />
+            <table>
+              <thead><tr><th>Provider</th><th>Facility</th><th>Days</th><th>Hours</th><th>Indicators</th></tr></thead>
+              <tbody>{rows.map(provider => <tr key={provider.staff_id}>
+                <td>{provider.provider_name}</td><td>{provider.facility_name}</td><td>{num(provider.days)}</td><td>{num(provider.hours)}</td>
+                <td><IndicatorList indicators={provider.indicators} /></td>
+              </tr>)}</tbody>
+            </table>
+          </section>)}
+          <p>Regional report sign-off is documentation only, not payment approval.</p>
+        </article>
+        <div className="row">
+          <button className="btn btn-secondary" onClick={() => download('pdf')} disabled={!!exporting}>Download printable PDF</button>
+          <button className="btn btn-primary" onClick={() => { setPreviewReviewed(true); setPreviewOpen(false); }}>I have reviewed this preview</button>
+        </div>
+      </Modal>}
 
       {summary.error ? (
         <div className="stack">

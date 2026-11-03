@@ -117,6 +117,7 @@ export const WORKLOG_STATUS_LABELS: Record<string, string> = {
 export const WORKLOG_STATUSES = Object.keys(WORKLOG_STATUS_LABELS);
 
 export const CLAIM_STATUS_LABELS: Record<string, string> = {
+  PENDING_CENTRAL_REVIEW: 'Awaiting assigned Central Finance review',
   DRAFT: 'Draft',
   VALIDATION_NEEDED: 'Validation needed',
   PENDING_COMMUNITY_VERIFICATION: 'Awaiting community verification',
@@ -183,6 +184,7 @@ export const WORKLOG_ACTION_LABELS: Record<string, string> = {
 };
 
 export const CLAIM_ACTION_LABELS: Record<string, string> = {
+  central_approve: 'Approve Services for payment',
   create: 'Created',
   verify_community: 'Verify community service',
   revalidate: 'Revalidate',

@@ -37,12 +37,16 @@ function SignBox({ titleSw, titleEn, row, name, at }: { titleSw: string; titleEn
 }
 
 /** Print-optimised mirror of the paper work-log form: dates as columns, rows for hours and each form field. */
-export function PrintWorkLog({ logId }: { logId: number }) {
+export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { logId: number; reviewLog?: WorkLogDetail; embedded?: boolean; onReady?: () => void }) {
   const { me } = useAuth();
   const validId = Number.isSafeInteger(logId) && logId > 0;
-  const { data: log, error, loading, reload } = useApi<WorkLogDetail>(validId ? `/worklogs/${logId}` : null, { timeoutMs: 20000 });
+  const { data, error, loading, reload } = useApi<WorkLogDetail>(validId && !reviewLog ? `/worklogs/${logId}` : null, { timeoutMs: 20000 });
+  const log = reviewLog || data;
   const [selectedMonth, setSelectedMonth] = useState('');
   const dateError = log ? periodDateError(log.period.start_date, log.period.end_date) : null;
+  React.useEffect(() => {
+    if (log && log.id === logId && !dateError && !error && (reviewLog || !loading)) onReady?.();
+  }, [log, logId, dateError, error, loading, reviewLog, onReady]);
   const allDates = log ? datesBetween(log.period.start_date, log.period.end_date) : [];
   const months = Array.from(new Set(allDates.map(date => date.slice(0, 7))));
   const month = months.includes(selectedMonth) ? selectedMonth : months[0];
@@ -52,12 +56,12 @@ export function PrintWorkLog({ logId }: { logId: number }) {
 
   const toolbar = (
     <div className="print-toolbar no-print">
-      <button className="btn btn-ghost btn-sm" onClick={() => window.history.back()}>
+      {!embedded && <button className="btn btn-ghost btn-sm" onClick={() => window.history.back()}>
         ← Back
-      </button>
-      <button className="btn btn-primary btn-sm" onClick={() => window.print()} disabled={!log || !!dateError}>
+      </button>}
+      {!embedded && <button className="btn btn-primary btn-sm" onClick={() => window.print()} disabled={!log || !!dateError}>
         Print
-      </button>
+      </button>}
       {log && !dateError && <label className="row">
         Print month
         <select aria-label="Print month" value={month} onChange={event => setSelectedMonth(event.target.value)}>

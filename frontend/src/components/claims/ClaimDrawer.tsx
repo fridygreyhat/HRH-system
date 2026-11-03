@@ -21,6 +21,8 @@ import { AdminAudit } from '../AdminAudit';
 import { Alert, AuditTimeline, Drawer, Facts, Field, Modal, ReasonDialog, RouteBadge, Section, StatusBadge, Tabs } from '../ui';
 import { ClaimTrace } from './ClaimTrace';
 import { ServicesProofPaymentDialog } from './ServicesProofPaymentDialog';
+import { PrintWorkLog } from '../../pages/PrintWorkLog';
+import { navigate } from '../../nav';
 
 const MAX_PROOF_BYTES = 10 * 1024 * 1024;
 const PROOF_TYPES = ['application/pdf', 'image/png', 'image/jpeg'];
@@ -228,6 +230,13 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
   const [dialog, setDialog] = useState<Dialog>(null);
   const [tab, setTab] = useState<'overview' | 'trace'>('overview');
   const [notice, setNotice] = useState<string | null>(null);
+  const [centralConfirmed, setCentralConfirmed] = useState(false);
+  const [previewReadyFor, setPreviewReadyFor] = useState('');
+  const previewKey = claim ? `${claim.id}:${claim.amount}:${claim.status}` : '';
+  const previewReady = !!previewKey && previewReadyFor === previewKey;
+  const centralAction = useAction();
+  React.useEffect(() => { setCentralConfirmed(false); }, [claim?.id, claim?.amount, claim?.status]);
+  const markPreviewReady = React.useCallback(() => setPreviewReadyFor(previewKey), [previewKey]);
   const proofAction = useAction();
 
   const updated = (c: ClaimDetail, message: string) => {
@@ -297,6 +306,33 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
               { key: 'trace', label: 'Trace to daily work' },
             ]}
           />
+          {claim.central_reviewer_id && (
+            <Section title="Central Finance Services review">
+              <Facts items={[
+                ['Assigned reviewer', claim.central_reviewer_name],
+                ['Central approval', claim.central_reviewed_at ? dateTime(claim.central_reviewed_at) : 'Pending selected reviewer'],
+              ]} />
+              {claim.status === 'PENDING_CENTRAL_REVIEW' && <p className="notice notice-info">Payment recording is blocked until the selected Central Finance reviewer approves. Other Finance users cannot approve this assignment.</p>}
+              {claim.available_actions.includes('central_approve') && claim.work_log_id && <>
+                <h3>Approval print preview</h3>
+                <p>{claim.staff_name} · {claim.period_label} · {money(claim.amount, claim.currency)}</p>
+                <ComponentsTable components={claim.components} currency={claim.currency} />
+                <PrintWorkLog logId={claim.work_log_id} embedded onReady={markPreviewReady} />
+                <button className="btn btn-secondary" onClick={() => navigate('print', claim.work_log_id!)}>Open printable report</button>
+                <label className="row">
+                  <input type="checkbox" checked={centralConfirmed} disabled={!previewReady} onChange={event => setCentralConfirmed(event.target.checked)} />
+                  I have reviewed the full Services report, provider and payment amount.
+                </label>
+                <Alert>{centralAction.error}</Alert>
+                <button className="btn btn-primary" disabled={!previewReady || !centralConfirmed || centralAction.busy} onClick={async () => {
+                  const result = await centralAction.run(() => api.post<ClaimDetail>(`/claims/${claim.id}/actions/central_approve`, {
+                    review_confirmed: centralConfirmed, expected_amount: claim.amount,
+                  }));
+                  if (result) updated(result, 'Central Finance approved. Services are ready for payment recording.');
+                }}>{centralAction.busy ? 'Approving…' : 'Approve Services for payment'}</button>
+              </>}
+            </Section>
+          )}
           {tab === 'trace' ? (
             <ClaimTrace claimId={claimId} />
           ) : (
@@ -332,7 +368,7 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
           {claim.available_actions.length > 0 && (
             <Section title="Claim actions">
               <div className="row">
-                {claim.available_actions.filter((a) => !financeReviewPending || !['mark_ready', 'export'].includes(a)).map((a) => (
+                {claim.available_actions.filter((a) => a !== 'central_approve' && (!financeReviewPending || !['mark_ready', 'export'].includes(a))).map((a) => (
                   <button
                     key={a}
                     className={`btn ${DESTRUCTIVE_ACTIONS.has(a) ? 'btn-secondary' : 'btn-primary'}`}

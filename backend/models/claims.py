@@ -129,6 +129,8 @@ class PaymentClaim(Base):
     exception_reason = Column(Text)
     calculation_snapshot = Column(JSONB)
     batch_id = Column(Integer, ForeignKey("payroll_batches.id"), index=True)
+    central_reviewer_id = Column(Integer, ForeignKey("users.id"), index=True)
+    central_reviewed_at = Column(DateTime(timezone=True))
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     verified_by = Column(Integer, ForeignKey("users.id"))
     verified_at = Column(DateTime(timezone=True))

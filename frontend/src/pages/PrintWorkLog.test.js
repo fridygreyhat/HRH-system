@@ -93,3 +93,12 @@ test('invalid print links show an actionable error without fetching', async () =
   expect(container.textContent).toContain('Invalid work-log number');
   expect(api.get).not.toHaveBeenCalled();
 });
+
+test('approval preview uses the exact opened work-log version without another fetch', async () => {
+  const ready = jest.fn();
+  await act(async () => root.render(<PrintWorkLog logId={19} reviewLog={record()} embedded onReady={ready} />));
+  expect(api.get).not.toHaveBeenCalled();
+  expect(container.querySelector('article').textContent).toContain('Test Worker');
+  expect(ready).toHaveBeenCalled();
+  expect([...container.querySelectorAll('button')].some(button => button.textContent === 'Print')).toBe(false);
+});

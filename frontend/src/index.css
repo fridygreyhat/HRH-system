@@ -929,6 +929,7 @@ details > summary { cursor: pointer; font-weight: 600; }
 .services-skeleton { height: 3.6rem; display: flex; align-items: center; padding: 0.8rem; color: var(--muted); background: var(--surface-2); border-radius: 10px; animation: services-pulse 1.4s ease-in-out infinite alternate; }
 .proof-beneficiary-meta { display: block; margin-top: 0.25rem; color: var(--muted); font-size: 0.8rem; line-height: 1.45; }
 .modal:has(.services-proof-form) { width: min(820px, 100%); }
+.modal:has(.regional-approval-preview) { width: min(1200px, 100%); }
 @keyframes services-pulse { from { opacity: 0.55; } to { opacity: 1; } }
 @media (max-width: 560px) {
   .services-amounts { gap: 0.25rem; }

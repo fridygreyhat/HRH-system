@@ -354,6 +354,9 @@ export interface WorkLogSnapshot {
 // ---- Claims ----------------------------------------------------------------------------
 
 export interface ClaimSummary {
+  central_reviewer_id?: number | null;
+  central_reviewer_name?: string | null;
+  central_reviewed_at?: string | null;
   service_names?: string[];
   id: number;
   work_log_id: number | null;

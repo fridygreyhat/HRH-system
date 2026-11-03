@@ -5,7 +5,7 @@ import calendar
 from datetime import date, timedelta
 import pytest
 
-from backend.models import BudgetLine, BudgetTransaction, FundingSource, PaymentClaim
+from backend.models import BudgetLine, BudgetTransaction, FundingSource, PaymentClaim, User
 from .test_v22_finance import v22
 from .test_fixed_daily_services import daily_rate, approve
 from .test_finance_monthly_reports import all_cadres
@@ -53,6 +53,7 @@ def test_every_cadre_routes_and_gets_paid_without_a_budget(api, db, empty_period
     assert log["finance_snapshot"]["budget_line_id"] is None
     assert float(log["finance_snapshot"]["total"]) == 40000
     routed = api.post("/finance/channel", v22["finance"], {
+        "central_reviewer_id": db.query(User).filter_by(username="fhifin1").one().id,
         **body, "work_log_id": log["id"],
         "target_payor_id": log["finance_snapshot"]["payor_org_id"],
         "expected_review_token": log["finance_snapshot"]["review_token"],
@@ -60,7 +61,10 @@ def test_every_cadre_routes_and_gets_paid_without_a_budget(api, db, empty_period
     assert routed["status"] == "ROUTED_FHI360"
     claim_id = routed["claim_id"]
     claim = api.get(f"/claims/{claim_id}", "fhifin1")
-    assert claim["status"] == "READY" and claim["amount"] == 40000
+    assert claim["status"] == "PENDING_CENTRAL_REVIEW" and claim["amount"] == 40000
+    claim = api.post(f"/claims/{claim_id}/actions/central_approve", "fhifin1",
+                     {"review_confirmed": True, "expected_amount": claim["amount"]})
+    assert claim["status"] == "READY"
     assert claim["payment_manifest"]["services"] == [activity["label_en"]]
     assert claim["payment_manifest"]["provider_name"] == claim["staff_name"]
     api.get(f"/claims/{claim_id}", "csofin1", expect=404)

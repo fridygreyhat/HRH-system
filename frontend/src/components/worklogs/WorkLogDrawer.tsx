@@ -1,4 +1,5 @@
 import { ApprovalStepper } from './ApprovalStepper';
+import { PrintWorkLog } from '../../pages/PrintWorkLog';
 import { PaymentSetupNotice } from './PaymentSetupNotice';
 import { AdminAudit } from '../AdminAudit';
 import React, { useEffect, useRef, useState } from 'react';
@@ -198,16 +199,19 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
   const [reviewReached, setReviewReached] = useState(false);
   const [fundingSourceId, setFundingSourceId] = useState('');
   const [targetPayorId, setTargetPayorId] = useState('');
+  const [centralReviewerId, setCentralReviewerId] = useState('');
   const reviewMarker = useRef<HTMLDivElement | null>(null);
   const fundingSources = useApi<FundingSource[]>(log?.workflow_version === 2 && log.work_type === 'SERVICES' && (Boolean(log.finance_snapshot) || log.available_actions.includes('finance_review')) ? '/admin/funding-sources' : null);
   const routingActionAvailable = Boolean(log?.available_actions.some((item) => item === 'route_fhi360' || item === 'route_cso'));
   const payors = useApi<FinancePayorsResponse>(routingActionAvailable ? `/finance/payors?work_log_id=${logId}` : null);
+  const centralReviewers = useApi<{ id: number; name: string; username: string }[]>(routingActionAvailable ? `/finance/central-reviewers?work_log_id=${logId}` : null);
 
   useEffect(() => {
     setReviewConfirmed(false);
     setReviewReached(false);
     setFundingSourceId(log ? snapshotFundingSourceId(log) : '');
     setTargetPayorId('');
+    setCentralReviewerId('');
   }, [log]);
 
   useEffect(() => {
@@ -225,11 +229,13 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
     try {
       if (action === 'route_fhi360' || action === 'route_cso') {
         if (!targetPayorId) throw new Error('Choose the destination payor before channeling this work log.');
+        if (!centralReviewerId) throw new Error('Choose a named Central Finance reviewer before routing these Services.');
         const pendingClaim = log.claims.find((claim) => claim.status === 'PENDING_ROUTING');
         const result = await api.post<ChannelResponse>('/finance/channel', {
           work_log_id: log.id,
           ...(pendingClaim ? { claim_id: pendingClaim.id } : {}),
           target_payor_id: Number(targetPayorId),
+          central_reviewer_id: Number(centralReviewerId),
           review_confirmed: true,
           review_type: log.work_type,
           expected_version: log.version,
@@ -509,9 +515,15 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
             />
           </Section></AdminAudit>
 
-          <div ref={reviewMarker} aria-hidden="true" style={{ height: 1 }} />
           {log.available_actions.length > 0 && (
             <Section title="Review and decide">
+              {hasRole('RPM', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE') && (
+                <Section title="Approval print preview">
+                  <p className="muted small">Review this report before confirming your decision. Printing alone does not approve work.</p>
+                  <PrintWorkLog logId={log.id} reviewLog={log} embedded />
+                </Section>
+              )}
+              <div ref={reviewMarker} aria-hidden="true" style={{ height: 1 }} />
               <p className="muted small">
                 {financeSummaryOnly ? 'Review the monthly totals and payment setup above before recording your Services decision.' : 'Review the monthly summary, flags, and all daily entries above before recording your decision.'}
               </p>
@@ -587,6 +599,15 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
                   {(payors.data?.eligible_payors || []).map((payor) => <option key={payor.id} value={payor.id}>{payor.name} · {payor.type}</option>)}
                 </select>
               </Field>
+              <Field label="Central Finance reviewer" hint="Only this person can approve the Services handoff. Users must cover the provider’s region and cadre.">
+                <select required value={centralReviewerId} onChange={event => setCentralReviewerId(event.target.value)} disabled={centralReviewers.loading || !!centralReviewers.error}>
+                  <option value="">Choose Central Finance reviewer…</option>
+                  {(centralReviewers.data || []).map(user => <option key={user.id} value={user.id}>{user.name} · {user.username}</option>)}
+                </select>
+              </Field>
+              <Alert>{centralReviewers.error}</Alert>
+              {centralReviewers.error && <button type="button" className="btn btn-secondary" onClick={centralReviewers.reload}>Retry Central Finance reviewers</button>}
+              {!centralReviewers.loading && !centralReviewers.error && !centralReviewers.data?.length && <Alert kind="warn">No eligible Central Finance reviewer. Configure an active Central Finance user with this region and cadre before routing.</Alert>}
               {!payors.loading && !payors.error && payors.data?.eligible_payors.length === 0 && <p className="muted small">No eligible destination is available. Resolve the routing exception before channeling.</p>}
             </div>
           )}

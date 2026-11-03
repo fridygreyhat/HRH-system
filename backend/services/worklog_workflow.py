@@ -276,9 +276,9 @@ def transition(
             finance_gate.review(db, current, log, (details or {}).get("category_id"),
                                 (details or {}).get("funding_source_id"))
         elif action.startswith("route_"):
-            details = {**(details or {}), **finance_gate.route(db, current, log, "FHI360" if action == "route_fhi360" else "CSO", (details or {}).get("target_payor_id"), (details or {}).get("expected_review_token"))}
+            details = {**(details or {}), **finance_gate.route(db, current, log, "FHI360" if action == "route_fhi360" else "CSO", (details or {}).get("target_payor_id"), (details or {}).get("expected_review_token"), (details or {}).get("central_reviewer_id"))}
         elif action == "release" and log.finance_snapshot:
-            details = {**(details or {}), **finance_gate.route(db, current, log, log.finance_snapshot["channel"], log.finance_snapshot["payor_org_id"], (details or {}).get("expected_review_token"))}
+            details = {**(details or {}), **finance_gate.route(db, current, log, log.finance_snapshot["channel"], log.finance_snapshot["payor_org_id"], (details or {}).get("expected_review_token"), (details or {}).get("central_reviewer_id"))}
         elif action == "release":
             log.status = PENDING_FINANCE
         elif next_status in {RETURNED, REJECTED}:

@@ -46,6 +46,8 @@ def executor_check(current: CurrentUser, claim: PaymentClaim) -> Optional[str]:
 
 
 def payable_check(db: Session, claim: PaymentClaim) -> Optional[str]:
+    if claim.central_reviewer_id and not claim.central_reviewed_at:
+        return "The selected Central Finance reviewer must approve the Services before payment."
     if claim.payment_status in ("PAID", "RECONCILED"):
         return "This claim is already paid"
     if claim.workflow_version >= 2:
@@ -142,6 +144,8 @@ def record_payment(db: Session, current: CurrentUser, claim: PaymentClaim, amoun
 
 
 def confirm_paid(db: Session, current: CurrentUser, claim: PaymentClaim) -> None:
+    if claim.central_reviewer_id and not claim.central_reviewed_at:
+        raise HTTPException(409, "The selected Central Finance reviewer must approve before payment confirmation.")
     reason = executor_check(current, claim)
     if reason:
         raise HTTPException(status_code=403, detail=reason)

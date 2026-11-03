@@ -32,6 +32,7 @@ from ...models import (
 )
 from ...services import claims as cl
 from ...services import payments as pay
+from ...services import central_review
 from ...services import services_payment_proofs as service_proofs
 from ...services.scope import assignment_for_period, claim_visibility, worklog_visibility
 from ...services.trace import trace_claim
@@ -52,6 +53,8 @@ class ClaimCreate(BaseModel):
 
 class ActionIn(BaseModel):
     comment: Optional[str] = Field(default=None, max_length=2000)
+    review_confirmed: bool = False
+    expected_amount: Optional[Decimal] = None
 
 
 class PaymentIn(BaseModel):
@@ -76,9 +79,11 @@ def _org(db, id_):
 
 def _summary(db: Session, claim: PaymentClaim) -> dict:
     staff = db.get(Staff, claim.staff_id)
+    reviewer = db.get(User, claim.central_reviewer_id) if claim.central_reviewer_id else None
     batch = db.get(PayrollBatch, claim.batch_id) if claim.batch_id else None
     return {
         **to_dict(claim, exclude=("calculation_snapshot",)),
+        "central_reviewer_name": reviewer.full_name if reviewer else None,
         "service_names": sorted({str(row["activity"]) for row in (claim.calculation_snapshot or {}).get("lines", [])
                                  if isinstance(row, dict) and row.get("activity")})
                          if claim.work_type == "SERVICES" else [],
@@ -120,7 +125,8 @@ def _detail(db: Session, current: CurrentUser, claim: PaymentClaim) -> dict:
         "review_feedback": next(([{"action": row.action, "comment": row.comment}]
                                  for row, _ in reversed(audit_rows)
                                  if row.new_status == claim.status and row.action in {"return", "reject", "hold", "cancel"}), []),
-        "available_actions": cl.available_actions(db, current, claim),
+        "available_actions": cl.available_actions(db, current, claim) + (
+            ["central_approve"] if central_review.can_approve(current, claim) else []),
         "payment_actions": pay.payment_actions(db, current, claim),
         "payment_recipient": pd.recipient(recipient, claim) if recipient else None,
     }
@@ -289,7 +295,9 @@ def trace(claim_id: int, db: Session = Depends(get_db), current: CurrentUser = D
 @router.post("/{claim_id}/actions/{action}")
 def perform_action(claim_id: int, action: str, body: ActionIn = ActionIn(), db: Session = Depends(get_db), current: CurrentUser = Depends(get_current_user)):
     claim = _get(db, current, claim_id, lock=True)
-    if action == "confirm_paid":
+    if action == "central_approve":
+        central_review.approve(db, current, claim, body.review_confirmed, body.expected_amount, body.comment)
+    elif action == "confirm_paid":
         pay.confirm_paid(db, current, claim)
     elif action == "reconcile":
         pay.reconcile(db, current, claim, body.comment)

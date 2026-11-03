@@ -133,7 +133,7 @@ export function Claims() {
                     aria-label={`Open claim ${c.id}`}
                   >
                     <td>{c.id}</td>
-                    <td>{c.staff_name}</td>
+                    <td>{c.staff_name}{c.central_reviewer_name && <div className="muted small">Central reviewer: {c.central_reviewer_name}</div>}</td>
                     <td>
                       {c.service_names && c.service_names.length > 0 && (
                         <div><strong>{c.service_names.join(', ')}</strong></div>

@@ -72,6 +72,7 @@ class ChannelIn(BaseModel):
     claim_id: Optional[int] = Field(default=None, gt=0)
     work_log_id: Optional[int] = Field(default=None, gt=0)
     target_payor_id: int = Field(gt=0)
+    central_reviewer_id: Optional[int] = Field(default=None, gt=0)
     expected_version: Optional[int] = Field(default=None, ge=0)
     expected_review_token: Optional[str] = Field(default=None, min_length=1, max_length=64)
     review_confirmed: bool = False
@@ -177,6 +178,17 @@ def payors(work_log_id: int = Query(gt=0), db: Session = Depends(get_db), curren
     return {"work_log_id": log.id, **_payors(db, log)}
 
 
+@router.get("/central-reviewers")
+def central_reviewers(work_log_id: int = Query(gt=0), db: Session = Depends(get_db),
+                      current=Depends(require_roles(REGIONAL_FINANCE))):
+    from ...services.central_review import eligible_reviewers
+    log = _log(db, current, work_log_id)
+    if log.work_type != "SERVICES":
+        raise HTTPException(409, "Central Finance assignment is for Services only.")
+    return [{"id": user.id, "name": user.full_name, "username": user.username}
+            for user in eligible_reviewers(db, log) if user.id != current.id]
+
+
 @router.get("/pending-routing")
 def pending_routing(
     region_id: Optional[int] = Query(default=None, gt=0),
@@ -243,6 +255,7 @@ def channel(body: ChannelIn, db: Session = Depends(get_db), current=Depends(requ
         raise HTTPException(422, "The selected payor does not match this provider's assigned payment channel")
     wf.transition(db, current, log, action, body.comment,
                   {"target_payor_id": body.target_payor_id, "review_confirmed": True, "review_type": body.review_type,
+                   "central_reviewer_id": body.central_reviewer_id,
                    "expected_review_token": body.expected_review_token},
                   body.expected_version)
     claim = db.query(PaymentClaim).filter(PaymentClaim.work_log_id == log.id, PaymentClaim.status != "CANCELLED").one()

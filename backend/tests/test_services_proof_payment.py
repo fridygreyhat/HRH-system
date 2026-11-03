@@ -7,7 +7,7 @@ import pytest
 from fastapi import HTTPException
 
 from backend.core import config
-from backend.models import FundingSource, PaymentClaim, PaymentProof, PaymentRecord
+from backend.models import FundingSource, PaymentClaim, PaymentProof, PaymentRecord, User
 from backend.services import payments
 from .test_services_without_budgets import empty_period
 from .test_v22_finance import v22
@@ -32,11 +32,13 @@ def ready_claim(api, db, period, finance, provider):
     body = {"review_confirmed": True, "review_type": "SERVICES", "funding_source_id": source.id}
     log = api.post(f"/worklogs/{log['id']}/actions/finance_review", finance, body)
     routed = api.post("/finance/channel", finance, {
+        "central_reviewer_id": db.query(User).filter_by(username="fhifin1").one().id,
         **body, "work_log_id": log["id"],
         "target_payor_id": log["finance_snapshot"]["payor_org_id"],
         "expected_review_token": log["finance_snapshot"]["review_token"],
     })
-    return api.get(f"/claims/{routed['claim_id']}", "fhifin1")
+    return api.post(f"/claims/{routed['claim_id']}/actions/central_approve", "fhifin1",
+                    {"review_confirmed": True, "expected_amount": routed["amount"]})
 
 
 def upload(api, entries, period, *, user="fhifin1", confirmed=True, content_type="application/pdf"):

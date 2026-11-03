@@ -324,7 +324,7 @@ def cancel_pending(db, current, log, comment):
         claims.audit(db, current, claim, "finance_return", REGIONAL_FINANCE, old, claim.payment_status, comment)
 
 
-def route(db, current, log, channel, target_payor_id=None, expected_review_token=None):
+def route(db, current, log, channel, target_payor_id=None, expected_review_token=None, central_reviewer_id=None):
     if log.work_type == "PAYROLL":
         raise HTTPException(409, "Payroll is report-only and cannot be routed as a payment claim.")
     snapshot = log.finance_snapshot
@@ -359,6 +359,9 @@ def route(db, current, log, channel, target_payor_id=None, expected_review_token
     details.update(target_payor_id=owner.id, target_payor_name=owner.name, actor_id=current.id,
                    channeled_at=utcnow().isoformat(), claim_id=claim.id)
     claim.status = claims.READY
+    from . import central_review
+    reviewer = central_review.assign(db, current, log, claim, central_reviewer_id)
+    details.update(central_reviewer_id=reviewer.id, central_reviewer_name=reviewer.full_name)
     claim.approved_by = current.id
     claim.approved_at = utcnow()
     log.routed_channel = channel
