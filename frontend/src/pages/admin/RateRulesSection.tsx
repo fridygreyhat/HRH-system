@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { api } from '../../api';
 import { useAuth } from '../../AuthContext';
-import { dateOnly, dateTime, humanize, money, todayLocal } from '../../format';
+import { dateOnly, humanize, money, todayLocal } from '../../format';
 import { useAction, useApi } from '../../hooks';
 import { Cadre, ClaimCategory, Named, RateRule } from '../../types';
-import { Alert, AsyncState, Drawer, Field, ReasonDialog, StatusBadge } from '../../components/ui';
+import { Alert, AsyncState, Drawer, Field, Modal, StatusBadge } from '../../components/ui';
 import { refName } from './common';
 
 const UNIT_TYPES: Record<RateRule['unit_type'], string> = {
@@ -13,7 +13,7 @@ const UNIT_TYPES: Record<RateRule['unit_type'], string> = {
   PER_UNIT: 'Per unit of a work-log measure',
   FIXED: 'Fixed amount',
 };
-const STATUSES = ['PENDING_APPROVAL', 'ACTIVE', 'REJECTED', 'RETIRED'];
+const STATUSES = ['ACTIVE', 'RETIRED'];
 
 interface Lookups {
   categories: ClaimCategory[];
@@ -21,19 +21,19 @@ interface Lookups {
   regions: Named[];
 }
 
-function ProposeForm({ lookups, onDone, onCancel }: { lookups: Lookups; onDone: () => void; onCancel: () => void }) {
+function RateForm({ lookups, initial, onDone, onCancel }: { lookups: Lookups; initial?: RateRule; onDone: () => void; onCancel: () => void }) {
   const [form, setForm] = useState({
-    category_id: '',
-    cadre_id: '',
-    region_id: '',
-    component_name: '',
-    unit_type: 'PER_DAY' as RateRule['unit_type'],
-    measure_key: '',
-    rate_value: '',
-    currency: 'TZS',
-    cap_amount: '',
-    effective_start_date: todayLocal(),
-    effective_end_date: '',
+    category_id: initial ? String(initial.category_id) : '',
+    cadre_id: initial?.cadre_id ? String(initial.cadre_id) : '',
+    region_id: initial?.region_id ? String(initial.region_id) : '',
+    component_name: initial?.component_name || '',
+    unit_type: initial?.unit_type || 'PER_DAY' as RateRule['unit_type'],
+    measure_key: initial?.measure_key || '',
+    rate_value: initial ? String(initial.rate_value) : '',
+    currency: initial?.currency || 'TZS',
+    cap_amount: initial?.cap_amount != null ? String(initial.cap_amount) : '',
+    effective_start_date: initial?.effective_start_date || todayLocal(),
+    effective_end_date: initial?.effective_end_date || '',
   });
   const { busy, error, setError, run } = useAction();
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -51,7 +51,7 @@ function ProposeForm({ lookups, onDone, onCancel }: { lookups: Lookups; onDone: 
     if (form.unit_type === 'PER_UNIT' && !form.measure_key) return setError('Per-unit rules must name the work-log measure they count.');
     if (form.effective_end_date && form.effective_end_date < form.effective_start_date) return setError('The end date is before the start date.');
     const ok = await run(async () => {
-      await api.post('/admin/rate-rules', {
+      const payload = {
         category_id: Number(form.category_id),
         cadre_id: form.cadre_id ? Number(form.cadre_id) : null,
         region_id: form.region_id ? Number(form.region_id) : null,
@@ -63,7 +63,9 @@ function ProposeForm({ lookups, onDone, onCancel }: { lookups: Lookups; onDone: 
         cap_amount: cap,
         effective_start_date: form.effective_start_date,
         effective_end_date: form.effective_end_date || null,
-      });
+      };
+      if (initial) await api.put(`/admin/rate-rules/${initial.id}`, payload);
+      else await api.post('/admin/rate-rules', payload);
       return true;
     });
     if (ok) onDone();
@@ -73,7 +75,7 @@ function ProposeForm({ lookups, onDone, onCancel }: { lookups: Lookups; onDone: 
   return (
     <form className="stack" onSubmit={submit}>
       <p className="notice notice-info">
-        Your proposal stays inactive until an RM or Oversight user other than you approves it. Only ACTIVE rules price claims.
+        Rates are active as soon as you save; no separate approval is required. Existing claims keep their recorded amounts.
       </p>
       <div className="grid-2">
         <Field label="Claim category *">
@@ -150,7 +152,7 @@ function ProposeForm({ lookups, onDone, onCancel }: { lookups: Lookups; onDone: 
       <Alert>{error}</Alert>
       <div className="row">
         <button className="btn btn-primary" disabled={busy}>
-          {busy ? 'Submitting…' : 'Propose rule'}
+          {busy ? 'Saving…' : 'Save rate'}
         </button>
         <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={busy}>
           Cancel
@@ -160,21 +162,21 @@ function ProposeForm({ lookups, onDone, onCancel }: { lookups: Lookups; onDone: 
   );
 }
 
-type Dialog = { kind: 'approve' | 'reject' | 'retire'; rule: RateRule };
+type Dialog = { rule: RateRule };
 
 export function RateRulesSection() {
-  const { me, hasRole } = useAuth();
-  const canPropose = hasRole('FHI360_FINANCE', 'CSO_FINANCE');
-  const canDecide = hasRole('RPM', 'OVERSIGHT');
+  const { hasRole } = useAuth();
+  const canManage = hasRole('FHI360_FINANCE', 'CSO_FINANCE');
   const { data, error, loading, reload } = useApi<RateRule[]>('/admin/rate-rules');
   const categories = useApi<ClaimCategory[]>('/admin/claim-categories');
   const cadres = useApi<Cadre[]>('/admin/cadres');
   const regions = useApi<Named[]>('/admin/regions');
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState('ACTIVE');
   const [proposing, setProposing] = useState(false);
+  const [editing, setEditing] = useState<RateRule | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
-  const [retireDate, setRetireDate] = useState(todayLocal());
   const [notice, setNotice] = useState<string | null>(null);
+  const deletion = useAction();
 
   const maps = useMemo(() => {
     const m = (rows: { id: number; name: string }[] | null) => new Map((rows || []).map((r) => [String(r.id), r.name]));
@@ -187,40 +189,36 @@ export function RateRulesSection() {
   const rows = (data || []).filter((r) => !status || r.status === status);
   const counts = (data || []).reduce<Record<string, number>>((acc, r) => ({ ...acc, [r.status]: (acc[r.status] || 0) + 1 }), {});
 
-  const decide = async (comment: string) => {
+  const remove = async () => {
     if (!dialog) return;
-    const { kind, rule } = dialog;
-    if (kind === 'retire') {
-      if (!retireDate) throw new Error('Choose the last day the rule applies.');
-      if (comment.length < 3) throw new Error('Give a reason (at least 3 characters).');
-      await api.post(`/admin/rate-rules/${rule.id}/retire`, { effective_end_date: retireDate, reason: comment });
-    } else {
-      await api.post(`/admin/rate-rules/${rule.id}/${kind}`, { comment: comment || null });
+    const result = await deletion.run(() => api.del<{ message: string }>(`/admin/rate-rules/${dialog.rule.id}`));
+    if (result) {
+      setDialog(null);
+      setNotice(result.message);
+      reload();
     }
-    setDialog(null);
-    setNotice(kind === 'approve' ? 'Rule approved and now active.' : kind === 'reject' ? 'Rule rejected.' : 'Rule end-dated.');
-    reload();
   };
 
   return (
     <section className="card stack">
       <div className="section-head">
         <h3>Rate rules</h3>
-        {canPropose && (
+        {canManage && (
           <button
             className="btn btn-primary"
             onClick={() => {
               setNotice(null);
+              setEditing(null);
               setProposing(true);
             }}
             disabled={!lookups}
           >
-            Propose a rule
+            Add rate
           </button>
         )}
       </div>
       <p className="notice notice-info">
-        Only ACTIVE rules are used to price claims. Proposed rules are inactive until approved by an RM or Oversight user other than the proposer.
+        Saved rates are active immediately and apply within their effective dates. You can edit or delete rates. Existing claims keep their original calculation; deleting a used rate only removes it from future calculations.
       </p>
       <Alert kind="success">{notice}</Alert>
       <Alert>{lookupError}</Alert>
@@ -260,9 +258,6 @@ export function RateRulesSection() {
                 </thead>
                 <tbody>
                   {rows.map((r) => {
-                    const mine = r.created_by === me?.id;
-                    const showDecide = canDecide && r.status === 'PENDING_APPROVAL' && !mine;
-                    const showRetire = canPropose && r.status === 'ACTIVE';
                     return (
                       <tr key={r.id}>
                         <td>{refName(maps.category, r.category_id)}</td>
@@ -279,37 +274,22 @@ export function RateRulesSection() {
                         </td>
                         <td>
                           <StatusBadge status={r.status} />
-                          {r.approved_at && (
-                            <div className="muted small">
-                              {r.status === 'REJECTED' ? 'Rejected' : 'Approved'} {dateTime(r.approved_at)}
-                            </div>
-                          )}
                         </td>
                         <td>
                           <div className="row">
-                            {showDecide && (
-                              <>
-                                <button className="btn btn-primary btn-sm" onClick={() => setDialog({ kind: 'approve', rule: r })}>
-                                  Approve
-                                </button>
-                                <button className="btn btn-danger btn-sm" onClick={() => setDialog({ kind: 'reject', rule: r })}>
-                                  Reject
-                                </button>
-                              </>
+                            {canManage && r.status === 'ACTIVE' && (
+                              <button className="btn btn-secondary btn-sm" disabled={!lookups} onClick={() => {
+                                setEditing(r);
+                                setProposing(true);
+                                setNotice(null);
+                              }}>Edit</button>
                             )}
-                            {canDecide && r.status === 'PENDING_APPROVAL' && mine && <span className="muted small">Your proposal</span>}
-                            {showRetire && (
-                              <button
-                                className="btn btn-secondary btn-sm"
-                                onClick={() => {
-                                  setRetireDate(todayLocal());
-                                  setDialog({ kind: 'retire', rule: r });
-                                }}
-                              >
-                                Retire
-                              </button>
-                            )}
-                            {!showDecide && !showRetire && !(canDecide && mine && r.status === 'PENDING_APPROVAL') && <span className="muted">—</span>}
+                            {canManage ? (
+                              <button className="btn btn-danger btn-sm" onClick={() => {
+                                deletion.setError(null);
+                                setDialog({ rule: r });
+                              }}>Delete</button>
+                            ) : <span className="muted">—</span>}
                           </div>
                         </td>
                       </tr>
@@ -322,46 +302,31 @@ export function RateRulesSection() {
         }
       </AsyncState>
       {proposing && lookups && (
-        <Drawer title="Propose a rate rule" onClose={() => setProposing(false)} wide>
-          <ProposeForm
+        <Drawer title={editing ? 'Edit rate' : 'Add rate'} onClose={() => setProposing(false)} wide>
+          <RateForm
             lookups={lookups}
+            initial={editing || undefined}
             onCancel={() => setProposing(false)}
             onDone={() => {
               setProposing(false);
-              setNotice('Rule proposed. It is inactive until an RM or Oversight user approves it.');
+              setNotice('Rate saved and active. No separate approval is required.');
               reload();
             }}
           />
         </Drawer>
       )}
       {dialog && (
-        <ReasonDialog
-          title={
-            dialog.kind === 'approve'
-              ? `Approve “${dialog.rule.component_name}”`
-              : dialog.kind === 'reject'
-                ? `Reject “${dialog.rule.component_name}”`
-                : `Retire “${dialog.rule.component_name}”`
-          }
-          description={
-            dialog.kind === 'approve'
-              ? `Once approved, this rule prices claims in ${refName(maps.category, dialog.rule.category_id)} from ${dateOnly(dialog.rule.effective_start_date)}: ${money(dialog.rule.rate_value, dialog.rule.currency)} ${UNIT_TYPES[dialog.rule.unit_type].toLowerCase()}.`
-              : dialog.kind === 'reject'
-                ? 'The proposal will not be used. The proposer can submit a corrected rule.'
-                : 'The rule stops applying after the chosen date. Claims already authorized keep their calculation.'
-          }
-          required={dialog.kind !== 'approve'}
-          confirmLabel={dialog.kind === 'approve' ? 'Approve rule' : dialog.kind === 'reject' ? 'Reject rule' : 'Retire rule'}
-          danger={dialog.kind !== 'approve'}
-          onConfirm={decide}
+        <Modal
+          title={`Delete “${dialog.rule.component_name}”`}
           onClose={() => setDialog(null)}
         >
-          {dialog.kind === 'retire' && (
-            <Field label="Last day the rule applies *">
-              <input type="date" value={retireDate} min={dialog.rule.effective_start_date} onChange={(e) => setRetireDate(e.target.value)} required />
-            </Field>
-          )}
-        </ReasonDialog>
+          <p>This rate will no longer price new claims. Unused rates are permanently deleted. Rates already linked to claims are kept inactive for history; existing claim amounts do not change.</p>
+          <Alert>{deletion.error}</Alert>
+          <div className="row">
+            <button className="btn btn-danger" disabled={deletion.busy} onClick={remove}>{deletion.busy ? 'Deleting…' : 'Delete rate'}</button>
+            <button className="btn btn-ghost" disabled={deletion.busy} onClick={() => setDialog(null)}>Cancel</button>
+          </div>
+        </Modal>
       )}
     </section>
   );

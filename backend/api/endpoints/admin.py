@@ -31,6 +31,7 @@ from ...models import (
     Cadre,
     CadreFormField,
     ClaimCategory,
+    ClaimComponent,
     Cluster,
     CommunityArea,
     District,
@@ -56,6 +57,7 @@ from ...models import (
 )
 from ...services import notifications
 from ...services.forms import cadre_out
+from ...services.rate_rules import USABLE_RATE_STATUSES, rate_rule_out
 from ...services.templates import EVENTS, LANGUAGES, PROTECTED_EVENTS
 from .staff import StaffCreate, new_staff_record
 
@@ -241,7 +243,7 @@ def update_field(cadre_id: int, key: str, body: FieldIn, db: Session = Depends(g
     return to_dict(row)
 
 
-# --- Rate rules (maker-checker) -----------------------------------------------------------
+# --- Rate rules (saved rates are active without a separate approval) ----------------------
 
 
 class RateRuleIn(BaseModel):
@@ -251,27 +253,39 @@ class RateRuleIn(BaseModel):
     component_name: str = Field(min_length=1, max_length=255)
     unit_type: str = Field(pattern="^(PER_DAY|PER_HOUR|PER_UNIT|FIXED)$")
     measure_key: Optional[str] = None
-    rate_value: float = Field(ge=0)
+    rate_value: float = Field(ge=0, allow_inf_nan=False)
     currency: str = "TZS"
-    cap_amount: Optional[float] = Field(default=None, ge=0)
+    cap_amount: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
     effective_start_date: date
     effective_end_date: Optional[date] = None
-
-
-class DecisionIn(BaseModel):
-    comment: Optional[str] = Field(default=None, max_length=1000)
 
 
 @router.get("/rate-rules")
 def rate_rules(db: Session = Depends(get_db), _: CurrentUser = Depends(require_roles(FHI360_FINANCE, CSO_FINANCE, RPM, OVERSIGHT))):
     names = {u.id: u.full_name for u in db.query(User)}
     rows = db.query(RateRule).order_by(RateRule.category_id, RateRule.component_name, RateRule.effective_start_date.desc())
-    return [{**to_dict(r), "created_by_name": names.get(r.created_by), "approved_by_name": names.get(r.approved_by)} for r in rows]
+    return [{**rate_rule_out(r), "created_by_name": names.get(r.created_by)} for r in rows]
 
 
 @router.post("/rate-rules", status_code=201)
-def propose_rate_rule(body: RateRuleIn, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(FHI360_FINANCE, CSO_FINANCE))):
-    """Proposed rules are inactive until approved by an RPM or oversight manager other than the proposer."""
+def save_rate_rule(body: RateRuleIn, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(FHI360_FINANCE, CSO_FINANCE))):
+    validate_rate_rule(db, body)
+    rule = RateRule(**body.model_dump(), status="ACTIVE", created_by=current.id)
+    db.add(rule)
+    db.flush()
+    system_audit.record(db, current, "rate_rule", rule.id, "create", after=body.model_dump())
+    _commit(db)
+    return to_dict(rule)
+
+
+def validate_rate_rule(db: Session, body: RateRuleIn) -> None:
+    for model, value, label in (
+        (ClaimCategory, body.category_id, "Claim category"),
+        (Cadre, body.cadre_id, "Cadre"),
+        (Region, body.region_id, "Region"),
+    ):
+        if value is not None and db.get(model, value) is None:
+            raise HTTPException(status_code=422, detail=f"{label} does not exist")
     if body.unit_type == "PER_UNIT" and not body.measure_key:
         raise HTTPException(status_code=422, detail="PER_UNIT rules must name the work-log measure they count")
     if body.measure_key:
@@ -283,37 +297,47 @@ def propose_rate_rule(body: RateRuleIn, db: Session = Depends(get_db), current: 
             raise HTTPException(status_code=422, detail=f"'{body.measure_key}' is not a field on {where}")
     if body.effective_end_date and body.effective_end_date < body.effective_start_date:
         raise HTTPException(status_code=422, detail="End date is before start date")
-    rule = RateRule(**body.model_dump(), status="PENDING_APPROVAL", created_by=current.id)
-    db.add(rule)
-    db.flush()
-    system_audit.record(db, current, "rate_rule", rule.id, "propose", after=body.model_dump())
+
+
+@router.put("/rate-rules/{rule_id}")
+def edit_rate_rule(rule_id: int, body: RateRuleIn, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(FHI360_FINANCE, CSO_FINANCE))):
+    rule = db.query(RateRule).filter(RateRule.id == rule_id).with_for_update().first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rate rule not found")
+    if rule.status not in USABLE_RATE_STATUSES:
+        raise HTTPException(status_code=409, detail="Only active rates can be edited. Create a new rate to replace an inactive rate.")
+    validate_rate_rule(db, body)
+    before = to_dict(rule)
+    if db.query(ClaimComponent.id).filter(ClaimComponent.rate_rule_id == rule.id).first():
+        # Preserve the source used by existing claim calculations.
+        rule.status = "RETIRED"
+        rule = RateRule(**body.model_dump(), status="ACTIVE", created_by=current.id)
+        db.add(rule)
+        db.flush()
+    else:
+        for key, value in body.model_dump().items():
+            setattr(rule, key, value)
+        rule.status = "ACTIVE"
+    system_audit.record(db, current, "rate_rule", rule.id, "edit", before=before, after=to_dict(rule))
     _commit(db)
     return to_dict(rule)
 
 
-def _decide_rule(db: Session, current: CurrentUser, rule_id: int, approve: bool, comment: Optional[str]) -> RateRule:
+@router.delete("/rate-rules/{rule_id}")
+def delete_rate_rule(rule_id: int, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(FHI360_FINANCE, CSO_FINANCE))):
     rule = db.query(RateRule).filter(RateRule.id == rule_id).with_for_update().first()
     if not rule:
         raise HTTPException(status_code=404, detail="Rate rule not found")
-    if rule.status != "PENDING_APPROVAL":
-        raise HTTPException(status_code=409, detail=f"Rule is {rule.status}")
-    if rule.created_by == current.id:
-        raise HTTPException(status_code=403, detail="A rate rule must be approved by someone other than its proposer")
-    rule.status = "ACTIVE" if approve else "REJECTED"
-    rule.approved_by, rule.approved_at = current.id, utcnow()
-    system_audit.record(db, current, "rate_rule", rule.id, "approve" if approve else "reject", reason=comment)
+    before = to_dict(rule)
+    retained = db.query(ClaimComponent.id).filter(ClaimComponent.rate_rule_id == rule.id).first() is not None
+    if retained:
+        rule.status = "RETIRED"
+    else:
+        db.delete(rule)
+    system_audit.record(db, current, "rate_rule", rule_id, "delete", before=before, after={"retained_for_history": retained})
     _commit(db)
-    return rule
-
-
-@router.post("/rate-rules/{rule_id}/approve")
-def approve_rate_rule(rule_id: int, body: DecisionIn = DecisionIn(), db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(RPM, OVERSIGHT))):
-    return to_dict(_decide_rule(db, current, rule_id, True, body.comment))
-
-
-@router.post("/rate-rules/{rule_id}/reject")
-def reject_rate_rule(rule_id: int, body: DecisionIn = DecisionIn(), db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(RPM, OVERSIGHT))):
-    return to_dict(_decide_rule(db, current, rule_id, False, body.comment))
+    return {"id": rule_id, "retained_for_history": retained,
+            "message": "Rate removed from use; its historical claim reference is preserved." if retained else "Rate deleted."}
 
 
 class RetireIn(BaseModel):
@@ -325,7 +349,7 @@ class RetireIn(BaseModel):
 def retire_rate_rule(rule_id: int, body: RetireIn, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(FHI360_FINANCE, CSO_FINANCE))):
     """End-date an active rule. Past claims keep their authorized calculation snapshot."""
     rule = db.query(RateRule).filter(RateRule.id == rule_id).with_for_update().first()
-    if not rule or rule.status != "ACTIVE":
+    if not rule or rule.status not in USABLE_RATE_STATUSES:
         raise HTTPException(status_code=409, detail="Only active rules can be retired")
     if body.effective_end_date < rule.effective_start_date:
         raise HTTPException(status_code=422, detail="End date is before the rule's start")

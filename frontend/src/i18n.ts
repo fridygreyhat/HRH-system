@@ -55,10 +55,10 @@ const DICT = {
   },
   estimateTitle: { en: 'Estimated payout', sw: 'Makadirio ya malipo' },
   estimateNote: {
-    en: 'Estimate from approved rates — not yet approved. The amount paid is set when your claim is approved.',
-    sw: 'Makadirio kwa viwango vilivyoidhinishwa — bado hayajaidhinishwa. Kiasi halisi huwekwa dai lako linapoidhinishwa.',
+    en: 'Estimate from configured rates. This is not a payment approval; the amount paid is set when your claim is approved.',
+    sw: 'Makadirio kwa viwango vilivyowekwa. Haya si idhini ya malipo; kiasi halisi huwekwa dai lako linapoidhinishwa.',
   },
-  estimateNone: { en: 'No approved rates apply to this work log yet.', sw: 'Bado hakuna viwango vilivyoidhinishwa kwa kumbukumbu hii.' },
+  estimateNone: { en: 'No configured rates apply to this work log yet.', sw: 'Bado hakuna viwango vilivyowekwa kwa kumbukumbu hii.' },
   gpsHint: { en: 'Location is only used for review and never rejects your work automatically.', sw: 'Mahali panatumika kwa mapitio tu na hakukatai kazi yako moja kwa moja.' },
   calendar: { en: 'Days in this period', sw: 'Siku za kipindi hiki' },
   calendarHint: { en: 'Tap a day to record or change your work. Future days are locked.', sw: 'Gusa siku kurekodi au kubadilisha kazi yako. Siku zijazo zimefungwa.' },

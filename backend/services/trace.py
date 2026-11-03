@@ -1,6 +1,6 @@
 """Claim lineage: from a payment back to the exact daily work and approvals that produced it.
 
-Claim → component → approved rate rule → the daily entries (and measure values) that supplied its units →
+Claim → component → captured rate rule → the daily entries (and measure values) that supplied its units →
 evidence and location → the work-log version the provider confirmed → every approval and payment step.
 Each component reports whether its traced daily values add up to the units that were paid, and whether
 they match the frozen version the provider confirmed by SMS code.
@@ -31,6 +31,7 @@ from ..models import (
     WorkLogVersion,
 )
 from .forms import cadre_fields, entries_with_measures
+from .rate_rules import rate_rule_out
 from .scope import can_see_gps
 from .worklog_workflow import period_label
 
@@ -115,7 +116,7 @@ def trace_claim(db: Session, current: CurrentUser, claim: PaymentClaim) -> dict:
             "measure_label_sw": field.label_sw if field else None,
             "basis": basis,
             "rate_rule": {
-                **to_dict(rule, exclude=("created_at",)),
+                **rate_rule_out(rule, exclude=("created_at",)),
                 "created_by_name": names.get(rule.created_by),
                 "approved_by_name": names.get(rule.approved_by),
             } if rule else None,

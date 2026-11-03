@@ -69,7 +69,7 @@ def options(period_id: Optional[int] = None, db: Session = Depends(get_db),
     for category in categories:
         try:
             fields = cc.unit_fields([{"unit_type": r.unit_type, "measure_key": r.measure_key}
-                                     for r in cc.approved_rules(db, category, staff, period, assignment)])
+                                     for r in cc.active_rules(db, category, staff, period, assignment)])
             error = None
         except HTTPException as exc:
             fields, error = [], exc.detail

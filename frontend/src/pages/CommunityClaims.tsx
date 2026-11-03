@@ -130,7 +130,7 @@ export function CommunityClaims() {
             <span className="community-step">01 / PREPARE</span>
             <div>
               <h2 id="community-form-title">{editing ? `Edit draft #${editing.id}` : 'Prepare a period claim'}</h2>
-              <p className="muted small">Enter period totals priced from approved community rates. No regional budget allocation is required, and daily evidence is not part of this claim type.</p>
+              <p className="muted small">Enter period totals priced from configured community rates. No regional budget allocation is required, and daily evidence is not part of this claim type.</p>
             </div>
           </div>
           <Alert>{options.error || previewAction.error || saveAction.error}</Alert>
@@ -164,7 +164,7 @@ export function CommunityClaims() {
               )}
             </div>
             {periodId && !options.loading && categories.length === 0 && (
-              <div className="community-config-state"><strong>No community categories are configured for this period.</strong><p>Ask your programme administrator to configure the eligible community categories and approved rates.</p></div>
+              <div className="community-config-state"><strong>No community categories are configured for this period.</strong><p>Ask your programme administrator to configure the eligible community categories and rates.</p></div>
             )}
             {selectedCategory?.configuration_error && <Alert kind="warn">{selectedCategory.configuration_error}</Alert>}
             {(editing || selectedCategory) && (

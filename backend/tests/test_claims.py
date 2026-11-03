@@ -19,23 +19,20 @@ def _batch_for(api, user, route, claim_id):
     return next(b for b in batches if claim_id in [c["id"] for c in api.get(f"/batches/{b['id']}", user)["claims"]])
 
 
-# 8. Measures are never money without an active, approved rule
-def test_no_payment_without_active_approved_rule(api, period, db):
+# 8. Measures are never money without an active rate.
+def test_no_payment_without_active_rule(api, period, db):
     log = approved_log(api, "clerk1", period)
     cat = api.post("/admin/claim-categories", "fhifin1", {
         "name": "TEST data activity", "route_id": 1, "funding_source_id": 1, "payor_org_id": 1, "budget_owner": "PAYOR",
         "origin_channel": "FACILITY", "requires_work_log": True, "is_active": True})
     api.post("/budgets/lines", "fhifin1", {"code": "T-DATA", "name": "T", "organization_id": 1, "category_id": cat["id"], "period_id": period["id"], "allocated_amount": 100000})
     preview = api.post("/claims/preview", "fhifin1", {"work_log_id": log["id"], "category_id": cat["id"]})
-    assert preview["amount"] == 0 and any("No active approved rate rule" in e for e in preview["exceptions"])
+    assert preview["amount"] == 0 and any("No active rate rule" in e for e in preview["exceptions"])
 
     rule = api.post("/admin/rate-rules", "fhifin1", {"category_id": cat["id"], "cadre_id": 2, "component_name": "Per HTS client", "unit_type": "PER_UNIT",
                                                      "measure_key": "hts_clients_registered", "rate_value": 100, "effective_start_date": "2020-01-01"})
+    assert rule["status"] == "ACTIVE"
     claim = api.post("/claims", "fhifin1", {"work_log_id": log["id"], "category_id": cat["id"]})
-    assert claim["status"] == "VALIDATION_NEEDED" and claim["amount"] == 0  # pending rule is not used
-    api.post(f"/admin/rate-rules/{rule['id']}/approve", "fhifin2", expect=403)  # finance cannot approve rates
-    api.post(f"/admin/rate-rules/{rule['id']}/approve", "rpm1")
-    claim = api.post(f"/claims/{claim['id']}/actions/revalidate", "fhifin1")
     assert claim["status"] == "DRAFT" and claim["amount"] == 2400  # 24 HTS clients x 100
     assert claim["components"][0]["units"] == 24
 

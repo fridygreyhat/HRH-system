@@ -130,12 +130,13 @@ def resolve(
 
 
 def calculate(db, category, staff, period, assignment, work_log, declared_units) -> tuple[list[dict], list[str]]:
+    from .rate_rules import USABLE_RATE_STATUSES
     region_id = assignment.region_id if assignment else None
     rules = (
         db.query(RateRule)
         .filter(
             RateRule.category_id == category.id,
-            RateRule.status == "ACTIVE",
+            RateRule.status.in_(USABLE_RATE_STATUSES),
             or_(RateRule.cadre_id.is_(None), RateRule.cadre_id == staff.cadre_id),
             or_(RateRule.region_id.is_(None), RateRule.region_id == region_id),
             RateRule.effective_start_date <= period.end_date,
@@ -144,7 +145,7 @@ def calculate(db, category, staff, period, assignment, work_log, declared_units)
         .all()
     )
     if not rules:
-        return [], [f"No active approved rate rule for '{category.name}' matching this cadre, region and period"]
+        return [], [f"No active rate rule for '{category.name}' matching this cadre, region and period"]
 
     best: dict[str, RateRule] = {}
     for rule in rules:
@@ -181,7 +182,7 @@ def calculate(db, category, staff, period, assignment, work_log, declared_units)
 
 
 def estimate_for_work_log(db: Session, log: WorkLog) -> dict:
-    """What the log would earn under today's active, approved rate rules. Only a claim sets the amount actually paid."""
+    """What the log would earn under active rate rules. Only a claim sets the amount actually paid."""
     staff = db.get(Staff, log.staff_id)
     period = db.get(PayPeriod, log.period_id)
     assignment = db.get(StaffAssignment, log.assignment_id) if log.assignment_id else None

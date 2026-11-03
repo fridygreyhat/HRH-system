@@ -373,7 +373,7 @@ export function CsoPortal() {
 
       {show('routec') && (
         <Section title="Community claims needing attention">
-          <p className="notice notice-info small">Direct Route C claims use approved community rates and are approved by assigned CSO Finance after community verification, then paid externally and recorded here with proof. No regional budget allocation or payroll export batch is required.</p>
+          <p className="notice notice-info small">Direct Route C claims use configured community rates and are approved by assigned CSO Finance after community verification, then paid externally and recorded here with proof. No regional budget allocation or payroll export batch is required.</p>
           <AsyncState data={claims.data} error={claims.error} loading={claims.loading}>
             {() =>
               routeCCount ? (

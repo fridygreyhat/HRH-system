@@ -57,7 +57,7 @@ class ClaimCategory(Base):
 
 
 class RateRule(Base):
-    """Effective-dated, approved rate. Only ACTIVE rules are ever used in a calculation."""
+    """Effective-dated rate, active on save. Claim components retain historical versions."""
 
     __tablename__ = "rate_rules"
     __table_args__ = (
@@ -78,7 +78,7 @@ class RateRule(Base):
     cap_amount = Column(Numeric(15, 2))
     effective_start_date = Column(Date, nullable=False)
     effective_end_date = Column(Date)
-    status = Column(String(20), nullable=False, default="PENDING_APPROVAL")
+    status = Column(String(20), nullable=False, default="ACTIVE")
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     approved_by = Column(Integer, ForeignKey("users.id"))
     approved_at = Column(DateTime(timezone=True))

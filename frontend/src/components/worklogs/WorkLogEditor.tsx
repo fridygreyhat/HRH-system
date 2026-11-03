@@ -269,7 +269,7 @@ function SubmitPanel({ log, onSubmitted }: { log: WorkLogDetail; onSubmitted: (l
   );
 }
 
-/** What the log would earn under approved rates; clearly not an approved amount. */
+/** What the log would earn under configured rates; clearly not an approved amount. */
 function PayoutEstimate({ logId, version }: { logId: number; version: string }) {
   const { t } = useAuth();
   const { data } = useApi<PayoutEstimateData>(`/worklogs/${logId}/estimate?v=${encodeURIComponent(version)}`);

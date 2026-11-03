@@ -12,6 +12,7 @@ from sqlalchemy import or_
 from ..core.roles import COMMUNITY_VERIFIER, CSO_FINANCE, PROVIDER, TECHNICAL_OFFICER
 from ..models import ClaimCategory, ClaimComponent, PaymentClaim, PaymentRoute, PayPeriod, RateRule, Staff, StaffAssignment, utcnow
 from . import budgets, claims as cl, cso_regions
+from .rate_rules import USABLE_RATE_STATUSES
 from .scope import assignment_for_period, assignment_in_role_scope
 from .v22_scope import may_manage
 
@@ -51,17 +52,16 @@ def context(db, current, period_id, category_id=None):
     return staff, period, assignment, category
 
 
-def approved_rules(db, category, staff, period, assignment):
+def active_rules(db, category, staff, period, assignment):
     candidates = db.query(RateRule).filter(
-        RateRule.category_id == category.id, RateRule.status == "ACTIVE",
-        RateRule.approved_by.isnot(None), RateRule.approved_at.isnot(None),
+        RateRule.category_id == category.id, RateRule.status.in_(USABLE_RATE_STATUSES),
         or_(RateRule.cadre_id.is_(None), RateRule.cadre_id == staff.cadre_id),
         or_(RateRule.region_id.is_(None), RateRule.region_id == assignment.region_id),
         RateRule.effective_start_date <= period.start_date,
         or_(RateRule.effective_end_date.is_(None), RateRule.effective_end_date >= period.end_date),
     ).all()
     if not candidates:
-        raise HTTPException(422, "No approved community rates cover this cadre, region and entire pay period")
+        raise HTTPException(422, "No active community rates cover this cadre, region and entire pay period")
     best = {}
     for rule in candidates:
         score = int(rule.cadre_id is not None) + int(rule.region_id is not None)
@@ -71,7 +71,7 @@ def approved_rules(db, category, staff, period, assignment):
         elif score == existing[0]:
             existing[1].append(rule)
     if any(len(matches) != 1 for _, matches in best.values()):
-        raise HTTPException(422, "Ambiguous approved community rates; resolve overlapping rules before creating a claim")
+        raise HTTPException(422, "Ambiguous active community rates; resolve overlapping rules before creating a claim")
     return [matches[0] for _, matches in sorted(best.values(), key=lambda item: item[1][0].component_name)]
 
 
@@ -104,7 +104,7 @@ def calculate(components, declared):
         if component.get("cap_amount") is not None:
             amount = min(amount, Decimal(str(component["cap_amount"])))
         if amount < 0:
-            raise HTTPException(422, "The approved community rate or cap is invalid")
+            raise HTTPException(422, "The configured community rate or cap is invalid")
         priced.append({**component, "units": units, "amount": amount})
         currencies.add(component["currency"])
         total += amount
@@ -122,7 +122,7 @@ def quote(db, current, period_id, category_id, declared):
         "rate_rule_id": rule.id, "component_name": rule.component_name, "unit_type": rule.unit_type,
         "measure_key": rule.measure_key, "rate": rule.rate_value, "cap_amount": rule.cap_amount,
         "currency": rule.currency, "effective_start_date": rule.effective_start_date,
-    } for rule in approved_rules(db, category, staff, period, assignment)]
+    } for rule in active_rules(db, category, staff, period, assignment)]
     components, amount, currency = calculate(components, declared)
     return staff, period, assignment, category, None, components, amount, currency
 

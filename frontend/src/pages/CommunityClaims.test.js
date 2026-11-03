@@ -144,12 +144,12 @@ test('configured category error is shown and prevents preview', () => {
   }
 });
 
-test('community category setup guidance requires approved rates but not budget mapping', () => {
+test('community category setup guidance requires configured rates but not budget mapping', () => {
   mockCategories = [];
   const { container, root } = mount();
   try {
     act(() => Simulate.change(container.querySelectorAll('select')[0], { target: { value: '7' } }));
-    expect(container.textContent).toContain('approved rates');
+    expect(container.textContent).toContain('categories and rates');
     expect(container.textContent).not.toContain('budget mapping');
     expect(container.textContent).not.toContain('budget line');
   } finally {

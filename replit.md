@@ -319,12 +319,25 @@ payment pricing” below for the current policy. Services remains payable.
   submissions. Draft/returned totals are editable only by their provider; period,
   category and captured rates remain fixed. Returning a claim requires a reason
   and fresh verification on resubmission. Cancellation preserves its audit.
-- Direct claims freeze approved rate components at creation, including caps,
+- Direct claims freeze configured rate components at creation, including caps,
   currency and the provider's cadre/region. Later rate retirement/revisions
   must not reprice drafts, corrections, approvals or payments. New pricing needs
-  unambiguous approved rates covering the entire selected period; otherwise
+  unambiguous active rates covering the entire selected period; otherwise
   fail explicitly rather than guessing a mid-period rate. Regional CSO authority
   and the exact allocation are rechecked before commitment/payment.
+
+### Rate-rule maintenance
+
+Finance rate rules are active on save, without proposal, approval or rejection
+steps. Existing pending rate rules are also usable under this policy. FHI360
+Finance, CSO Finance and Super Admin retain create/edit/delete access; RM and
+Oversight retain read access. Work-log, claim and payment approvals are unchanged.
+Unused rates may be permanently deleted. Used rates are retired on deletion;
+editing a used rate creates an active replacement while preserving the original
+source and all existing claim amounts.
+
+**Why:** The user requested removal of confusing pending rate approvals while
+keeping rates editable and deletable, without rewriting financial history.
 - Community payments require proof even if the general proof setting is off.
   Ready v2 claims can upload proof without a legacy batch export. Payment proof
   alone does not mark a claim PAID; its full amount and reference must be recorded.

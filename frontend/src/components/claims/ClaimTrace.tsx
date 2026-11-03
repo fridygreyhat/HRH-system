@@ -198,8 +198,7 @@ export function ClaimTrace({ claimId }: { claimId: number }) {
           {c.rate_rule && (
             <p className="muted small">
               Rate rule #{c.rate_rule.id} ({c.rate_rule.status.toLowerCase()}), effective {dateOnly(c.rate_rule.effective_start_date)}
-              {c.rate_rule.effective_end_date ? ` – ${dateOnly(c.rate_rule.effective_end_date)}` : ''}; proposed by {c.rate_rule.created_by_name || '—'}, approved by{' '}
-              {c.rate_rule.approved_by_name || '—'} {c.rate_rule.approved_at ? `on ${dateOnly(c.rate_rule.approved_at)}` : ''}
+              {c.rate_rule.effective_end_date ? ` – ${dateOnly(c.rate_rule.effective_end_date)}` : ''}; created by {c.rate_rule.created_by_name || '—'}
               {c.rate_rule.cap_amount !== null ? `; capped at ${money(c.rate_rule.cap_amount, t.claim.currency)}` : ''}
             </p>
           )}

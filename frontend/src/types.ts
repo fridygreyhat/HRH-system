@@ -898,7 +898,7 @@ export interface DashboardData {
     | never[];
 }
 
-/** Estimated payout for a work log, from active approved rate rules. Not an approved amount. */
+/** Estimated payout for a work log, from active rate rules. Not an approved amount. */
 export interface PayoutEstimateData {
   lines: { category: string; component: string; units: string | number; rate: string | number; amount: string | number; currency: string }[];
   totals: { currency: string; amount: string | number }[];
