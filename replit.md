@@ -16,6 +16,7 @@ processes when the workflow stops. `npm start` remains available for manual use.
 - PostgreSQL: the workspace's managed `DATABASE_URL`.
 - Authentication: the project's existing password/JWT authentication.
 - Signing secret: `SECRET_KEY`, or the existing `SESSION_SECRET` when unset. At least 32 characters; the server refuses to start otherwise.
+- Staff payment-critical fields: every change, including an administrator's, is a change request decided by a different in-region HRH administrator.
 
 The original backend/frontend directories, Docker setup and application stack
 remain intact. The root npm configuration wraps the existing frontend workspace.

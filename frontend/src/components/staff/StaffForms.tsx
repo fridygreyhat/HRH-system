@@ -281,11 +281,11 @@ export function EditStaffModal({
     if (!result) return;
     const parts: string[] = [];
     if (result.applied) parts.push('Changes saved.');
-    if (result.change_request_id) parts.push(`Change request #${result.change_request_id} submitted for HRH approval.`);
+    if (result.change_request_id) parts.push(`Change request #${result.change_request_id} submitted for approval by another HRH administrator.`);
     onSaved(parts.join(' ') || 'Saved.');
   };
 
-  const lockedNote = csoRequest ? ' (needs HRH approval)' : '';
+  const lockedNote = ' (needs approval)';
 
   return (
     <Modal title={`Edit ${staff.legal_name}`} onClose={onClose}>
@@ -294,12 +294,10 @@ export function EditStaffModal({
           <p>Facility and placement are separate from identity and payment details.</p>
           <button type="button" className="btn btn-secondary btn-sm" onClick={onPlacement}>Change facility / placement</button>
         </div>}
-        {csoRequest && (
-          <div className="notice notice-info">
-            Changes to payment-critical fields — cadre, salary scale, payment method, provider and account, verified phone and status — are not applied
-            directly. They are sent to HRH administrators as a change request for approval. Name and occupation changes are saved immediately.
-          </div>
-        )}
+        <div className="notice notice-info">
+          Changes to payment-critical fields — cadre, salary scale, payment method, provider and account and verified phone — are not applied
+          directly. They become a change request that a different HRH administrator must approve. Name and occupation changes are saved immediately.
+        </div>
         <div className="grid-2">
           <Field label="First name">
             <input value={f.first_name} onChange={set('first_name')} required maxLength={100} />
@@ -332,7 +330,7 @@ export function EditStaffModal({
           <Field label={`Verified phone${lockedNote}`} hint="9–15 digits, optional leading +">
             <input type="tel" value={f.verified_phone} onChange={set('verified_phone')} required pattern={PHONE_PATTERN} />
           </Field>
-          <Field label={`Status${lockedNote}`} hint={csoRequest ? undefined : 'To end employment and close assignments, use “Exit” instead.'}>
+          <Field label="Status" hint={csoRequest ? undefined : 'To end employment and close assignments, use “Exit” instead.'}>
             <select value={f.status} onChange={set('status')}>
               <option value="ACTIVE">Active</option>
               <option value="EXITED">Exited</option>
@@ -356,13 +354,13 @@ export function EditStaffModal({
         {changed.length > 0 && (
           <p className="small muted">
             Changing: {changed.map((k) => humanize(k)).join(', ')}
-            {csoRequest && criticalChanged.length > 0 && ` — ${criticalChanged.map((k) => humanize(k)).join(', ')} will go to HRH for approval`}.
+            {criticalChanged.length > 0 && ` — ${criticalChanged.map((k) => humanize(k)).join(', ')} will go to another HRH administrator for approval`}.
           </p>
         )}
         <Alert>{error}</Alert>
         <FormButtons
           busy={busy}
-          label={csoRequest && criticalChanged.length ? 'Save / request approval' : 'Save changes'}
+          label={criticalChanged.length ? 'Save / request approval' : 'Save changes'}
           busyLabel="Saving…"
           onCancel={onClose}
           disabled={!changed.length || reason.trim().length < 3}

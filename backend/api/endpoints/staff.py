@@ -195,6 +195,11 @@ def change_requests(status: str = "PENDING", db: Session = Depends(get_db), curr
     out = []
     for r in query.order_by(StaffChangeRequest.id.desc()).limit(200):
         staff = db.get(Staff, r.staff_id)
+        if current.has_any(*ADMINS) and r.requested_by != current.id:
+            try:
+                _check_admin_for_staff(db, current, staff)  # regional admins see only their region's requests
+            except HTTPException:
+                continue
         out.append({**to_dict(r), "staff_name": staff.legal_name, "requested_by_name": db.get(User, r.requested_by).full_name})
     return out
 
@@ -325,13 +330,11 @@ def correct_start_date(staff_id: int, body: StartDateCorrection, db: Session = D
 
 @router.patch("/{staff_id}")
 def update_staff(staff_id: int, body: StaffUpdate, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(*ADMINS, CSO_FINANCE))):
-    """HRH admins change staff directly. CSO edits to payment-critical fields become change requests for HRH approval."""
+    """Names and occupation change directly. Payment-critical fields always become a change request that a
+    different HRH admin decides, whoever asks, so no single person can redirect a payment."""
     staff = _get(db, current, staff_id)
     if current.has_any(*ADMINS):
         _check_admin_for_staff(db, current, staff)
-        reg.update_staff(db, current, staff, body.changes, body.reason)
-        db.commit()
-        return {"applied": True, "staff": _summary(db, current, staff)}
     critical = {k: v for k, v in body.changes.items() if k in reg.PAYMENT_CRITICAL_FIELDS}
     direct = {k: v for k, v in body.changes.items() if k not in reg.PAYMENT_CRITICAL_FIELDS}
     if direct:

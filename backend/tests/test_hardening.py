@@ -128,13 +128,46 @@ def test_budget_export_escapes_names(api, db, period):
 
 
 # Audit
-def test_payment_details_are_masked_in_the_audit_log(api, db):
-    from backend.models import AuditEvent
+def test_payment_details_change_only_with_a_second_admin_and_stay_masked(api, db):
+    from backend.models import AuditEvent, Staff
 
-    staff_id = _chw(db).id
-    api.call("PATCH", f"/staff/{staff_id}", "central1", json={"changes": {"payment_account": "1234567890"}, "reason": "Corrected"})
-    event = db.query(AuditEvent).filter_by(entity_type="staff", entity_id=str(staff_id), action="update").order_by(AuditEvent.id.desc()).first()
+    staff = _chw(db)
+    before = staff.payment_account
+    result = api.call("PATCH", f"/staff/{staff.id}", "central1", json={"changes": {"payment_account": "1234567890"}, "reason": "New wallet"})
+    assert result["applied"] is False and result["change_request_id"]
+    db.expire_all()
+    assert db.get(Staff, staff.id).payment_account == before  # nothing changed yet
+    url = f"/staff/change-requests/{result['change_request_id']}/decide"
+    api.post(url, "central1", {"approve": True}, expect=403)  # not by the person who asked
+    assert db.get(Staff, staff.id).payment_account == before
+    api.post(url, "regadmin1", {"approve": True})
+    db.expire_all()
+    assert db.get(Staff, staff.id).payment_account == "1234567890"
+    event = db.query(AuditEvent).filter_by(entity_type="staff", entity_id=str(staff.id), action="update").order_by(AuditEvent.id.desc()).first()
     assert event.after["payment_account"] == "•••7890"
+
+
+def test_admin_edit_saves_the_name_and_requests_the_rest(api, db):
+    from backend.models import Staff
+
+    staff = _chw(db)
+    result = api.call("PATCH", f"/staff/{staff.id}", "central1", json={"changes": {"middle_name": "Split", "salary_scale": "TGS-Z"}, "reason": "Update"})
+    assert result["applied"] is True and result["change_request_id"]
+    db.expire_all()
+    row = db.get(Staff, staff.id)
+    assert row.middle_name == "Split" and row.salary_scale != "TGS-Z"
+
+
+def test_regional_admin_sees_only_change_requests_for_their_region(api, db):
+    from backend.models import Staff, StaffAssignment
+
+    allowed = {row["region_id"] for row in api.get("/auth/me", "regadmin1")["scopes"] if row["region_id"]}
+    outside = db.query(Staff).join(StaffAssignment, StaffAssignment.staff_id == Staff.id).filter(
+        StaffAssignment.end_date.is_(None), StaffAssignment.region_id.notin_(allowed)).first()
+    request = api.call("PATCH", f"/staff/{outside.id}", "central1", json={"changes": {"salary_scale": "TGS-Y"}, "reason": "Elsewhere"})["change_request_id"]
+    assert request in {row["id"] for row in api.get("/staff/change-requests", "central1")}
+    assert request not in {row["id"] for row in api.get("/staff/change-requests", "regadmin1")}
+    api.post(f"/staff/change-requests/{request}/decide", "regadmin1", {"approve": True}, expect=403)
 
 
 # Closed periods

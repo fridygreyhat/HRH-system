@@ -31,7 +31,7 @@ from ..models import (
     utcnow,
 )
 
-# Changing these affects who pays, how much, or where; CSOs may only request them.
+# Changing these affects who pays, how much, or where; everyone requests them and a different HRH admin decides.
 PAYMENT_CRITICAL_FIELDS = {"cadre_id", "salary_scale", "payment_method", "payment_provider", "payment_account", "verified_phone"}
 PHONE_PATTERN = re.compile(r"^\+?\d{9,15}$")
 

@@ -145,6 +145,8 @@ frontend/          React + TypeScript (Vite), built and served by nginx (nginx.c
 - Set `SECRET_KEY` (32+ random bytes), `POSTGRES_PASSWORD`, `ADMIN_PASSWORD` (12+ characters), `CORS_ORIGINS`, and keep
   `EXPOSE_DEV_OTP=false`. The system refuses to start without a real `SECRET_KEY`, and Docker refuses to start without the others.
 - Interactive API docs are off unless `ENABLE_API_DOCS=true`.
+- Create at least two HRH administrator accounts: a staff member's cadre, salary scale, phone and payment details only
+  change when a different administrator approves the request.
 - Configure an SMS gateway (`SMS_GATEWAY_TYPE=twilio` plus credentials, or add a local provider in
   `services/sms_gateway.py`).
 - Serve behind TLS. Back up Postgres and the `uploads` volume, which holds payment proofs.
