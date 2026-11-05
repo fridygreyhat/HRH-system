@@ -35,7 +35,7 @@ def verify_password(password: str, hashed: str) -> bool:
 
 
 # Endpoints a user with a temporary password may still call.
-PASSWORD_CHANGE_ALLOWED_PATHS = {"/auth/me", "/auth/change-password"}
+PASSWORD_CHANGE_ALLOWED_PATHS = {"/auth/me", "/auth/change-password", "/auth/logout"}
 # Verified against when the username does not exist, so response time does not reveal valid usernames.
 DUMMY_HASH = bcrypt.hashpw(b"not-a-real-password", bcrypt.gensalt()).decode()
 
@@ -46,7 +46,8 @@ def password_version(user: User) -> int:
 
 def create_access_token(user: User) -> str:
     now = datetime.now(timezone.utc)
-    claims = {"sub": str(user.id), "iat": now, "exp": now + timedelta(minutes=config.ACCESS_TOKEN_EXPIRE_MINUTES), "pwv": password_version(user)}
+    claims = {"sub": str(user.id), "iat": now, "exp": now + timedelta(minutes=config.ACCESS_TOKEN_EXPIRE_MINUTES),
+              "pwv": password_version(user), "sv": user.session_version}
     return jwt.encode(claims, config.SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -118,8 +119,8 @@ def get_current_user(request: Request, token: str = Depends(oauth2_scheme), db: 
     except (jwt.PyJWTError, KeyError, ValueError):
         raise unauthorized
     user = db.get(User, user_id)
-    if not user or not user.is_active or payload.get("pwv", 0) != password_version(user):
-        raise unauthorized  # deactivated, or the password changed since this token was issued
+    if not user or not user.is_active or payload.get("pwv", 0) != password_version(user) or payload.get("sv") != user.session_version:
+        raise unauthorized  # deactivated, signed out, or the password changed since this token was issued
     # Mounted deployments add /api to the URL, but these are API-relative routes.
     api_path = request.scope["path"].removeprefix(request.scope.get("root_path", ""))
     if user.must_change_password and api_path not in PASSWORD_CHANGE_ALLOWED_PATHS:

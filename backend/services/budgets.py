@@ -56,7 +56,7 @@ def find_line(db: Session, category_id: int, period_id: int, organization_id: in
             BudgetLine.organization_id == organization_id,
             BudgetLine.region_id == region_id if strict_region else or_(BudgetLine.region_id.is_(None), BudgetLine.region_id == region_id),
         )
-        .order_by(BudgetLine.region_id.is_(None))
+        .order_by(BudgetLine.region_id.is_(None), BudgetLine.id)
     )
     if strict_region:
         rows = query.limit(2).all()

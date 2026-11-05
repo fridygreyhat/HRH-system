@@ -25,6 +25,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLang] = useState<Lang>('sw');
 
   const logout = useCallback(() => {
+    // End the session on the server too, so the token stops working even if a copy remains on this device.
+    if (getToken()) api.post('/auth/logout').catch(() => undefined);
     setToken(null);
     setMe(null);
   }, []);

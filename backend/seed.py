@@ -153,7 +153,9 @@ def seed(db: Session) -> None:
             _get_or_create(db, SMSTemplate, event_name=event, language=lang, version=1, defaults={"template_text": meta[lang], "is_active": True})
     _seed_locations(db)
     _get_or_create(db, Organization, name="FHI360", defaults={"type": "FHI360", "code": "FHI360"})
-    # The bootstrap password is configuration (and its default is public), so it must be replaced at first sign-in.
+    if not db.query(User).filter(User.username == config.ADMIN_USERNAME).first() and (len(config.ADMIN_PASSWORD) < 12 or config.ADMIN_PASSWORD == "admin12345"):
+        raise RuntimeError("Set ADMIN_PASSWORD (12+ characters, not the published default) to create the first administrator")
+    # The bootstrap password is configuration, so it must be replaced at first sign-in.
     _user(db, config.ADMIN_USERNAME, "System Administrator", config.ADMIN_PHONE, [SYSTEM_ADMIN, SUPER_ADMIN], config.ADMIN_PASSWORD, must_change_password=True)
     db.commit()
 

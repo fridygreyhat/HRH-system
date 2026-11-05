@@ -32,12 +32,19 @@ on phones, and a dashboard with charts (each chart has a table view).
 On start the backend runs `alembic upgrade head` and the idempotent seed (`python -m backend.seed`).
 Tests create and drop their own `hrh_test` database.
 
+### Run without Docker
+
+Needs [uv](https://docs.astral.sh/uv/), Node 20.19+ and a local PostgreSQL with an `hrh_db` database. Copy `.env.example` to
+`.env`, fill it in and set `DATABASE_URL`, then run `scripts/start_local.sh`. It installs what is missing into `.venv` and
+`node_modules`, builds the web app, applies migrations and the seed, and serves everything on http://localhost:5000.
+Press Ctrl+C to stop.
+
 ### First-time setup
 
 A fresh system contains only base configuration: roles, sections, the three cadre forms, payment routes A/B/C,
 SMS templates, every Tanzanian region, district and ward (see [backend/data](backend/data/README.md)), the FHI360
 organization, and one system administrator (`ADMIN_USERNAME` / `ADMIN_PASSWORD`,
-`admin` / `admin12345` unless you set them; the first sign-in forces a new password). There are no sample users, places, rates or
+both set in `.env`; the first sign-in forces a new password). There are no sample users, places, rates or
 budgets. Set the system up in this order:
 
 1. **System administrator → Administration → Users:** create the central administrator, finance, RPM, technical
@@ -135,7 +142,9 @@ frontend/          React + TypeScript (Vite), built and served by nginx (nginx.c
 ## Production checklist
 
 - Copy `.env.example` to `.env` and fill it in; `docker compose` reads it automatically and it is never committed.
-- Set `SECRET_KEY` (32+ random bytes), `ADMIN_PASSWORD`, `CORS_ORIGINS`, and keep `EXPOSE_DEV_OTP=false`.
+- Set `SECRET_KEY` (32+ random bytes), `POSTGRES_PASSWORD`, `ADMIN_PASSWORD` (12+ characters), `CORS_ORIGINS`, and keep
+  `EXPOSE_DEV_OTP=false`. The system refuses to start without a real `SECRET_KEY`, and Docker refuses to start without the others.
+- Interactive API docs are off unless `ENABLE_API_DOCS=true`.
 - Configure an SMS gateway (`SMS_GATEWAY_TYPE=twilio` plus credentials, or add a local provider in
   `services/sms_gateway.py`).
 - Serve behind TLS. Back up Postgres and the `uploads` volume, which holds payment proofs.

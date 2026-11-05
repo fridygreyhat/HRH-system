@@ -2,7 +2,7 @@
 from datetime import date
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, create_model
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import IntegrityError
@@ -86,8 +86,11 @@ def _schema(model) -> type[BaseModel]:
     return create_model(f"{model.__name__}In", **fields)
 
 
-def _crud(path: str, model, write_roles: tuple[str, ...], order_by=None, pk="id") -> None:
-    """List/create/update for configuration tables; any signed-in user reads, `write_roles` change."""
+def _crud(path: str, model, write_roles: tuple[str, ...], order_by=None, pk="id", normalize=None) -> None:
+    """List/create/update for configuration tables; any signed-in user reads, `write_roles` change.
+
+    `normalize(item)` may tidy a submitted item before it is saved.
+    """
     schema = _schema(model)
     order = order_by if order_by is not None else getattr(model, pk)
 
@@ -97,6 +100,8 @@ def _crud(path: str, model, write_roles: tuple[str, ...], order_by=None, pk="id"
 
     @router.post(f"/{path}", status_code=201, name=f"create_{path}")
     def create_item(item: schema, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(*write_roles))):  # type: ignore[valid-type]
+        if normalize:
+            normalize(item)
         row = model(**item.model_dump())
         db.add(row)
         try:
@@ -110,9 +115,13 @@ def _crud(path: str, model, write_roles: tuple[str, ...], order_by=None, pk="id"
 
     @router.put(f"/{path}/{{item_id}}", name=f"update_{path}")
     def update_item(item_id: str, item: schema, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(*write_roles))):  # type: ignore[valid-type]
+        if pk == "id" and not item_id.isdecimal():
+            raise HTTPException(status_code=404, detail="Not found")
         row = db.get(model, int(item_id) if pk == "id" else item_id)
         if not row:
             raise HTTPException(status_code=404, detail="Not found")
+        if normalize:
+            normalize(item)
         before = to_dict(row)
         for key, value in item.model_dump().items():
             if key != pk:
@@ -120,6 +129,11 @@ def _crud(path: str, model, write_roles: tuple[str, ...], order_by=None, pk="id"
         system_audit.record(db, current, path, item_id, "update", before=before, after=item.model_dump())
         _commit(db)
         return to_dict(row)
+
+
+def _normalize_form_type(item) -> None:
+    """Form types are matched exactly, so `salary` would quietly be treated as an unknown type."""
+    item.form_type = (item.form_type or "").strip().upper() or None
 
 
 _crud("organizations", Organization, (CENTRAL_ADMIN,), Organization.name)
@@ -162,7 +176,7 @@ _crud("sections", Section, (CENTRAL_ADMIN,), Section.code, pk="code")
 from .pay_periods import router as pay_periods_router
 router.include_router(pay_periods_router)
 _crud("funding-sources", FundingSource, (FHI360_FINANCE,), FundingSource.name)
-_crud("claim-categories", ClaimCategory, (FHI360_FINANCE,), ClaimCategory.name)
+_crud("claim-categories", ClaimCategory, (FHI360_FINANCE,), ClaimCategory.name, normalize=_normalize_form_type)
 
 
 @router.get("/payment-routes")
@@ -440,7 +454,7 @@ def reset_non_super_admin_passwords(body: BulkPasswordReset, db: Session = Depen
 
 
 @router.get("/login-failures")
-def login_failures(username: Optional[str] = None, limit: int = 100, db: Session = Depends(get_db),
+def login_failures(username: Optional[str] = None, limit: int = Query(100, ge=1, le=1000), db: Session = Depends(get_db),
                    _: CurrentUser = Depends(require_roles(SUPER_ADMIN))):
     query = db.query(AuditEvent).filter(AuditEvent.entity_type == "auth",
                                        AuditEvent.action.in_(("login_failed", "login_blocked")))
@@ -466,7 +480,7 @@ def login_failures(username: Optional[str] = None, limit: int = 100, db: Session
 def _user_out(db: Session, user: User) -> dict:
     cu = load_current_user(db, user)
     return {
-        **to_dict(user, exclude=("hashed_password",)),
+        **to_dict(user, exclude=("hashed_password", "session_version")),
         "is_locked": bool(user.locked_until and user.locked_until > utcnow()),
         "roles": sorted(get_user_roles(db, user.id)),  # as granted; a super admin's other roles are implied
         "scopes": [to_dict(s) for s in cu.scopes],
@@ -645,7 +659,7 @@ def update_user(user_id: int, body: UserUpdate, db: Session = Depends(get_db), c
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     _guard_super_admin(db, current, user)
-    before = to_dict(user, exclude=("hashed_password",))
+    before = to_dict(user, exclude=("hashed_password", "session_version"))
     for key, value in body.model_dump().items():
         setattr(user, key, value)
     system_audit.record(db, current, "user", user.id, "update", before=before, after=body.model_dump())
@@ -788,7 +802,7 @@ def publish_template(body: TemplateIn, db: Session = Depends(get_db), current: C
 
 
 @router.get("/sms-outbox")
-def sms_outbox(status: Optional[str] = None, limit: int = 200, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(SYSTEM_ADMIN, OVERSIGHT))):
+def sms_outbox(status: Optional[str] = None, limit: int = Query(200, ge=1, le=1000), db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(SYSTEM_ADMIN, OVERSIGHT))):
     query = db.query(SMSOutbox)
     if status:
         query = query.filter(SMSOutbox.status == status)
@@ -798,7 +812,7 @@ def sms_outbox(status: Optional[str] = None, limit: int = 200, db: Session = Dep
 
 
 @router.get("/audit-events")
-def audit_events(entity_type: Optional[str] = None, limit: int = 200, db: Session = Depends(get_db), _: CurrentUser = Depends(require_roles(*AUDIT_ADMIN_ROLES))):
+def audit_events(entity_type: Optional[str] = None, limit: int = Query(200, ge=1, le=1000), db: Session = Depends(get_db), _: CurrentUser = Depends(require_roles(*AUDIT_ADMIN_ROLES))):
     query = db.query(AuditEvent, User.full_name).outerjoin(User, User.id == AuditEvent.actor_id)
     if entity_type:
         query = query.filter(AuditEvent.entity_type == entity_type)

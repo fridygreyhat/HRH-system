@@ -142,6 +142,9 @@ def claim_visibility(current: CurrentUser):
     )
     if FHI360_FINANCE in current.roles:
         conditions.append(and_(PaymentClaim.workflow_version == 1, PaymentClaim.route_code.in_(("A", "B"))))
+        # Older claims that are not routable yet (no route, or Route C without a CSO): no CSO can act, so FHI360 Finance resolves them.
+        conditions.append(and_(PaymentClaim.workflow_version == 1, or_(
+            PaymentClaim.route_code.is_(None), and_(PaymentClaim.route_code == "C", PaymentClaim.executor_org_id.is_(None)))))
         conditions.append(and_(PaymentClaim.workflow_version >= 2, PaymentClaim.work_type == "SERVICES",
                                record_condition(current, PaymentClaim.assignment_id, claim_cadre)))
         conditions.append(and_(PaymentClaim.route_code.is_(None), PaymentClaim.created_by == current.id))

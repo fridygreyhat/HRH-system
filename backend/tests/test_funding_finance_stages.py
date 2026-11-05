@@ -7,6 +7,7 @@ from alembic.operations import Operations
 
 from backend.models import BudgetLine, BudgetTransaction, ClaimCategory, FundingSource, PaymentClaim
 from .conftest import category_id
+from .monthly_budget_setup import ensure_monthly_budgets
 from .test_finance_missing_rates import unpriced_log, rate_for
 from .test_v22_finance import v22
 
@@ -37,7 +38,7 @@ def route_work(api, v22, work, expect=None, **extra):
     return api.post("/finance/channel", v22["finance"], {
         "work_log_id": work.get("id", work.get("work_log_id")), "target_payor_id": work["finance_snapshot"]["payor_org_id"],
         "expected_review_token": work["finance_snapshot"]["review_token"],
-        "review_confirmed": True, "review_type": "SERVICES",
+        "review_confirmed": True, "review_type": "SERVICES", "central_reviewer_id": v22["central_reviewer_id"],
         **extra,
     }, expect=expect)
 
@@ -125,6 +126,7 @@ def test_review_source_change_requires_explicit_rereview_and_rejects_stale_scree
     # A second reviewer has corrected the setup; an older screen cannot route it.
     refused = route_work(api, v22, reviewed, expect=409)
     assert "Another Finance review" in refused["detail"]
+    ensure_monthly_budgets(db, rereviewed["id"], v22["finance"])
     routed = route_work(api, v22, rereviewed)
     assert routed["status"] == "ROUTED_FHI360"
     db.expire_all()
@@ -143,6 +145,7 @@ def test_unused_budget_currency_does_not_block_fixed_daily_services(api, db, per
     line = db.query(BudgetLine).filter_by(category_id=category.id, period_id=period["id"]).one()
     line.currency = "USD"
     db.commit()
+    ensure_monthly_budgets(db, reviewed["id"], v22["finance"])
     assert route_work(api, v22, reviewed)["status"] == "ROUTED_FHI360"
     assert reviewed["finance_snapshot"]["currency"] == "TZS"
 
@@ -164,6 +167,7 @@ def test_old_uncommitted_services_hold_can_be_reviewed_without_a_budget(api, db,
     held = api.get(f"/worklogs/{work['id']}", v22["finance"])
     assert "finance_review" in held["available_actions"]
     reviewed = review_work(api, v22, held, category, source)
+    ensure_monthly_budgets(db, reviewed["id"], v22["finance"])
     released = route_work(api, v22, reviewed)
     assert released["status"] == "ROUTED_FHI360" and released["claim_id"] == claim_id
     db.expire_all()

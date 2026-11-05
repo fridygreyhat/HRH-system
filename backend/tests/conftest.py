@@ -17,9 +17,11 @@ BASE_URL = os.environ.get("DATABASE_URL", "postgresql+psycopg2://hrh_user:hrh_pa
 TEST_DB = os.environ.get("HRH_TEST_DATABASE", "hrh_test")
 os.environ["DATABASE_URL"] = BASE_URL.rsplit("/", 1)[0] + "/" + TEST_DB
 # Tests read SMS codes from API responses (mock gateway only); sample data comes from tests/demo_data.py.
-os.environ.update({"SMS_GATEWAY_TYPE": "mock", "EXPOSE_DEV_OTP": "true", "UPLOAD_DIR": "/tmp/hrh-test-uploads"})
+os.environ.update({"SMS_GATEWAY_TYPE": "mock", "EXPOSE_DEV_OTP": "true", "UPLOAD_DIR": "/tmp/hrh-test-uploads", "ENABLE_API_DOCS": "true"})
+os.environ.setdefault("SECRET_KEY", "test-only-signing-key-never-used-outside-the-test-suite")
 
 PASSWORD = "Demo@12345"
+ADMIN_PASSWORD = "Admin-test-12345"
 
 
 def _admin_dsn() -> str:
@@ -43,7 +45,7 @@ def client():
 
     from backend.core import config as app_config
 
-    with patch.object(app_config, "ADMIN_PASSWORD", "admin12345"):
+    with patch.object(app_config, "ADMIN_PASSWORD", ADMIN_PASSWORD):
         seed_main()
     from backend.db.session import SessionLocal
     from backend.tests.demo_data import seed_test_data
@@ -84,7 +86,7 @@ class Api:
 
     def token(self, user: str) -> str:
         if user not in self.tokens:
-            password = "admin12345" if user == "admin" else PASSWORD
+            password = ADMIN_PASSWORD if user == "admin" else PASSWORD
             r = self.client.post("/auth/login", data={"username": user, "password": password})
             assert r.status_code == 200, r.text
             self.tokens[user] = r.json()["access_token"]

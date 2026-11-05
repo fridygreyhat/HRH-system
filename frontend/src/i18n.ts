@@ -72,6 +72,10 @@ const DICT = {
   submitting: { en: 'Submitting…', sw: 'Inawasilisha…' },
   saving: { en: 'Saving…', sw: 'Inahifadhi…' },
   saved: { en: 'Saved', sw: 'Imehifadhiwa' },
+  periodClosedDraft: {
+    en: 'This pay period is closed, so this draft can no longer be edited. You can still submit it.',
+    sw: 'Kipindi hiki cha malipo kimefungwa, kwa hiyo rasimu hii haiwezi kuhaririwa tena. Bado unaweza kuiwasilisha.',
+  },
   locked: { en: 'This work log is locked while it is being reviewed.', sw: 'Kumbukumbu hii imefungwa wakati inapitiwa.' },
   returnedTitle: { en: 'Returned for correction', sw: 'Imerudishwa kwa marekebisho' },
   reviewerSays: { en: 'Reviewer comment', sw: 'Maoni ya mhakiki' },

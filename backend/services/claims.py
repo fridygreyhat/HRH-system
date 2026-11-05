@@ -204,7 +204,11 @@ def _units(db, rule: RateRule, work_log, declared, form_keys, exceptions) -> Opt
         if not declared or key not in declared:
             exceptions.append(f"Declared units for '{key}' are required for '{rule.component_name}'")
             return None
-        return Decimal(str(declared[key]))
+        units = Decimal(str(declared[key]))
+        if units < 0:  # claims prepared before the API refused negative units
+            exceptions.append(f"Declared units for '{key}' cannot be negative")
+            return None
+        return units
     if rule.unit_type == "PER_DAY":
         return Decimal(db.query(func.count(WorkLogEntry.id)).filter(WorkLogEntry.work_log_id == work_log.id).scalar())
     if rule.unit_type == "PER_HOUR":
@@ -314,8 +318,11 @@ def channel_scope_ok(current: CurrentUser, claim: PaymentClaim) -> bool:
 def finance_role_ok(current: CurrentUser, claim: PaymentClaim) -> Optional[str]:
     """The route's finance role; CSO users must belong to the claim's CSO."""
     role = finance_role(claim)
-    if role is None:
-        return None if claim.created_by == current.id and current.has_any(FHI360_FINANCE, CSO_FINANCE) else "Route not configured"
+    if role is None or (claim.workflow_version < 2 and role == CSO_FINANCE and claim.executor_org_id is None):
+        # No route or no CSO yet, so no CSO can act: FHI360 Finance (or whoever prepared it) resolves or cancels it.
+        if FHI360_FINANCE in current.roles or (claim.created_by == current.id and CSO_FINANCE in current.roles):
+            return None
+        return "Route not configured"
     if role not in current.roles:
         return f"Requires the {role} role"
     if role == CSO_FINANCE and not user_in_executor_org(current, claim):

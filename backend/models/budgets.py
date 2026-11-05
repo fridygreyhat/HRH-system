@@ -1,5 +1,5 @@
 """Budget lines and an append-only ledger. FHI360 lines mirror the HQ tracker; CSO lines are tracked here."""
-from sqlalchemy import BigInteger, CheckConstraint, Column, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 
 from .base import Base, created_at, updated_at, utcnow
@@ -9,6 +9,8 @@ class BudgetLine(Base):
     __tablename__ = "budget_lines"
     __table_args__ = (
         UniqueConstraint("code", "organization_id", "period_id", "region_id"),
+        # All-region lines have a NULL region, which the constraint above treats as always different.
+        Index("uq_budget_lines_all_regions", "code", "organization_id", "period_id", unique=True, postgresql_where=text("region_id IS NULL")),
         CheckConstraint("source IN ('FHI360_TRACKER', 'CSO')", name="source"),
         CheckConstraint("sync_status IN ('NOT_APPLICABLE', 'UNSYNCED', 'IMPORTED', 'EXPORTED', 'RECONCILED', 'ERROR')", name="sync_status"),
         CheckConstraint("committed_amount >= 0 AND spent_amount >= 0", name="non_negative"),

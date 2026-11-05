@@ -2,7 +2,8 @@
 import pytest
 
 from .conftest import category_id
-from .test_v22_finance import v22, priced_activity, entered_log, to_finance
+from .monthly_budget_setup import ensure_monthly_budgets
+from .test_v22_finance import v22, back_through_technical, priced_activity, entered_log, to_finance
 
 
 def reviewed_log(api, db, period, v22, kind="SERVICES"):
@@ -12,11 +13,12 @@ def reviewed_log(api, db, period, v22, kind="SERVICES"):
     return api.post(f"/worklogs/{pending['id']}/actions/finance_review", v22["finance"], body)
 
 
-def channel_body(log):
+def channel_body(log, v22):
     return {
         "claim_id": next(claim["id"] for claim in log["claims"] if claim["status"] == "PENDING_ROUTING"),
         "target_payor_id": log["finance_snapshot"]["payor_org_id"],
         "review_confirmed": True, "review_type": log["work_type"], "expected_version": log["version"],
+        "central_reviewer_id": v22["central_reviewer_id"],
     }
 
 
@@ -41,7 +43,7 @@ def test_assignment_queue_channel_and_immutable_audit(api, db, period, v22, kind
         assert log["staff_id"] in {row["staff_id"] for row in report["providers"]}
         return
     log = reviewed_log(api, db, period, v22, kind)
-    body = channel_body(log)
+    body = channel_body(log, v22)
     prepared = db.get(PaymentClaim, body["claim_id"])
     assert prepared.status == "PENDING_ROUTING" and prepared.approved_by is None
     assert prepared.budget_line_id is None
@@ -57,8 +59,9 @@ def test_assignment_queue_channel_and_immutable_audit(api, db, period, v22, kind
     assert {row["id"] for row in api.get("/finance/regions", v22["finance"])} == {v22["region_id"]}
     payors = api.get(f"/finance/payors?work_log_id={log['id']}", v22["finance"])
     assert payors["eligible_payors"] == row["eligible_payors"] and payors["routing_exception"] is None
+    ensure_monthly_budgets(db, log["id"], v22["finance"])
     result = api.post("/finance/channel", v22["finance"], body)
-    assert result["status"] == f"ROUTED_{channel}" and result["claim_status"] == "READY"
+    assert result["status"] == f"ROUTED_{channel}" and result["claim_status"] == "PENDING_CENTRAL_REVIEW"
     assert result["payor_id"] == body["target_payor_id"] and result["channel"] == channel
     assert all(row["work_log_id"] != log["id"] for row in api.get("/finance/pending-routing", v22["finance"]))
     db.expire_all()
@@ -89,7 +92,7 @@ def test_wrong_payor_confirmation_and_stale_review_rejected(api, db, period, v22
         assert not log["claims"]
         return
     log = reviewed_log(api, db, period, v22, kind)
-    body = channel_body(log)
+    body = channel_body(log, v22)
     wrong = db.query(Organization).filter(Organization.type == "CSO", Organization.id != body["target_payor_id"]).first()
     assert wrong
     api.post("/finance/channel", v22["finance"], {**body, "target_payor_id": wrong.id}, expect=422)
@@ -109,7 +112,7 @@ def test_wrong_payor_confirmation_and_stale_review_rejected(api, db, period, v22
 def test_cadre_scope_is_enforced_for_queue_choices_and_channel(api, db, period, v22):
     from backend.models import User, UserReviewCadre
     log = reviewed_log(api, db, period, v22)
-    body = channel_body(log)
+    body = channel_body(log, v22)
     api.get("/finance/pending-routing", "tofficer1", expect=403)
     actor = db.query(User).filter_by(username=v22["finance"]).one()
     db.query(UserReviewCadre).filter_by(user_id=actor.id).delete()
@@ -122,7 +125,7 @@ def test_cadre_scope_is_enforced_for_queue_choices_and_channel(api, db, period, 
 def test_return_retires_only_pending_proposal_and_allows_new_review(api, db, period, v22):
     from backend.models import BudgetTransaction, PaymentClaim
     log = reviewed_log(api, db, period, v22)
-    body = channel_body(log)
+    body = channel_body(log, v22)
     returned = api.post(f"/worklogs/{log['id']}/actions/return", v22["finance"],
                         {"review_confirmed": True, "review_type": "SERVICES", "comment": "Check the aggregate totals"})
     db.expire_all()
@@ -131,10 +134,10 @@ def test_return_retires_only_pending_proposal_and_allows_new_review(api, db, per
     assert old.budget_line_id is None
     assert db.query(BudgetTransaction).filter_by(claim_id=old.id).count() == 0
     assert returned["finance_snapshot"] is None
-    pending = to_finance(api, returned)
+    pending = back_through_technical(api, returned)
     reviewed = api.post(f"/worklogs/{log['id']}/actions/finance_review", v22["finance"],
                         {"review_confirmed": True, "review_type": "SERVICES", "category_id": category_id(db, "A")})
-    assert channel_body(reviewed)["claim_id"] != old.id
+    assert channel_body(reviewed, v22)["claim_id"] != old.id
 
 
 def test_only_finance_reviewed_new_records_can_be_channeled(api, db, period, v22, monkeypatch):

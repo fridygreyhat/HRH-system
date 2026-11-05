@@ -2,7 +2,8 @@
 import pytest
 
 from .conftest import category_id
-from .test_v22_finance import v22, priced_activity, entered_log, to_rpm, to_finance, route_log
+from .monthly_budget_setup import ensure_monthly_budgets
+from .test_v22_finance import v22, back_through_technical, priced_activity, entered_log, to_rpm, to_finance, route_log
 
 
 def remove_rpm_cadre_limits(db):
@@ -95,13 +96,14 @@ def test_rpm_claim_is_snapshotted_not_routed_and_reused_by_finance(api, db, peri
     db.expire_all()
     assert line.committed_amount == before
     assert db.query(ClaimComponent).filter_by(claim_id=cid).count() == 1
+    ensure_monthly_budgets(db, log["id"], v22["finance"])
     api.post("/finance/channel", v22["finance"], {
         "claim_id": cid, "target_payor_id": reviewed["finance_snapshot"]["payor_org_id"],
-        "review_confirmed": True, "review_type": "SERVICES",
+        "review_confirmed": True, "review_type": "SERVICES", "central_reviewer_id": v22["central_reviewer_id"],
     })
     db.expire_all()
     assert db.query(PaymentClaim).filter_by(work_log_id=log["id"]).count() == 1
-    assert db.get(PaymentClaim, cid).status == "READY"
+    assert db.get(PaymentClaim, cid).status == "PENDING_CENTRAL_REVIEW"
     assert line.committed_amount == before
 
 
@@ -117,7 +119,7 @@ def test_finance_retires_unreviewed_liability(api, db, period, v22, action):
     assert db.get(PaymentClaim, cid).status == "CANCELLED"
     assert db.get(PaymentClaim, cid).calculation_snapshot
     if action == "return":
-        resubmitted = to_finance(api, result)
+        resubmitted = back_through_technical(api, result)
         live = [c for c in resubmitted["claims"] if c["status"] != "CANCELLED"]
         assert len(live) == 1 and live[0]["id"] != cid
 

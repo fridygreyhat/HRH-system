@@ -164,7 +164,7 @@ export function DayCalendar({
           {num(log.entries.length)} {t('days').toLowerCase()} · {workHours(log.totals.hours)} {t('hours').toLowerCase()}
         </span>
       </div>
-      <p className="muted small">{log.can_edit ? t('calendarHint') : t('locked')}</p>
+      <p className="muted small">{log.can_edit ? t('calendarHint') : log.status === 'DRAFT' && log.period.status === 'CLOSED' ? t('periodClosedDraft') : t('locked')}</p>
       {chwPayroll && <div className="notice notice-info stack">
         <strong>{lang === 'sw' ? 'Jaza daftari la mwezi mzima' : `Complete your monthly ${log.cadre.code === 'DATA_CLERK' ? 'Data Clerk' : log.cadre.code} timesheet`}</strong>
         <p>{lang === 'sw'
@@ -406,7 +406,7 @@ export function WorkLogEditor({ logId, initialDate, initialMonth, onBack }: { lo
 
       <TotalsPanel log={log} lang={lang} title={t('totals')} />
 
-      {log.can_edit && <SubmitPanel log={log} onSubmitted={setData} />}
+      {log.available_actions.includes('submit') && <SubmitPanel log={log} onSubmitted={setData} />}
 
       {log.available_actions.includes('cancel') && (
         <div className="row">

@@ -118,6 +118,11 @@ def _get_log(db: Session, current: CurrentUser, log_id: int, lock: bool = False)
     return log
 
 
+def _closed_draft(db: Session, log: WorkLog) -> bool:
+    """A draft whose pay period has closed: its figures stand. Returned and rejected logs stay correctable."""
+    return log.status == wf.DRAFT and db.get(PayPeriod, log.period_id).status == "CLOSED"
+
+
 def _editable_log(db: Session, current: CurrentUser, log_id: int) -> WorkLog:
     log = _get_log(db, current, log_id, lock=True)
     if current.staff_id != log.staff_id:
@@ -126,6 +131,8 @@ def _editable_log(db: Session, current: CurrentUser, log_id: int) -> WorkLog:
         raise HTTPException(409, "Archived work is read-only. Start a work log in the replacement period.")
     if log.status not in wf.EDITABLE_STATUSES:
         raise HTTPException(status_code=409, detail=f"The work log is locked in status {log.status}. Corrections need a return or reopen.")
+    if _closed_draft(db, log):
+        raise HTTPException(status_code=409, detail="This pay period is closed, so the draft can no longer be edited. You can still submit it, or ask an administrator to reopen the period.")
     return log
 
 
@@ -201,7 +208,7 @@ def _detail(db: Session, current: CurrentUser, log: WorkLog) -> dict:
         "endorsements": [{**to_dict(e), "actor_name": name} for e, name in endorsements],
         "versions": [{"version": v.version, "created_at": v.created_at} for v in db.query(WorkLogVersion).filter(WorkLogVersion.work_log_id == log.id).order_by(WorkLogVersion.version)],
         "available_actions": actions,
-        "can_edit": owner and log.status in wf.EDITABLE_STATUSES and period.status != "ARCHIVED",
+        "can_edit": owner and log.status in wf.EDITABLE_STATUSES and period.status != "ARCHIVED" and not _closed_draft(db, log),
         "awaiting_my_otp": owner and log.status == wf.PENDING_OTP,
         "dev_otp": dev_code(log.id) if owner and log.status == wf.PENDING_OTP else None,
         "claims": [{"id": c.id, "status": c.status, "payment_status": c.payment_status,
@@ -447,7 +454,7 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
                 raise HTTPException(status_code=422, detail=f"{fields[key].label_en} must be Yes or No")
             values[key] = Decimal(int(raw))
         else:
-            if isinstance(raw, bool) or float(raw) != int(raw) or raw < 0 or raw > 10000:
+            if isinstance(raw, bool) or not 0 <= raw <= 10000 or raw != int(raw):  # the range check also refuses NaN and Infinity
                 raise HTTPException(status_code=422, detail=f"{fields[key].label_en} must be a whole number between 0 and 10000")
             values[key] = Decimal(int(raw))
 

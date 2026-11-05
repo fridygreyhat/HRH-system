@@ -51,7 +51,7 @@ def test_submission_deducts_once_blocks_missing_or_short_budget_and_does_not_dou
     db.commit()
     api.post("/finance/channel", v22["finance"], body, expect=409)
     assert api.get(f"/worklogs/{log['id']}", v22["finance"])["status"] == "FINANCE_REVIEWED"
-    assert db.query(MonthlyServiceBudgetCharge).count() == 0
+    assert db.query(MonthlyServiceBudgetCharge).filter_by(claim_id=log["claims"][0]["id"]).count() == 0
     assert upload(api, v22["finance"], v22["region_id"], month, 39999).status_code == 200
     api.post("/finance/channel", v22["finance"], body, expect=409)
     assert upload(api, v22["finance"], v22["region_id"], month, 100000).status_code == 200
@@ -130,8 +130,7 @@ def test_multi_month_claim_deducts_by_dates_and_rolls_back_all_months_on_shortfa
     log, _ = reviewed(api, db, empty_period, v22)
     claim = db.query(PaymentClaim).filter_by(work_log_id=log["id"]).one()
     first_month = empty_period["start_date"][:7]
-    year = int(first_month[:4])
-    later_month = f"{year + 1}-01"
+    later_month = "2099-01"  # test periods share a month counter, so a nearby month may already have a budget
     line = claim.calculation_snapshot["lines"][0]
     claim.calculation_snapshot = {**claim.calculation_snapshot, "lines": [
         {**line, "date": first_month + "-01", "amount": "20000"},

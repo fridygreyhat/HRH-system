@@ -8,11 +8,12 @@ from typing import Optional
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func
+from sqlalchemy.exc import DataError
 from sqlalchemy.orm import Session
 
 from ..core import audit as system_audit
 from ..core.security import CurrentUser
-from ..core.serialize import to_dict
+from ..core.serialize import mask_payment_fields, to_dict
 from ..core.settings import get_setting
 from ..models import (
     Cadre,
@@ -53,7 +54,8 @@ def validate_changes(db: Session, staff: Staff, changes: dict) -> None:
             raise HTTPException(status_code=422, detail=f"{name} cannot be empty")
     if changes.get("payment_method") not in (None, "MOBILE_WALLET", "BANK"):
         raise HTTPException(status_code=422, detail="payment_method must be MOBILE_WALLET or BANK")
-    check_payment_method(db, changes.get("cadre_id", staff.cadre_id), changes.get("payment_method", staff.payment_method))
+    if "cadre_id" in changes or "payment_method" in changes:  # other edits must not be blocked by an older wallet on file
+        check_payment_method(db, changes.get("cadre_id", staff.cadre_id), changes.get("payment_method", staff.payment_method))
 
 
 def check_payment_method(db: Session, cadre_id: Optional[int], method: Optional[str]) -> None:
@@ -69,7 +71,7 @@ def update_staff(db: Session, current: CurrentUser, staff: Staff, changes: dict,
     before = {k: getattr(staff, k) for k in changes}
     for key, value in changes.items():
         setattr(staff, key, value)
-    system_audit.record(db, current, "staff", staff.id, "update", before=before, after=changes, reason=reason)
+    system_audit.record(db, current, "staff", staff.id, "update", before=mask_payment_fields(before), after=mask_payment_fields(changes), reason=reason)
     return staff
 
 
@@ -78,7 +80,7 @@ def request_change(db: Session, current: CurrentUser, staff: Staff, changes: dic
     request = StaffChangeRequest(staff_id=staff.id, changes=jsonable_encoder(changes), reason=reason, requested_by=current.id)
     db.add(request)
     db.flush()
-    system_audit.record(db, current, "staff_change_request", request.id, "create", after=changes, reason=reason)
+    system_audit.record(db, current, "staff_change_request", request.id, "create", after=mask_payment_fields(changes), reason=reason)
     return request
 
 
@@ -186,7 +188,9 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
                 if section and not db.get(Section, section):
                     raise ValueError(f"Unknown section '{section}'")
                 start = date.fromisoformat(row["start_date"].strip())
-                phone = row["phone"].strip()
+                phone = re.sub(r"[\s-]", "", row["phone"])  # rosters often write 0712 345 678
+                if not PHONE_PATTERN.match(phone):
+                    raise ValueError("Phone must be 9–15 digits, optionally starting with +")
                 assignment = {
                     "region_id": region.id,
                     "district_id": district_id,
@@ -201,6 +205,9 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
                     current_row = db.query(StaffAssignment).filter(StaffAssignment.staff_id == staff.id, StaffAssignment.end_date.is_(None)).first()
                     if current_row and all(getattr(current_row, k) == v for k, v in assignment.items()):
                         continue  # unchanged
+                    # A regional admin may only move people who currently work in their own region.
+                    if allowed_region_ids is not None and (current_row is None or current_row.region_id not in allowed_region_ids):
+                        raise ValueError("This phone belongs to a staff member outside your administrative region")
                     rotate(db, current, staff, assignment, start, f"Roster import {filename} line {line_no}")
                     result.updated_count += 1
                 else:
@@ -220,8 +227,10 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
                     db.flush()
                     db.add(StaffAssignment(staff_id=staff.id, start_date=start, created_by=current.id, **assignment))
                     result.created_count += 1
-        except (ValueError, KeyError, HTTPException) as e:
-            detail = e.detail if isinstance(e, HTTPException) else str(e)
+        except DataError:
+            errors.append({"line": line_no, "error": "A value is too long"})
+        except (ValueError, KeyError, AttributeError, HTTPException) as e:
+            detail = e.detail if isinstance(e, HTTPException) else ("A required cell is empty" if isinstance(e, AttributeError) else str(e))
             errors.append({"line": line_no, "error": detail})
     result.error_count = len(errors)
     result.errors = errors

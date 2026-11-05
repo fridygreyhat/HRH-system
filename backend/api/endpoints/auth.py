@@ -65,7 +65,7 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
 def me(current: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
     orgs = current.scope_values("organization_id")
     return {
-        **to_dict(current.user, exclude=("hashed_password", "failed_login_count", "locked_until")),
+        **to_dict(current.user, exclude=("hashed_password", "failed_login_count", "locked_until", "session_version")),
         "roles": sorted(current.roles),
         "staff": {**to_dict(current.staff, exclude=("payment_account",)), "legal_name": current.staff.legal_name} if current.staff else None,
         "cadre": cadre_out(db, db.get(Cadre, current.staff.cadre_id)) if current.staff else None,
@@ -88,8 +88,17 @@ class PasswordChange(BaseModel):
 @router.post("/change-password")
 def change_password(body: PasswordChange, current: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
     """Changes the password, ends every other session and returns a fresh token for this one."""
-    user = current.user
+    user = db.query(User).filter(User.id == current.id).with_for_update().one()
     if not verify_password(body.current_password, user.hashed_password):
+        # Wrong guesses count towards the sign-in lockout; on lockout this session also ends.
+        user.failed_login_count += 1
+        locked = user.failed_login_count >= get_setting(db, "login_max_failures")
+        if locked:
+            user.locked_until = utcnow() + timedelta(minutes=get_setting(db, "login_lockout_minutes"))
+            user.failed_login_count = 0
+            user.session_version += 1
+        system_audit.record(db, current, "auth", user.id, "password_change_failed", after={"locked": locked})
+        db.commit()
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     if body.new_password == body.current_password:
         raise HTTPException(status_code=422, detail="Choose a password different from the current one")
@@ -97,10 +106,19 @@ def change_password(body: PasswordChange, current: CurrentUser = Depends(get_cur
         raise HTTPException(status_code=422, detail="Choose a less guessable password")
     user.hashed_password = hash_password(body.new_password)
     user.must_change_password = False
+    user.failed_login_count = 0
     user.password_changed_at = utcnow()
     system_audit.record(db, current, "auth", user.id, "password_changed")
     db.commit()
     return {"access_token": create_access_token(user), "token_type": "bearer"}
+
+
+@router.post("/logout", status_code=204)
+def logout(current: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Ends this user's sessions on the server, so a token left on a shared device stops working."""
+    current.user.session_version += 1
+    system_audit.record(db, current, "auth", current.id, "logout")
+    db.commit()
 
 
 class LanguageIn(BaseModel):

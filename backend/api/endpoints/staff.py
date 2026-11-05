@@ -12,6 +12,7 @@ from ...core.roles import CENTRAL_ADMIN, CSO_FINANCE, FHI360_FINANCE, PROVIDER, 
 from ...core.security import CurrentUser, get_current_user, hash_password, require_roles
 from ...core.serialize import mask_phone, to_dict
 from ...core.timeutil import local_today
+from ...core.uploads import read_csv_upload
 from ...db.session import get_db
 from ...models import Cadre, District, Facility, Role, RosterImport, Section, Staff, StaffAssignment, StaffChangeRequest, User, UserRole, Ward, WorkLog, WorkLogEntry
 from ...services import staff_registry as reg
@@ -174,7 +175,7 @@ async def import_roster(
 ):
     if enrollment_source not in ("ROSTER_IMPORT", "ENGAGEMENT_LIST"):
         raise HTTPException(status_code=422, detail="enrollment_source must be ROSTER_IMPORT or ENGAGEMENT_LIST")
-    content = (await file.read()).decode("utf-8-sig", errors="replace")
+    content = await read_csv_upload(file)
     allowed = None if CENTRAL_ADMIN in current.roles else current.scope_values("region_id")
     result = reg.import_roster(db, current, file.filename or "roster.csv", content, enrollment_source, allowed)
     db.commit()

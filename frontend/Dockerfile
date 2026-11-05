@@ -20,5 +20,6 @@ RUN npm run build
 # One web server for the whole system: the app at /, the API proxied at /api.
 FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY security-headers.conf /etc/nginx/security-headers.conf
 COPY --from=build /app/build /usr/share/nginx/html
 EXPOSE 80

@@ -5,6 +5,7 @@ from datetime import date, timedelta
 import pytest
 
 from .conftest import PASSWORD, category_id
+from .monthly_budget_setup import ensure_monthly_budgets
 
 
 @pytest.fixture
@@ -31,7 +32,8 @@ def v22(api, db, monkeypatch, legacy_workflow_default):
         if not db.query(UserScope).filter_by(user_id=actor.id, region_id=assignment.region_id).first():
             db.add(UserScope(user_id=actor.id, region_id=assignment.region_id))
     db.commit()
-    return {"finance": name, "staff_id": staff.id, "cadre_id": staff.cadre_id, "region_id": assignment.region_id}
+    return {"finance": name, "staff_id": staff.id, "cadre_id": staff.cadre_id, "region_id": assignment.region_id,
+            "central_reviewer_id": db.query(User).filter(User.username == "fhifin1").one().id}
 
 
 def priced_activity(api, v22, period, kind="SERVICES", mode="SINGLE", rate=300):
@@ -66,16 +68,37 @@ def to_finance(api, log):
                     {"review_confirmed": True, "review_type": log["work_type"]})
 
 
+def central_approve(api, claim_id):
+    amount = api.get(f"/claims/{claim_id}", "fhifin1")["amount"]
+    return api.post(f"/claims/{claim_id}/actions/central_approve", "fhifin1",
+                    {"review_confirmed": True, "expected_amount": amount})
+
+
+def back_through_technical(api, log):
+    """A Finance return goes to the Technical queue: Technical endorses and the RM authorizes again."""
+    assert log["status"] == "PENDING_TECHNICAL_REVIEW"
+    body = {"review_confirmed": True, "review_type": log["work_type"]}
+    log = api.post(f"/worklogs/{log['id']}/actions/endorse", "tofficer1", body)
+    return api.post(f"/worklogs/{log['id']}/actions/authorize", "rpm1", body)
+
+
 def route_log(api, db, v22, log, route):
     assert api.get("/admin/claim-categories", v22["finance"])
     body = {"review_confirmed": True, "review_type": log["work_type"], "category_id": category_id(db, route)}
     reviewed = api.post(f"/worklogs/{log['id']}/actions/finance_review", v22["finance"], body)
     assert reviewed["status"] == "FINANCE_REVIEWED"
     body["target_payor_id"] = reviewed["finance_snapshot"]["payor_org_id"]
+    body["central_reviewer_id"] = v22["central_reviewer_id"]
+    if log["work_type"] == "SERVICES":
+        ensure_monthly_budgets(db, log["id"], v22["finance"])
     channel = "fhi360" if log["work_type"] == "SERVICES" else "cso"
     wrong = "cso" if channel == "fhi360" else "fhi360"
     api.post(f"/worklogs/{log['id']}/actions/route_{wrong}", v22["finance"], body, expect=403)
-    return api.post(f"/worklogs/{log['id']}/actions/route_{channel}", v22["finance"], body)
+    routed = api.post(f"/worklogs/{log['id']}/actions/route_{channel}", v22["finance"], body)
+    if log["work_type"] == "SERVICES":
+        central_approve(api, routed["claims"][0]["id"])
+        return api.get(f"/worklogs/{log['id']}", v22["finance"])
+    return routed
 
 
 def test_services_finance_gate_routing_and_actual_payment(api, db, period, v22):

@@ -5,8 +5,9 @@ import pytest
 
 from backend.models import Staff, StaffAssignment, User, UserReviewCadre, UserScope
 from .conftest import category_id
+from .monthly_budget_setup import ensure_monthly_budgets
 from .test_ctc_facility_approval import no_provider_sms
-from .test_v22_finance import v22
+from .test_v22_finance import central_approve, v22
 
 
 def prepare(api, db, period, v22, provider, kind):
@@ -85,11 +86,15 @@ def test_separate_queues_and_correct_finance_payment_visibility(api, db, period,
     body = {"review_confirmed": True, "review_type": kind, "category_id": category_id(db, "A" if kind == "SERVICES" else "B")}
     reviewed = api.post(f"/worklogs/{log['id']}/actions/finance_review", v22["finance"], body)
     assert reviewed["status"] == "FINANCE_REVIEWED"
+    ensure_monthly_budgets(db, log["id"], v22["finance"])
     routed = api.post("/finance/channel", v22["finance"], {
         "work_log_id": log["id"], "target_payor_id": reviewed["finance_snapshot"]["payor_org_id"],
         "review_confirmed": True, "review_type": kind, "expected_version": reviewed["version"],
+        "central_reviewer_id": v22["central_reviewer_id"],
     })
     assert routed["status"] == ("ROUTED_FHI360" if kind == "SERVICES" else "ROUTED_CSO")
+    if kind == "SERVICES":
+        central_approve(api, routed["claim_id"])
     payer = "fhifin1" if kind == "SERVICES" else "csofin1"
     wrong_payer = "csofin1" if kind == "SERVICES" else "fhifin1"
     claim = api.get(f"/claims/{routed['claim_id']}", payer)

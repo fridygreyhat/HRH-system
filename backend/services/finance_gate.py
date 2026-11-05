@@ -13,6 +13,9 @@ from ..models import ActivityRate, BudgetTransaction, ClaimCategory, ClaimCompon
 from . import claims, cso_regions
 from .forms import entries_with_measures
 
+# Fixed daily Services reviewed by Regional Finance: new records use the monthly regional budget, older ones no budget.
+FIXED_DAILY_POLICIES = {"FIXED_DAILY_NO_BUDGET", "FIXED_DAILY_MONTHLY_REGIONAL_BUDGET"}
+
 
 def _quote_missing_daily_amount(db, log, activity, day):
     """Fill absent terms only, using exact service identity and work-date scope."""
@@ -335,7 +338,7 @@ def route(db, current, log, channel, target_payor_id=None, expected_review_token
         raise HTTPException(409, "Regional Finance must review the amount before routing")
     if expected_review_token is not None and expected_review_token != snapshot.get("review_token"):
         raise HTTPException(409, "Another Finance review changed this payment setup. Refresh and verify the current funding source and category before routing.")
-    if snapshot.get("payment_policy") not in {"FIXED_DAILY_NO_BUDGET", "FIXED_DAILY_MONTHLY_REGIONAL_BUDGET"}:
+    if snapshot.get("payment_policy") not in FIXED_DAILY_POLICIES:
         raise HTTPException(409, "Review the Services fixed daily payment amount again before submitting.")
     if target_payor_id is None:
         raise HTTPException(422, "Select the destination payor explicitly before channeling")

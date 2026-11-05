@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
@@ -11,6 +11,10 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && if [ "$INSTALL_DEV" = "true" ]; then pip install --no-cache-dir -r requirements-dev.txt; fi
 
 COPY . ./backend
+
+# Run as an unprivileged user; it owns only the upload folder (payment proofs).
+RUN useradd --system --uid 10001 --home /app hrh && mkdir -p /data/uploads && chown hrh /data/uploads
+USER hrh
 
 EXPOSE 8000
 

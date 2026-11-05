@@ -1,6 +1,7 @@
+import os
 from datetime import date
 from decimal import Decimal
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Query
 from fastapi.responses import FileResponse
@@ -48,7 +49,7 @@ class ClaimCreate(BaseModel):
     staff_id: Optional[int] = None
     period_id: Optional[int] = None
     evidence_text: Optional[str] = Field(default=None, max_length=2000)
-    declared_units: Optional[dict[str, float]] = None
+    declared_units: Optional[dict[str, Annotated[float, Field(ge=0, le=1_000_000_000)]]] = None
 
 
 class ActionIn(BaseModel):
@@ -337,6 +338,9 @@ def download_proof(claim_id: int, proof_id: int, db: Session = Depends(get_db), 
     proof = db.query(PaymentProof).filter(PaymentProof.id == proof_id, PaymentProof.claim_id == claim.id).first()
     if not proof:
         raise HTTPException(status_code=404, detail="Proof not found")
+    path = pay.proof_path(proof)
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="The proof file is missing from storage. Restore it from backup or upload it again.")
     system_audit.record(db, current, "payment_proof", proof.id, "download")
     db.commit()
-    return FileResponse(pay.proof_path(proof), media_type=proof.content_type, filename=proof.original_filename)
+    return FileResponse(path, media_type=proof.content_type, filename=proof.original_filename)

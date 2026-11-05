@@ -12,13 +12,14 @@ from typing import Literal, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import or_, true
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 
 from ...core import audit as system_audit
 from ...core.roles import CSO_FINANCE, FHI360_FINANCE, OVERSIGHT, RPM
 from ...core.security import CurrentUser, require_roles
-from ...core.serialize import to_dict
+from ...core.serialize import spreadsheet_safe, to_dict
+from ...core.uploads import read_csv_upload
 from ...db.session import get_db
 from ...models import BudgetLine, BudgetSyncLog, BudgetTransaction, ClaimCategory, Organization, PayPeriod, Region, User, utcnow
 from ...services import budgets as bg, cso_regions
@@ -247,7 +248,7 @@ def reallocate(body: ReallocateIn, db: Session = Depends(get_db), current: Curre
 async def tracker_import(file: UploadFile = File(...), db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(FHI360_FINANCE))):
     """Import FHI360 activity-budget allocations from a tracker CSV export (columns: code,name,category,period_start,region,allocated_amount,external_ref)."""
     org = _fhi360_org(db)
-    content = (await file.read()).decode("utf-8-sig", errors="replace")
+    content = await read_csv_upload(file)
     reader = csv.DictReader(io.StringIO(content))
     missing = {"code", "name", "category", "period_start", "allocated_amount"} - set(reader.fieldnames or [])
     if missing:
@@ -291,8 +292,10 @@ async def tracker_import(file: UploadFile = File(...), db: Session = Depends(get
                 system_audit.record(db, current, "budget_line", line.id, "tracker_import", before=before,
                                     after=to_dict(line), reason=f"Tracker import {file.filename}")
                 log.success_count += 1
-        except (ValueError, KeyError, InvalidOperation) as e:
-            errors.append({"line": line_no, "error": str(e)})
+        except DataError:
+            errors.append({"line": line_no, "error": "A value is too long"})
+        except (ValueError, KeyError, InvalidOperation, AttributeError) as e:
+            errors.append({"line": line_no, "error": "A required cell is empty" if isinstance(e, AttributeError) else str(e)})
     log.error_count = len(errors)
     log.sync_status = "SUCCESS" if not errors else ("PARTIAL" if log.success_count else "FAILED")
     log.log_data = {"errors": errors}
@@ -316,7 +319,7 @@ def tracker_export(period_id: Optional[int] = None, db: Session = Depends(get_db
     writer.writerow(["code", "name", "period_start", "region", "external_ref", "allocated_amount", "committed_amount", "spent_amount", "currency", "estimated_amount"])
     for line in lines:
         period = db.get(PayPeriod, line.period_id)
-        writer.writerow([line.code, line.name, period.start_date, db.get(Region, line.region_id).name if line.region_id else "", line.external_ref or "",
+        writer.writerow([spreadsheet_safe(line.code), spreadsheet_safe(line.name), period.start_date, db.get(Region, line.region_id).name if line.region_id else "", spreadsheet_safe(line.external_ref or ""),
                          line.allocated_amount, line.committed_amount, line.spent_amount, line.currency,
                          line.estimated_amount if line.estimated_amount is not None else ""])
         line.sync_status, line.last_synced_at = "EXPORTED", utcnow()

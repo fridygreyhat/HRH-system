@@ -39,7 +39,7 @@ signal.signal(signal.SIGINT, lambda *_args: sys.exit(0))
 try:
     children.append(subprocess.Popen([
         sys.executable, "-m", "uvicorn", "backend.replit_app:app",
-        "--host", "0.0.0.0", "--port", "5000",
+        "--host", os.environ.get("HOST", "0.0.0.0"), "--port", "5000",
     ]))
     children.append(subprocess.Popen([sys.executable, "-m", "backend.worker"]))
     while all(child.poll() is None for child in children):

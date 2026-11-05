@@ -3,6 +3,7 @@ from backend.models import MonthlyServiceBudget, StaffAssignment, User, WorkLog
 
 
 def ensure_monthly_budgets(db, log_id, username, amount=10000000):
+    db.expire_all()  # the API changed the snapshot through its own session
     log = db.get(WorkLog, log_id)
     placement = db.get(StaffAssignment, log.assignment_id)
     actor = db.query(User).filter_by(username=username).one()

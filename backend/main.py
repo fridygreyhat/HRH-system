@@ -1,9 +1,11 @@
+import csv
 import logging
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 
 from .api.endpoints import admin, auth, batches, budgets, claims, dashboard, demos, staff, worklogs, rates, finance
@@ -15,7 +17,9 @@ from .api.endpoints import setup_transfer
 
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI(title="HRH Digital Work-Log, Payment Claims and Payroll Routing", version="2.0.0")
+_docs = config.ENABLE_API_DOCS
+app = FastAPI(title="HRH Digital Work-Log, Payment Claims and Payroll Routing", version="2.0.0",
+              docs_url="/docs" if _docs else None, redoc_url="/redoc" if _docs else None, openapi_url="/openapi.json" if _docs else None)
 
 
 @app.middleware("http")
@@ -36,6 +40,30 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["Content-Disposition"],
 )
+
+
+# Input the database refuses is the caller's mistake, not a server error. The request's session rolls back on close.
+@app.exception_handler(DataError)
+def value_out_of_range(_: Request, __: DataError):
+    return JSONResponse({"detail": "A value is too long or out of range"}, status_code=422)
+
+
+@app.exception_handler(IntegrityError)
+def conflicting_data(_: Request, __: IntegrityError):
+    return JSONResponse({"detail": "This conflicts with existing data or refers to something that does not exist"}, status_code=409)
+
+
+@app.exception_handler(ValueError)
+def nul_character(_: Request, exc: ValueError):
+    if "NUL (0x00)" in str(exc):  # raised by the database driver for any text containing a NUL
+        return JSONResponse({"detail": "Text cannot contain NUL characters"}, status_code=422)
+    raise exc
+
+
+@app.exception_handler(csv.Error)
+def malformed_csv(_: Request, exc: csv.Error):
+    return JSONResponse({"detail": f"The file is not a valid CSV: {exc}"}, status_code=422)
+
 
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(backdate_access.router, prefix="/backdate-access", tags=["Backdated entry access"])
@@ -60,7 +88,7 @@ app.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
 
 @app.get("/")
 def read_root():
-    return {"message": "HRH backend is running", "version": app.version, "docs": "/docs"}
+    return {"message": "HRH backend is running", "version": app.version}
 
 
 @app.get("/meta")
