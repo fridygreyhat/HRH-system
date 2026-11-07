@@ -6,8 +6,8 @@ import { roleLabel } from '../format';
 import { useAction, useApi } from '../hooks';
 import { AdminUser, Cadre, Named, UserScope } from '../types';
 
-const REVIEWER_ROLES = ['TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE'];
-const CADRE_SCOPED_ROLES = ['TECHNICAL_OFFICER', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE'];
+const REVIEWER_ROLES = ['CSO_TECHNICAL_OFFICER', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE'];
+const CADRE_SCOPED_ROLES = ['CSO_TECHNICAL_OFFICER', 'TECHNICAL_OFFICER', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE'];
 type ScopeDim = 'region_id' | 'cluster_id' | 'facility_id' | 'community_area_id' | 'organization_id';
 type ScopeDraft = UserScope & { dim?: ScopeDim };
 const SCOPE_DIMS: { key: ScopeDim; label: string; path: string }[] = [

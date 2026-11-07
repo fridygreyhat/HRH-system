@@ -34,7 +34,7 @@ test('a reviewer with several regions sees a Region column and can filter the wa
     expect(Array.from(container.querySelectorAll('th')).map(th => th.textContent)).toContain('Region');
     expect(container.querySelector('tr[aria-label^="Open work log 1"]').textContent).toContain('Njombe');
     act(() => Simulate.change(regionField(container).querySelector('select'), { target: { value: '8' } }));
-    expect(useApi.mock.calls.map(([path]) => path)).toContain('/worklogs?queue=true&work_type=SERVICES&region_id=8');
+    expect(useApi.mock.calls.map(([path]) => path)).toContain('/worklogs?queue=true&work_type=PAYROLL&region_id=8');
   } finally {
     done();
   }
@@ -55,7 +55,7 @@ test('a reviewer can narrow the waiting list to one cadre', () => {
   try {
     const select = Array.from(container.querySelectorAll('label')).find(label => label.textContent.startsWith('Cadre')).querySelector('select');
     act(() => Simulate.change(select, { target: { value: 'HCP' } }));
-    expect(useApi.mock.calls.map(([path]) => path)).toContain('/worklogs?queue=true&work_type=SERVICES&cadre=HCP');
+    expect(useApi.mock.calls.map(([path]) => path)).toContain('/worklogs?queue=true&work_type=PAYROLL&cadre=HCP');
   } finally {
     done();
   }
@@ -71,6 +71,16 @@ test('Facility In-Charge opens straight on their cadres, read only, with no wait
     expect(Array.from(container.querySelectorAll('label')).some(label => label.textContent.startsWith('Cadre'))).toBe(true);
   } finally {
     mockRoles = ['RPM'];
+    done();
+  }
+});
+
+test('the list opens on the work type that has records waiting, so the menu badge is never a dead end', () => {
+  const { container, done } = mount([{ id: 7, name: 'Iringa' }]);
+  try {
+    expect(useApi.mock.calls.map(([path]) => path)).toContain('/worklogs?queue=true&work_type=PAYROLL');
+    expect(container.textContent).toContain('Payroll (1)');
+  } finally {
     done();
   }
 });

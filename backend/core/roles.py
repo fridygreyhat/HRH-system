@@ -1,7 +1,8 @@
 PROVIDER = "PROVIDER"
 SUPERVISOR = "SUPERVISOR"  # CTC In-Charge / Supervisor
 FACILITY_IN_CHARGE = "FACILITY_IN_CHARGE"
-TECHNICAL_OFFICER = "TECHNICAL_OFFICER"  # Cluster / Regional Technical Officer
+TECHNICAL_OFFICER = "TECHNICAL_OFFICER"  # FHI360 Cluster / Regional Technical Officer
+CSO_TECHNICAL = "CSO_TECHNICAL_OFFICER"  # first approval of community-only providers, where there is no CTC In-Charge
 RPM = "RPM"  # Regional Manager (RM); retain the stored role code for compatibility.
 REGIONAL_FINANCE = "REGIONAL_FINANCE"
 COMMUNITY_VERIFIER = "COMMUNITY_VERIFIER"
@@ -15,9 +16,10 @@ SUPER_ADMIN = "SUPER_ADMIN"  # holds every role, with no scope limit
 
 ROLE_DESCRIPTIONS = {
     PROVIDER: "Records own work logs and confirms verified logs by OTP",
-    SUPERVISOR: "CTC In-Charge / Supervisor: verifies that work occurred",
+    SUPERVISOR: "CTC In-Charge / Supervisor: verifies and approves that work occurred at their facility",
     FACILITY_IN_CHARGE: "Supplemental facility endorsement where the cadre form requires it",
     TECHNICAL_OFFICER: "FHI360 technical officer: technical endorsement of the cadres in their technical area",
+    CSO_TECHNICAL: "CSO technical officer: first approval of community-only providers of their CSO, for the cadres in their technical area",
     RPM: "Regional Manager (RM): final program and budget authorization",
     REGIONAL_FINANCE: "Regional Finance: validates RM-authorized amounts and routes services to FHI360 and payroll to CSO",
     COMMUNITY_VERIFIER: "Verifies community-originated (Route C) claims not based on an HRH work log",
@@ -31,6 +33,6 @@ ROLE_DESCRIPTIONS = {
 }
 ALL_ROLES = list(ROLE_DESCRIPTIONS)
 
-REVIEWER_ROLES = (SUPERVISOR, FACILITY_IN_CHARGE, TECHNICAL_OFFICER, RPM, REGIONAL_FINANCE)
+REVIEWER_ROLES = (SUPERVISOR, FACILITY_IN_CHARGE, CSO_TECHNICAL, TECHNICAL_OFFICER, RPM, REGIONAL_FINANCE)
 FINANCE_ROLES = (FHI360_FINANCE, CSO_FINANCE)
 ADMIN_ROLES = (CENTRAL_ADMIN, REGIONAL_ADMIN, SYSTEM_ADMIN, SUPER_ADMIN)

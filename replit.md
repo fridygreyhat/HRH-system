@@ -523,11 +523,25 @@ keeping rates editable and deletable, without rewriting financial history.
 - A provider's first submission opens on the last day of the period, the 25th. Later submission stays allowed, and returned or rejected work can come back at any time.
 - The global pay month opens by itself when anyone opens the pay-period list on or after the 26th, unless a global schedule already covers those dates. Regional schedules are still created by hand.
 - CTC and Technical now see the same paper-style timesheet as RM and Finance, above the daily entries they already had. Every reviewer list has a Region column, and anyone covering more than one region gets a Region filter, including on Waiting on me.
+- CTC In-Charge verifies and approves CHW, HCP and Data Clerk timesheets at their own facility in one step, shown as **Verify and approve (CTC)**. They see every cadre there and nothing from another facility. There is no separate approval after it.
+- Community-only providers (no facility on the placement) are approved by **CSO Technical and FHI360 Technical**, in that order: Provider → CSO Technical → FHI360 Technical → RM → Regional Finance. CSO Technical Officer takes the step the CTC In-Charge takes for facilities, limited to their CSO, regions and cadres, and sees community-only placements only. CTC In-Charge deals with facilities only; a community-area scope gives them nothing. A provider with both a facility and a community area stays with the CTC In-Charge. Direct community claims (Route C) keep their own verifier.
 - Facility In-Charge has no approval step, because the endorsement was removed. They open **All visible logs**, read-only, for every cadre at their facility, and nothing appears in Waiting on me. CTC In-Charge still verifies.
 - Every reviewer can filter by cadre as well as region, on both lists. Regional Finance opens individual work logs from RM authorization onward. CSO Finance opens one only when it is routed to the CSO, so Payroll reaches a CSO through the signed report and salary files.
 - **Why:** the user asked for the whole approval route to be checked for every cadre, and for each level to see its own cadres.
 - Tanzania's fixed public holidays, Good Friday and Easter Monday are built in. Administrators add Eid al-Fitr, Eid al-Adha, Maulid and one-off days on **Public holidays** once announced, because they cannot be worked out in advance. Holidays show on provider calendars, printed and review timesheets, and salary files. They change no hours, pay or who can record work.
 - **Why:** the user asked that providers submit on the 25th, that the next month start on the 26th, and that holidays be seen on the timesheet.
+
+### Home and navigation
+- Every login lands on **Home**: a greeting, the pay month with days left, and cards for that role's work with live counts, each opening the exact list in one click. Add a role's new main task to `TASKS` in `frontend/src/pages/Home.tsx`.
+- Menus offer only pages a role can use, in Kiswahili or English. Phones get a bottom bar with the role's main pages. The review list opens on the work type that has records waiting.
+- **Why:** the user asked for a far more attractive look and easy navigation for every login.
+
+### Minimum service days
+- Every Services definition states **Minimum days per month**: the least each provider should work on it in a pay month (26th to 25th). The form requires it, 0 means no minimum, and it suggests Index 10, SNS 5 and Mobile 10, which the user set.
+- A day counts once per service, whether the service was the main one or an additional one that day. Services with the same English name count together, so a revision keeps the count.
+- Providers see a progress card on their Services timesheet. Reviewers see the same card, and each shortfall is a review flag once submitted.
+- A provider below a minimum **is still paid in full**, with the shortfall shown: the user confirmed this. It never blocks submission or changes pay. The shortfall stays visible to the end: on the submitted timesheet that Central Finance approves from, and as Minimum days and Days short in the Services payment report, including a zero-day row for a service never worked.
+- **Why:** the user set monthly minimums per service per provider and asked to state the days when adding a service.
 
 ### CSO salary timesheets
 - CSO Finance downloads timesheets for salary payment from **CSO payments → Salary timesheets**, as PDF (summary plus one paper-style page per provider, for filing) or CSV (one row per provider, one column per day, for spreadsheets). The screen says which regions are signed; an unsigned region is never silently missing.

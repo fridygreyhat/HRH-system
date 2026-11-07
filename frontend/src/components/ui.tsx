@@ -117,7 +117,12 @@ export function Alert({ kind = 'error', children }: { kind?: 'error' | 'success'
 }
 
 export function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="empty">{children}</p>;
+  return (
+    <div className="empty">
+      <span className="empty-icon" aria-hidden="true"><Icon name="layers" size={22} /></span>
+      <div>{children}</div>
+    </div>
+  );
 }
 
 export function Loading({ label: text = 'Loading…' }: { label?: string }) {

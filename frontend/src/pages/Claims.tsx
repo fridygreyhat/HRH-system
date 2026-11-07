@@ -74,8 +74,9 @@ export function Claims() {
 
       {regionalFinance && <RegionalFinanceNextSteps />}
 
-      {hasRole('FHI360_FINANCE') && <section className="card stack" aria-label="Services payment documentation">
-        <h2>Services payment report</h2>
+      {hasRole('FHI360_FINANCE') && <details className="card folded" aria-label="Services payment documentation">
+        <summary>Services payment report (CSV or PDF)</summary>
+        <div className="stack">
         <p className="muted small">Routed Services across your assigned regions and cadres, including facilities, providers, service days, amounts and mobile numbers. Only the highest fixed service amount per day is payable. Payment status remains separate.</p>
         <div className="row">
           <Field label="Services report month" hint={payMonthDates(exportMonth)}><input type="month" required value={exportMonth} onChange={e => setExportMonth(e.target.value)} /></Field>
@@ -83,7 +84,8 @@ export function Claims() {
           <button className="btn btn-secondary" disabled={exportBusy || !exportMonth} onClick={() => downloadServices('pdf')}>Download Services PDF</button>
         </div>
         <Alert>{exportError}</Alert>
-      </section>}
+        </div>
+      </details>}
 
       <div className="filters" role="search">
         <Field label="Claim status">

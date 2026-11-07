@@ -86,6 +86,8 @@ function FormButtons({ busy, label, busyLabel, onCancel, disabled }: { busy: boo
   );
 }
 
+const REGISTER_STEPS = ['Person', 'Placement', 'Pay'];
+
 export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre[]; onClose: () => void; onCreated: (s: StaffSummary) => void }) {
   const [f, setF] = useState({
     cadre_id: '',
@@ -103,6 +105,7 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
     payment_account: '',
   });
   const [assignment, setAssignment] = useState<AssignmentValue>(EMPTY_ASSIGNMENT);
+  const [step, setStep] = useState(0);
   const { busy, error, run } = useAction();
   const cadre = cadres.find((c) => String(c.id) === f.cadre_id);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
@@ -130,73 +133,100 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
     if (created) onCreated(created);
   };
 
+  const canPay = step === REGISTER_STEPS.length - 1;
+  const next = (e: React.FormEvent) => {
+    e.preventDefault();
+    setStep(step + 1);
+  };
+
   return (
     <Modal title="Register staff member" onClose={onClose}>
-      <form className="stack" onSubmit={submit}>
-        <p className="muted small">
-          One identity per person: if this person already exists (same phone number), rotate their assignment instead of registering them again.
-        </p>
-        <h4>Identity</h4>
-        <div className="grid-2">
-          <Field label="Cadre (required)">
-            <select value={f.cadre_id} onChange={(e) => setF({ ...f, cadre_id: e.target.value, occupation: '', occupation_other: '' })} required>
-              <option value="">Select…</option>
-              {cadres.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <OccupationFields
-            cadre={cadre}
-            occupation={f.occupation}
-            other={f.occupation_other}
-            onOccupation={(v) => setF({ ...f, occupation: v })}
-            onOther={(v) => setF({ ...f, occupation_other: v })}
-          />
-          <Field label="First name (required)">
-            <input value={f.first_name} onChange={set('first_name')} required maxLength={100} autoComplete="off" />
-          </Field>
-          <Field label="Middle name">
-            <input value={f.middle_name} onChange={set('middle_name')} maxLength={100} autoComplete="off" />
-          </Field>
-          <Field label="Last name (required)">
-            <input value={f.last_name} onChange={set('last_name')} required maxLength={100} autoComplete="off" />
-          </Field>
-          <Field label="Verified phone (required)" hint="9–15 digits, optional leading +, e.g. +255712345678">
-            <input type="tel" value={f.verified_phone} onChange={set('verified_phone')} required pattern={PHONE_PATTERN} autoComplete="off" />
-          </Field>
-          <Field label="Salary scale">
-            <input value={f.salary_scale} onChange={set('salary_scale')} maxLength={50} />
-          </Field>
-          <Field label="Employment start date (required)">
-            <input type="date" value={f.employment_start_date} onChange={set('employment_start_date')} required />
-          </Field>
-          <Field label="Enrollment source">
-            <select value={f.enrollment_source} onChange={set('enrollment_source')}>
-              {ENROLLMENT_SOURCES.map((s) => (
-                <option key={s} value={s}>
-                  {humanize(s)}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-        <h4>Payment details</h4>
-        <div className="grid-2">
-          <PaymentMethodSelect value={f.payment_method} onChange={(v) => setF({ ...f, payment_method: v })} />
-          <Field label="Payment provider" hint="e.g. M-Pesa, CRDB">
-            <input value={f.payment_provider} onChange={set('payment_provider')} maxLength={100} />
-          </Field>
-          <Field label="Payment account / wallet number">
-            <input value={f.payment_account} onChange={set('payment_account')} maxLength={100} autoComplete="off" />
-          </Field>
-        </div>
-        <h4>Assignment</h4>
-        <AssignmentFields value={assignment} onChange={setAssignment} showSection={cadre ? cadre.uses_section : true} />
+      <form className="stack" onSubmit={canPay ? submit : next}>
+        <ol className="wizard-steps" aria-label="Registration steps">
+          {REGISTER_STEPS.map((name, index) => (
+            <li key={name} className={index === step ? 'is-current' : index < step ? 'is-done' : undefined} aria-current={index === step ? 'step' : undefined}>
+              <span>{index < step ? '✓' : index + 1}</span>{name}
+            </li>
+          ))}
+        </ol>
+        {step === 0 && <>
+          <p className="muted small">
+            One identity per person: if this person already exists (same phone number), rotate their assignment instead of registering them again.
+          </p>
+          <div className="grid-2">
+            <Field label="Cadre (required)">
+              <select value={f.cadre_id} onChange={(e) => setF({ ...f, cadre_id: e.target.value, occupation: '', occupation_other: '' })} required>
+                <option value="">Select…</option>
+                {cadres.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <OccupationFields
+              cadre={cadre}
+              occupation={f.occupation}
+              other={f.occupation_other}
+              onOccupation={(v) => setF({ ...f, occupation: v })}
+              onOther={(v) => setF({ ...f, occupation_other: v })}
+            />
+            <Field label="First name (required)">
+              <input value={f.first_name} onChange={set('first_name')} required maxLength={100} autoComplete="off" />
+            </Field>
+            <Field label="Middle name">
+              <input value={f.middle_name} onChange={set('middle_name')} maxLength={100} autoComplete="off" />
+            </Field>
+            <Field label="Last name (required)">
+              <input value={f.last_name} onChange={set('last_name')} required maxLength={100} autoComplete="off" />
+            </Field>
+            <Field label="Verified phone (required)" hint="9–15 digits, optional leading +, e.g. +255712345678">
+              <input type="tel" value={f.verified_phone} onChange={set('verified_phone')} required pattern={PHONE_PATTERN} autoComplete="off" />
+            </Field>
+            <Field label="Employment start date (required)">
+              <input type="date" value={f.employment_start_date} onChange={set('employment_start_date')} required />
+            </Field>
+            <Field label="Enrollment source">
+              <select value={f.enrollment_source} onChange={set('enrollment_source')}>
+                {ENROLLMENT_SOURCES.map((s) => (
+                  <option key={s} value={s}>
+                    {humanize(s)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+        </>}
+        {step === 1 && <>
+          <p className="muted small">Choose a facility for facility staff, or a community area with no facility for community-only providers. Set the CSO, or they will not reach any salary file.</p>
+          <AssignmentFields value={assignment} onChange={setAssignment} showSection={cadre ? cadre.uses_section : true} />
+        </>}
+        {step === 2 && <>
+          <div className="wizard-summary">
+            <strong>{[f.first_name, f.middle_name, f.last_name].filter(Boolean).join(' ')}</strong>
+            <span>{cadre?.name} · {f.verified_phone}</span>
+          </div>
+          {!assignment.organization_id && <Alert kind="warn">No CSO is set on this placement, so this person will not appear in any salary file. Go back to add one, or continue and set it later.</Alert>}
+          <div className="grid-2">
+            <Field label="Salary scale" hint="Type it exactly as on Salary amounts">
+              <input value={f.salary_scale} onChange={set('salary_scale')} maxLength={50} />
+            </Field>
+            <PaymentMethodSelect value={f.payment_method} onChange={(v) => setF({ ...f, payment_method: v })} />
+            <Field label="Payment provider" hint="e.g. M-Pesa, CRDB">
+              <input value={f.payment_provider} onChange={set('payment_provider')} maxLength={100} />
+            </Field>
+            <Field label="Payment account / wallet number">
+              <input value={f.payment_account} onChange={set('payment_account')} maxLength={100} autoComplete="off" />
+            </Field>
+          </div>
+          <p className="muted small">Next you can create their login, so they can start recording work.</p>
+        </>}
         <Alert>{error}</Alert>
-        <FormButtons busy={busy} label="Register" busyLabel="Saving…" onCancel={onClose} />
+        <div className="row">
+          {step > 0 && <button type="button" className="btn btn-secondary" onClick={() => setStep(step - 1)} disabled={busy}>Back</button>}
+          <button className="btn btn-primary" disabled={busy}>{canPay ? (busy ? 'Saving…' : 'Register') : 'Next'}</button>
+          <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
+        </div>
       </form>
     </Modal>
   );

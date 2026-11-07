@@ -289,6 +289,7 @@ export interface Assignment {
 }
 
 export interface WorkLogDetail extends WorkLogSummary {
+  service_targets?: ServiceTarget[];
   backdate_access?: {
     enabled?: boolean;
     grace_hours: number;
@@ -591,8 +592,17 @@ export interface RateActivity {
   currency: string;
   unit_type: 'PER_UNIT' | 'PER_HOUR' | 'PER_DAY';
   billable_field: string | null;
+  min_days_per_month: number | null;
   is_active: boolean;
   effective_start_date: string;
+}
+
+export interface ServiceTarget {
+  service: string;
+  service_sw: string;
+  min_days: number;
+  days: number;
+  left: number;
 }
 
 export interface RateTemplates {

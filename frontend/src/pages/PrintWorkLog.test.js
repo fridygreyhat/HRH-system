@@ -161,6 +161,22 @@ test('one pay month prints as one sheet from the 26th to the 25th, with its publ
   expect([...container.querySelectorAll('tbody tr')].find(row => row.textContent.includes('Public holiday')).lastElementChild.textContent).toBe('1');
 });
 
+test('a shortfall shows on the timesheet once submitted, and says payment is not affected', async () => {
+  const log = record();
+  log.status = 'PENDING_RPM_AUTHORIZATION';
+  log.service_targets = [
+    { service: 'Index testing', service_sw: 'Index', min_days: 10, days: 6, left: 4 },
+    { service: 'SNS testing', service_sw: 'SNS', min_days: 5, days: 5, left: 0 },
+  ];
+  await act(async () => root.render(<PrintWorkLog logId={19} reviewLog={log} embedded />));
+  expect(container.textContent).toContain('Below minimum service days');
+  expect(container.textContent).toContain('Index testing: 6 of 10 days, 4 short');
+  expect(container.textContent).not.toContain('SNS testing:');
+  expect(container.textContent).toContain('Payment is not affected');
+  await act(async () => root.render(<PrintWorkLog logId={19} reviewLog={{ ...log, status: 'DRAFT' }} embedded />));
+  expect(container.textContent).not.toContain('Below minimum service days');
+});
+
 test('the review preview drops print wording and tells reviewers to check every month', async () => {
   await act(async () => root.render(<PrintWorkLog logId={19} reviewLog={record()} embedded />));
   expect(container.textContent).toContain('covers 2 months');

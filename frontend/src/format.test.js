@@ -50,3 +50,7 @@ test('a pay month runs from the 26th to the 25th, across a new year too', () => 
   expect(payMonthDates('2026-11')).toBe('26 Oct 2026 – 25 Nov 2026');
   expect(payMonthDates('')).toBe('');
 });
+
+test('the CTC In-Charge decision reads as verifying and approving', () => {
+  expect(WORKLOG_ACTION_LABELS.verify).toBe('Verify and approve (CTC)');
+});

@@ -16,6 +16,7 @@ const ALL_STEPS = [
   { action: 'endorse', en: 'Technical review', sw: 'Mapitio ya kitaalamu', who: { en: 'Technical Officer', sw: 'Afisa wa kitaalamu' } },
   { action: 'authorize', en: 'RM authorization', sw: 'Idhini ya RM', who: { en: 'Regional Manager', sw: 'Meneja wa kanda' } },
 ];
+const CSO_TECHNICAL_STEP = { action: 'verify', en: 'CSO Technical approval', sw: 'Idhini ya kitaalamu ya CSO', who: { en: 'CSO Technical Officer', sw: 'Afisa wa kitaalamu wa CSO' } };
 const DONE_LABEL = { en: 'Approved', sw: 'Imeidhinishwa' };
 
 // Index of the step currently waiting, for each status (5 = all done).
@@ -76,6 +77,7 @@ export function ApprovalStepper({
   hoursInStatus,
   facilityEndorsed,
   technicalReviewer,
+  communityOnly = false,
   workflowVersion = 1,
   workType = 'LEGACY',
   financeTimesheetApproved = false,
@@ -88,6 +90,8 @@ export function ApprovalStepper({
   workType?: 'LEGACY' | 'SERVICES' | 'PAYROLL';
   /** The cadre's technical reviewer position, shown in place of the generic "Technical Officer" */
   technicalReviewer?: string | null;
+  /** No facility, so CSO Technical takes the first step instead of the CTC In-Charge */
+  communityOnly?: boolean;
   financeTimesheetApproved?: boolean;
 }) {
   const { lang, me } = useAuth();
@@ -97,7 +101,7 @@ export function ApprovalStepper({
     const routeAction = status === 'ROUTED_CSO' ? 'route_cso' : 'route_fhi360';
     const allV2Steps = [
       { action: 'submit', title: 'Submitted' },
-      { action: 'verify', title: 'CTC verification' },
+      { action: 'verify', title: communityOnly ? 'CSO Technical approval' : 'CTC verification' },
       { action: 'confirm_otp', title: 'Provider confirmation' },
       { action: 'endorse', title: 'Technical review' },
       { action: 'authorize', title: 'RM authorization' },
@@ -143,7 +147,8 @@ export function ApprovalStepper({
     );
   }
   const showOtp = !otpSkipped || latestCycleHasOtp(audit);
-  const steps = showOtp ? ALL_STEPS : ALL_STEPS.filter((step) => step.action !== 'confirm_otp');
+  const steps = (showOtp ? ALL_STEPS : ALL_STEPS.filter((step) => step.action !== 'confirm_otp'))
+    .map((step) => (communityOnly && step.action === 'verify' ? CSO_TECHNICAL_STEP : step));
   const { current, state, note } = states(status, audit, steps);
   const by = completedBy(audit);
   const approved = status === 'APPROVED';

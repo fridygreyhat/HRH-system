@@ -131,7 +131,7 @@ export const fileSize = (bytes: number): string =>
 
 export const WORKLOG_STATUS_LABELS: Record<string, string> = {
   DRAFT: 'Draft',
-  PENDING_CTC_VERIFICATION: 'Awaiting CTC verification',
+  PENDING_CTC_VERIFICATION: 'Awaiting CTC / CSO Technical',
   PENDING_PROVIDER_OTP_CONFIRMATION: 'Awaiting provider confirmation',
   PENDING_TECHNICAL_REVIEW: 'Awaiting technical review',
   PENDING_RPM_AUTHORIZATION: 'Awaiting RM authorization',
@@ -195,7 +195,7 @@ export const WORKLOG_ACTION_LABELS: Record<string, string> = {
   submit: 'Submit',
   recall: 'Recalled submission for editing',
   cancel: 'Cancel work log',
-  verify: 'Verify (CTC)',
+  verify: 'Verify and approve (CTC)',
   return: 'Return to provider',
   confirm_otp: 'Confirmed by SMS code',
   decline: 'Decline (report a problem)',
@@ -246,7 +246,8 @@ export const ROLE_LABELS: Record<string, string> = {
   PROVIDER: 'Provider',
   SUPERVISOR: 'CTC In-Charge / Supervisor',
   FACILITY_IN_CHARGE: 'Facility In-Charge',
-  TECHNICAL_OFFICER: 'Technical Officer',
+  TECHNICAL_OFFICER: 'FHI360 Technical Officer',
+  CSO_TECHNICAL_OFFICER: 'CSO Technical Officer',
   RPM: 'Regional Manager (RM)',
   REGIONAL_FINANCE: 'Regional Finance',
   COMMUNITY_VERIFIER: 'Community Verifier',

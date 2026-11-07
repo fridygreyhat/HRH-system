@@ -7,7 +7,7 @@ import { Alert, Field } from '../components/ui';
 interface Meta {
   version: string;
 }
-const STAGES = ['Provider logs work', 'CTC verifies', 'Technical review', 'RM authorizes', 'Finance review · payment'];
+const STAGES = ['Provider logs work', 'CTC or CSO Technical', 'Technical review', 'RM approves', 'Finance and payment'];
 
 export function Login() {
   const { login, sessionExpired } = useAuth();
@@ -46,12 +46,9 @@ export function Login() {
             <span>HRH Pay</span>
           </div>
           <h1>
-            From reported work to <span className="hero-accent">verified payment</span> — every step on the record.
+            From reported work to <span className="hero-accent">verified payment</span>.
           </h1>
-          <p className="hero-lead">
-            Kumbukumbu za kazi, idhini na malipo kwa watoa huduma wa afya. Digital work logs, sequential approvals, fixed Services payments and CSO
-            disbursement tracking for Tanzania's HRH programme.
-          </p>
+          <p className="hero-lead">Kumbukumbu za kazi, idhini na malipo ya watoa huduma wa afya, sehemu moja.</p>
           <ol className="hero-pipeline" aria-label="Approval pipeline">
             {STAGES.map((s, i) => (
               <li key={s}>
@@ -61,36 +58,18 @@ export function Login() {
             ))}
           </ol>
           <ul className="hero-points">
-            <li>
-              <Icon name="shield" />
-              Server-enforced roles, scopes and an append-only audit trail
-            </li>
-            <li>
-              <Icon name="route" />
-              FHI360 and CSO payments kept separate — approved is never shown as paid
-            </li>
-            <li>
-              <Icon name="phone" />
-              Mobile-first for CHWs, Data Clerks and HCPs, in Kiswahili and English
-            </li>
+            <li><Icon name="shield" />Every approval is on the record</li>
+            <li><Icon name="route" />Approved is never shown as paid</li>
+            <li><Icon name="phone" />Made for phones, in Kiswahili and English</li>
           </ul>
         </div>
       </section>
 
       <section className="login-panel">
         <form className="login-card stack" onSubmit={submit}>
-          <div className="partner-bar" role="group" aria-label="Programme partners">
-            <img src={`${process.env.PUBLIC_URL}/brand/usa-mark.png`} alt="United States of America" className="partner-usa" />
-            <span className="partner-divider" aria-hidden="true" />
-            <img src={`${process.env.PUBLIC_URL}/brand/fhi360-logo.png`} alt="FHI 360" className="partner-fhi" />
-          </div>
-          <div className="login-mobile-brand">
-            <BrandMark size={36} />
-            <strong>HRH Pay</strong>
-          </div>
-          <div>
-            <h2>Karibu · Welcome back</h2>
-            <p className="muted">Sign in to continue / Ingia ili kuendelea</p>
+          <div className="login-welcome">
+            <h2>Karibu · Welcome</h2>
+            <p className="muted">Ingia ili kuendelea · Sign in to continue</p>
           </div>
           {sessionExpired && <Alert kind="info">Your session expired. Please sign in again.</Alert>}
           <Alert>{error}</Alert>
@@ -103,6 +82,11 @@ export function Login() {
           <button className="btn btn-primary btn-lg" disabled={busy}>
             {busy ? 'Signing in…' : 'Sign in / Ingia'}
           </button>
+          <div className="partner-bar" role="group" aria-label="Programme partners">
+            <img src={`${process.env.PUBLIC_URL}/brand/usa-mark.png`} alt="United States of America" className="partner-usa" />
+            <span className="partner-divider" aria-hidden="true" />
+            <img src={`${process.env.PUBLIC_URL}/brand/fhi360-logo.png`} alt="FHI 360" className="partner-fhi" />
+          </div>
           {meta && <p className="muted small login-version">Version {meta.version}</p>}
         </form>
       </section>

@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { api, getToken, onUnauthorized, setToken } from './api';
+import { api, ApiError, getToken, onUnauthorized, setToken } from './api';
 import { MessageKey, translate } from './i18n';
 import { Lang, Me } from './types';
 
@@ -47,7 +47,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setMe(m);
         setLang(m.preferred_language === 'en' ? 'en' : 'sw');
       })
-      .catch(() => setToken(null))
+      // Only a rejected session signs out. A dropped connection must not log a field worker out.
+      .catch((error) => { if (error instanceof ApiError && error.status === 401) setToken(null); })
       .finally(() => setLoading(false));
   }, []);
 

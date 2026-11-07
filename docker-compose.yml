@@ -39,6 +39,9 @@ services:
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+      VODACOM_API_KEY: ${VODACOM_API_KEY:-}
+      VODACOM_AUTH_TOKEN: ${VODACOM_AUTH_TOKEN:-}
+      VODACOM_SENDER_ID: ${VODACOM_SENDER_ID:-}
       UPLOAD_DIR: /data/uploads
     volumes:
       - uploads:/data/uploads

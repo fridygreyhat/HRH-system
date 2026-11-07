@@ -10,6 +10,7 @@ import { PayoutEstimateData, Section as SectionRow, WorkLogDetail } from '../../
 import { Alert, AuditTimeline, Field, ReasonDialog, StatusBadge } from '../ui';
 import { captureLocation, DayEntryForm } from './DayEntryForm';
 import { OtpPanel } from './OtpPanel';
+import { ServiceTargets } from './ServiceTargets';
 import { EntriesView, FlagsList, latestReturn, returnFlags, TotalsPanel } from './shared';
 
 const WEEK_EN = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -139,7 +140,9 @@ export function DayCalendar({
   const preferredMonth = !selected && initialMonth && months.includes(initialMonth)
     ? initialMonth : focusDate.slice(0, 7);
   const [visibleMonth, setVisibleMonth] = useState(preferredMonth);
-  useEffect(() => setVisibleMonth(preferredMonth), [preferredMonth, log.id]);
+  // After saving a day the selection clears; stay on that month rather than jumping to today's.
+  useEffect(() => { if (selected) setVisibleMonth(selected.slice(0, 7)); }, [selected]);
+  useEffect(() => setVisibleMonth(preferredMonth), [log.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const dateError = periodDateError(log.period.start_date, log.period.end_date);
   if (dateError) return <div role="alert" className="alert alert-warn">{dateError} Contact an administrator to correct the monthly reporting dates.</div>;
   const month = months.includes(visibleMonth) ? visibleMonth : preferredMonth;
@@ -245,7 +248,7 @@ export function DayCalendar({
 }
 
 function SubmitPanel({ log, onSubmitted }: { log: WorkLogDetail; onSubmitted: (l: WorkLogDetail) => void }) {
-  const { me, t } = useAuth();
+  const { me, t, lang } = useAuth();
   const [attest, setAttest] = useState(false);
   const { busy, error, run } = useAction();
   const gpsRequired = !!me?.client_settings.gps_required_on_submit;
@@ -265,6 +268,11 @@ function SubmitPanel({ log, onSubmitted }: { log: WorkLogDetail; onSubmitted: (l
   return (
     <form className="card stack" onSubmit={submit}>
       <h3>{t('submitTitle')}</h3>
+      {!!log.service_targets?.some(row => row.left) && <p className="alert alert-warn">
+        {lang === 'sw'
+          ? 'Baadhi ya huduma hazijafikia siku za chini kabisa. Bado unaweza kuwasilisha, na wakaguzi wataona upungufu huu.'
+          : 'Some services are below their minimum days. You can still submit, and your reviewers will see the shortfall.'}
+      </p>}
       <label className="row" style={{ alignItems: 'flex-start' }}>
         <input type="checkbox" checked={attest} onChange={(e) => setAttest(e.target.checked)} required />
         <span>{t('attest')}</span>
@@ -339,7 +347,7 @@ export function WorkLogEditor({ logId, initialDate, initialMonth, onBack }: { lo
       </div>
       <header className="stack">
         <h1>{log.cadre.form_title || log.cadre.name}</h1>
-        <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} technicalReviewer={log.cadre?.technical_reviewer_title} />
+        <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} technicalReviewer={log.cadre?.technical_reviewer_title} workflowVersion={log.workflow_version} workType={log.work_type} communityOnly={!!log.assignment && !log.assignment.facility} />
         {log.status === 'REJECTED' && log.can_edit && <Alert kind="warn">
           This timesheet was rejected. Correct existing days or fill missing dates across the month, then submit again.
           It will restart CTC, Technical and RM review; previous approval history is retained.
@@ -415,6 +423,8 @@ export function WorkLogEditor({ logId, initialDate, initialMonth, onBack }: { lo
         </section>
       )}
 
+      <ServiceTargets rows={log.service_targets} lang={lang} endDate={log.period.end_date} />
+
       <TotalsPanel log={log} lang={lang} title={t('totals')} />
 
       {log.available_actions.includes('submit') && <SubmitPanel log={log} onSubmitted={setData} />}
@@ -436,6 +446,9 @@ export function WorkLogEditor({ logId, initialDate, initialMonth, onBack }: { lo
       {cancelling && (
         <ReasonDialog
           title={t('cancelLog')}
+          description={lang === 'sw'
+            ? 'Huwezi kutendua hili, na huwezi kuanza rekodi mpya ya mwezi huu baadaye. Ikiwa unataka tu kurekebisha, funga dirisha hili.'
+            : 'This cannot be undone, and you cannot start a new record for this month afterwards. If you only want to correct something, close this and edit instead.'}
           required={false}
           danger
           confirmLabel={t('cancelLog')}

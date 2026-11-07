@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { qs } from '../api';
 import { useAuth } from '../AuthContext';
 import { AsyncState, Field, StatusBadge, Tabs } from '../components/ui';
@@ -9,9 +9,9 @@ import { useApi } from '../hooks';
 import { Named, PayPeriod, WorkLogSummary } from '../types';
 import { navigate } from '../nav';
 
-const REVIEWER_ROLES = ['SUPERVISOR', 'FACILITY_IN_CHARGE', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE'];
-const OPERATIONAL_APPROVER_ROLES = ['SUPERVISOR', 'FACILITY_IN_CHARGE', 'TECHNICAL_OFFICER', 'RPM'];
-const DECISION_ROLES = ['SUPERVISOR', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE'];
+const REVIEWER_ROLES = ['SUPERVISOR', 'FACILITY_IN_CHARGE', 'CSO_TECHNICAL_OFFICER', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE'];
+const OPERATIONAL_APPROVER_ROLES = ['SUPERVISOR', 'FACILITY_IN_CHARGE', 'CSO_TECHNICAL_OFFICER', 'TECHNICAL_OFFICER', 'RPM'];
+const DECISION_ROLES = ['SUPERVISOR', 'CSO_TECHNICAL_OFFICER', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE'];
 const FINANCE_ROLES = ['REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'SUPER_ADMIN'];
 
 function LogTable({ rows, queue, onOpen }: { rows: WorkLogSummary[]; queue: boolean; onOpen: (id: number) => void }) {
@@ -76,11 +76,11 @@ function LogTable({ rows, queue, onOpen }: { rows: WorkLogSummary[]; queue: bool
   );
 }
 
-export function ReviewWorkLogs() {
+export function ReviewWorkLogs({ initialType }: { initialType?: 'SERVICES' | 'PAYROLL' } = {}) {
   const { hasRole } = useAuth();
   const isReviewer = hasRole(...REVIEWER_ROLES);
   const isFinance = hasRole(...FINANCE_ROLES);
-  const canReviewPayroll = hasRole(...OPERATIONAL_APPROVER_ROLES);
+  const canReviewPayroll = hasRole(...OPERATIONAL_APPROVER_ROLES, 'OVERSIGHT');
   // Facility In-Charge has no approval step, so nothing is ever waiting on them. They read their facility's timesheets.
   const decides = hasRole(...DECISION_ROLES);
   const viewsFacilityOnly = hasRole('FACILITY_IN_CHARGE') && !decides;
@@ -89,11 +89,20 @@ export function ReviewWorkLogs() {
   const [periodId, setPeriodId] = useState('');
   const [cadre, setCadre] = useState('');
   const [regionId, setRegionId] = useState('');
-  const [workType, setWorkType] = useState<'SERVICES' | 'PAYROLL' | 'LEGACY'>('SERVICES');
+  const [workType, setWorkType] = useState<'SERVICES' | 'PAYROLL' | 'LEGACY'>(initialType || 'SERVICES');
   const visibleWorkType = canReviewPayroll ? workType : 'SERVICES';
   const periods = useApi<PayPeriod[]>(tab === 'all' ? '/admin/pay-periods' : null);
   const cadres = useApi<{ code: string; name: string }[]>('/worklogs/cadres');
   const regions = useApi<Named[]>('/worklogs/regions');
+  // The menu badge counts every work type, so open on whichever list actually holds the waiting work.
+  const waiting = useApi<WorkLogSummary[]>(decides ? '/worklogs?queue=true' : null);
+  const waitingCount = (kind: string) => (waiting.data || []).filter((row) => row.work_type === kind).length;
+  const chosen = useRef(Boolean(initialType));
+  useEffect(() => {
+    if (chosen.current || !waiting.data || !canReviewPayroll) return;
+    chosen.current = true;
+    if (!waitingCount('SERVICES') && waitingCount('PAYROLL')) setWorkType('PAYROLL');
+  }, [waiting.data]); // eslint-disable-line react-hooks/exhaustive-deps
   const path = tab === 'queue' ? `/worklogs${qs({ queue: true, work_type: visibleWorkType, region_id: regionId, cadre })}` : `/worklogs${qs({ status, period_id: periodId, cadre, work_type: visibleWorkType, region_id: regionId })}`;
   const logs = useApi<WorkLogSummary[]>(path);
   const [openId, setOpenId] = useState<number | null>(null);
@@ -102,8 +111,8 @@ export function ReviewWorkLogs() {
     <div className="stack-lg">
       <header className="page-header">
         <div>
-          <h1>Work logs</h1>
-          <p className="muted small">Review and endorse work logs within your assigned approval scope.</p>
+          <h1>{viewsFacilityOnly ? "My facility's timesheets" : 'Timesheet reviews'}</h1>
+          <p className="muted small">{viewsFacilityOnly ? 'Read every cadre at your facility, at any stage.' : 'Open a timesheet, check it, and record your decision.'}</p>
         </div>
         <div className="row">
           {isReviewer && (
@@ -118,8 +127,8 @@ export function ReviewWorkLogs() {
                 ]}
               />
               {canReviewPayroll && <Tabs label="Work type queue" value={workType} onChange={setWorkType} tabs={[
-                { key: 'SERVICES', label: 'Services' },
-                { key: 'PAYROLL', label: 'Payroll' },
+                { key: 'SERVICES', label: `Services${waitingCount('SERVICES') ? ` (${waitingCount('SERVICES')})` : ''}` },
+                { key: 'PAYROLL', label: `Payroll${waitingCount('PAYROLL') ? ` (${waitingCount('PAYROLL')})` : ''}` },
                 { key: 'LEGACY', label: 'Legacy' },
               ]} />}
             </>

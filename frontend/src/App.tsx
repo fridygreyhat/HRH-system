@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { BrandMark, Icon } from './components/Icon';
 import { roleLabel } from './format';
@@ -28,10 +28,11 @@ import { Rates } from './pages/Rates';
 import { ReviewCadres } from './pages/ReviewCadres';
 import { Staff } from './pages/Staff';
 import { Modal } from './components/ui';
+import { Home } from './pages/Home';
 import { useTheme } from './theme';
 import { WorkLogSummary } from './types';
 
-const REVIEWERS = ['SUPERVISOR', 'FACILITY_IN_CHARGE', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE'];
+const REVIEWERS = ['SUPERVISOR', 'FACILITY_IN_CHARGE', 'CSO_TECHNICAL_OFFICER', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE'];
 
 interface Page {
   key: string;
@@ -40,36 +41,65 @@ interface Page {
   icon: string;
   group: string;
   roles: string[];
-  render: () => React.ReactNode;
+  render: (target?: string) => React.ReactNode;
 }
 
+const EVERY_ROLE = ['PROVIDER', 'SUPERVISOR', 'FACILITY_IN_CHARGE', 'CSO_TECHNICAL_OFFICER', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'COMMUNITY_VERIFIER',
+  'FHI360_FINANCE', 'CSO_FINANCE', 'OVERSIGHT', 'CENTRAL_ADMIN', 'REGIONAL_ADMIN', 'SYSTEM_ADMIN', 'SUPER_ADMIN'];
+
+/** Menu wording in Kiswahili, the default language. */
+const LABELS_SW: Record<string, string> = {
+  home: 'Mwanzo', dashboard: 'Dashibodi', 'my-logs': 'Kumbukumbu zangu', 'payment-details': 'Taarifa za malipo', 'backdate-access': 'Ruhusa ya tarehe zilizopita',
+  rates: 'Viwango vya huduma', 'pay-periods': 'Vipindi vya malipo', 'public-holidays': 'Sikukuu', 'routing-queue': 'Huduma za kukagua', 'finance-monthly': 'Ripoti ya mwezi',
+  'review-cadres': 'Mgawo wa wakaguzi', worklogs: 'Mapitio ya majedwali', claims: 'Madai ya malipo', batches: 'Makundi ya malipo', budgets: 'Bajeti ya huduma',
+  'salary-amounts': 'Viwango vya mishahara', cso: 'Malipo ya CSO', 'community-claims': 'Madai ya jamii', staff: 'Daftari la watumishi', organizations: 'Mashirika na mikoa', admin: 'Utawala',
+};
+const DESCRIPTIONS_SW: Record<string, string> = {
+  'my-logs': 'Rekodi kazi zako za kila siku na uwasilishe tarehe 25', 'payment-details': 'Dhibiti akaunti yako ya benki na namba ya simu ya malipo',
+  'backdate-access': 'Toa ruhusa ya muda kufungua tarehe iliyopita', rates: 'Ongeza huduma, viwango vyake vya kila siku na siku za chini kabisa',
+  'pay-periods': 'Ratiba za kazi na malipo za mikoa', 'public-holidays': 'Sikukuu zinazoonekana kwenye kalenda na majedwali',
+  'routing-queue': 'Idhinisha majedwali na malipo, kisha tuma Fedha Kuu', 'finance-monthly': 'Jumla ya kazi zilizoidhinishwa kwa kila mwezi wa kazi',
+  'review-cadres': 'Dhibiti kada na maeneo ya kila mkaguzi', worklogs: 'Soma na uamue majedwali yaliyo katika eneo lako', claims: 'Fuatilia madai kutoka idhini hadi malipo',
+  batches: 'Faili za malipo na stakabadhi', budgets: 'Bajeti za huduma za mikoa na makato yake', 'salary-amounts': 'Mshahara kamili wa kila ngazi',
+  cso: 'Malipo yako, uthibitisho na majedwali ya mishahara', 'community-claims': 'Madai ya jamii na malipo yake', staff: 'Sajili watumishi, vituo vyao na akaunti zao',
+  organizations: 'Mashirika na mikoa yanayohudumia', admin: 'Watumiaji, mipangilio na ukaguzi',
+};
+const GROUPS_SW: Record<string, string> = { Overview: 'Muhtasari', Work: 'Kazi', Finance: 'Fedha', Registry: 'Daftari', System: 'Mfumo' };
+/** The bottom bar on phones: the pages a role opens most, in order. */
+const PHONE_LABELS: Record<string, { en: string; sw: string }> = {
+  home: { en: 'Home', sw: 'Mwanzo' }, 'my-logs': { en: 'My logs', sw: 'Kazi' }, worklogs: { en: 'Reviews', sw: 'Mapitio' }, 'routing-queue': { en: 'Services', sw: 'Huduma' },
+  cso: { en: 'Payments', sw: 'Malipo' }, claims: { en: 'Claims', sw: 'Madai' }, staff: { en: 'Staff', sw: 'Watumishi' }, 'community-claims': { en: 'Community', sw: 'Jamii' }, dashboard: { en: 'Overview', sw: 'Muhtasari' },
+};
+const PHONE_PAGES = ['my-logs', 'worklogs', 'routing-queue', 'cso', 'claims', 'staff', 'community-claims', 'dashboard'];
+
 export const PAGES: Page[] = [
+  { key: 'home', label: 'Home', description: 'What is waiting for you today', icon: 'home', group: 'Overview', roles: EVERY_ROLE, render: () => <Home /> },
   {
     key: 'dashboard',
     label: 'Dashboard',
     description: 'Work approvals, claims and payment progress at a glance',
     icon: 'dashboard',
     group: 'Overview',
-    roles: ['OVERSIGHT', 'RPM', 'REGIONAL_FINANCE', 'TECHNICAL_OFFICER', 'SUPERVISOR', 'FHI360_FINANCE', 'CSO_FINANCE', 'CENTRAL_ADMIN', 'REGIONAL_ADMIN'],
+    roles: ['OVERSIGHT', 'RPM', 'REGIONAL_FINANCE', 'TECHNICAL_OFFICER', 'CSO_TECHNICAL_OFFICER', 'SUPERVISOR', 'FHI360_FINANCE', 'CSO_FINANCE', 'CENTRAL_ADMIN', 'REGIONAL_ADMIN'],
     render: () => <Dashboard />,
   },
   { key: 'my-logs', label: 'My work logs', description: 'Record your daily work and confirm verified logs', icon: 'calendar', group: 'Work', roles: ['PROVIDER'], render: () => <MyWorkLogs /> },
   { key: 'payment-details', label: 'Payment details', description: 'Manage your payroll bank account and service mobile wallet', icon: 'wallet', group: 'Work', roles: ['PROVIDER'], render: () => <ProviderPaymentDetails /> },
   { key: 'backdate-access', label: 'Backdated entry access', description: 'Grant time-limited access to reopen a date-specific work log', icon: 'calendar', group: 'Work', roles: ['TECHNICAL_OFFICER', 'SUPER_ADMIN'], render: () => <BackdateAccess /> },
-  { key: 'rates', label: 'Rates', description: 'Scoped activity rates and immutable revisions', icon: 'receipt', group: 'Finance', roles: ['TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'OVERSIGHT', 'SUPER_ADMIN'], render: () => <Rates /> },
+  { key: 'rates', label: 'Service amounts', description: 'Add services, their daily amounts and minimum days', icon: 'receipt', group: 'Finance', roles: ['TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'OVERSIGHT', 'SUPER_ADMIN'], render: () => <Rates /> },
   { key: 'pay-periods', label: 'Pay periods', description: 'Set regional work and pay schedules', icon: 'calendar', group: 'Finance', roles: ['TECHNICAL_OFFICER', 'CENTRAL_ADMIN', 'FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <PayPeriods /> },
   { key: 'public-holidays', label: 'Public holidays', description: 'Holidays shown on calendars and timesheets', icon: 'calendar', group: 'System', roles: ['CENTRAL_ADMIN', 'SYSTEM_ADMIN', 'SUPER_ADMIN'], render: () => <PublicHolidays /> },
-  { key: 'routing-queue', label: 'Routing queue', description: 'Verify the assignment, then choose the organization that should pay', icon: 'route', group: 'Finance', roles: ['REGIONAL_FINANCE', 'SUPER_ADMIN'], render: () => <RoutingQueue /> },
+  { key: 'routing-queue', label: 'Services to review', description: 'Verify the assignment, then choose the organization that should pay', icon: 'route', group: 'Finance', roles: ['REGIONAL_FINANCE', 'SUPER_ADMIN'], render: () => <RoutingQueue /> },
   { key: 'finance-monthly', label: 'Monthly work report', description: 'Pay-month approved work totals and activity indicators across cadres', icon: 'calendar', group: 'Finance', roles: ['REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'SUPER_ADMIN'], render: () => <FinanceMonthlyReport /> },
-  { key: 'review-cadres', label: 'Review assignments', description: 'Manage reviewer cadre and geographic scope', icon: 'users', group: 'System', roles: ['TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'SUPER_ADMIN'], render: () => <ReviewCadres /> },
+  { key: 'review-cadres', label: 'Review assignments', description: 'Manage reviewer cadre and geographic scope', icon: 'users', group: 'System', roles: ['SYSTEM_ADMIN', 'SUPER_ADMIN'], render: () => <ReviewCadres /> },
   {
     key: 'worklogs',
-    label: 'Work log reviews',
-    description: 'Verify, endorse and authorize work logs in your scope',
+    label: 'Timesheet reviews',
+    description: 'Read and decide the timesheets in your scope',
     icon: 'clipboard',
     group: 'Work',
-    roles: [...REVIEWERS, 'OVERSIGHT', 'FHI360_FINANCE', 'CSO_FINANCE', 'COMMUNITY_VERIFIER'],
-    render: () => <ReviewWorkLogs />,
+    roles: [...REVIEWERS, 'OVERSIGHT', 'FHI360_FINANCE'],
+    render: (target) => <ReviewWorkLogs initialType={target === 'PAYROLL' || target === 'SERVICES' ? target : undefined} />,
   },
   {
     key: 'claims',
@@ -81,9 +111,9 @@ export const PAGES: Page[] = [
     render: () => <Claims />,
   },
   { key: 'batches', label: 'Payment batches', description: 'Payment exports, older FHI360 → CSO handoffs and receipts', icon: 'layers', group: 'Finance', roles: ['FHI360_FINANCE', 'CSO_FINANCE', 'OVERSIGHT'], render: () => <Batches /> },
-  { key: 'budgets', label: 'Budget', description: 'Monthly regional Services budgets and submission deductions', icon: 'wallet', group: 'Finance', roles: ['REGIONAL_FINANCE', 'FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <MonthlyServicesBudgets /> },
+  { key: 'budgets', label: 'Service budgets', description: 'Monthly regional Services budgets and submission deductions', icon: 'wallet', group: 'Finance', roles: ['REGIONAL_FINANCE', 'FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <MonthlyServicesBudgets /> },
   { key: 'salary-amounts', label: 'Salary amounts', description: 'Full monthly salary for each salary scale', icon: 'wallet', group: 'Finance', roles: ['FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <SalaryAmounts /> },
-  { key: 'cso', label: 'CSO payments', description: 'Your pending payments, proof, reconciliation and salary timesheets', icon: 'wallet', group: 'Finance', roles: ['CSO_FINANCE'], render: () => <CsoPortal /> },
+  { key: 'cso', label: 'CSO payments', description: 'Your pending payments, proof, reconciliation and salary timesheets', icon: 'wallet', group: 'Finance', roles: ['CSO_FINANCE'], render: (target) => <CsoPortal initialSection={target === 'salary' ? 'export' : undefined} /> },
   { key: 'community-claims', label: 'Community claims', description: 'Period-based community claims and direct payment', icon: 'users', group: 'Finance', roles: ['PROVIDER', 'COMMUNITY_VERIFIER', 'TECHNICAL_OFFICER', 'CSO_FINANCE', 'OVERSIGHT', 'SUPER_ADMIN'], render: () => <CommunityClaims /> },
   {
     key: 'staff',
@@ -162,9 +192,11 @@ function QueueCount() {
 }
 
 function App() {
-  const { me, loading, logout, hasRole } = useAuth();
+  const { me, loading, logout, hasRole, lang } = useAuth();
   const route = useHashRoute();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuSearch, setMenuSearch] = useState('');
+  const mainRef = useRef<HTMLElement>(null);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const pages = PAGES.filter((p) => hasRole(...p.roles));
   const defaultPage = pages[0];
@@ -175,7 +207,25 @@ function App() {
   // Health workers also see their cadre, e.g. "Provider · Health Care Provider".
   const identity = me?.cadre ? `${roleSummary} · ${me.cadre.name}` : roleSummary;
 
+  // Facility In-Charge reads rather than reviews, so the page is named for what they do there.
+  const readsFacility = hasRole('FACILITY_IN_CHARGE') && !hasRole('SUPERVISOR', 'CSO_TECHNICAL_OFFICER', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE');
+  const label = (page: Page) => {
+    if (page.key === 'worklogs' && readsFacility) return lang === 'sw' ? 'Majedwali ya kituo changu' : "My facility's timesheets";
+    return lang === 'sw' ? LABELS_SW[page.key] || page.label : page.label;
+  };
+  const banded = current && current.key !== 'home' && current.key !== 'dashboard';
+  const phonePages = [pages[0], ...PHONE_PAGES.map((key) => pages.find((page) => page.key === key)).filter((page): page is Page => Boolean(page))].filter(Boolean).slice(0, 4);
+  const term = menuSearch.trim().toLocaleLowerCase();
+
   useEffect(() => setMenuOpen(false), [route.page]);
+  // A new page starts at the top, and keyboard and screen-reader users start there too.
+  useEffect(() => {
+    window.scrollTo?.(0, 0);
+    mainRef.current?.focus({ preventScroll: true });
+  }, [route.page, route.id]);
+  useEffect(() => {
+    document.documentElement.lang = lang === 'en' ? 'en' : 'sw';
+  }, [lang]);
   useEffect(() => {
     document.body.classList.toggle('no-scroll', menuOpen);
   }, [menuOpen]);
@@ -212,18 +262,24 @@ function App() {
           </button>
         </div>
         <nav className="sidebar-nav">
+          {pages.length > 9 && (
+            <label className="nav-search">
+              <span className="sr-only">{lang === 'sw' ? 'Tafuta menyu' : 'Search the menu'}</span>
+              <input type="search" value={menuSearch} placeholder={lang === 'sw' ? 'Tafuta…' : 'Find a page…'} onChange={(event) => setMenuSearch(event.target.value)} />
+            </label>
+          )}
           {GROUPS.map((group) => {
-            const items = pages.filter((p) => p.group === group);
+            const items = pages.filter((p) => p.group === group && (!term || label(p).toLocaleLowerCase().includes(term) || p.label.toLocaleLowerCase().includes(term)));
             if (!items.length) return null;
             return (
               <div key={group} className="nav-group">
-                <div className="nav-group-label">{group}</div>
+                <div className="nav-group-label">{lang === 'sw' ? GROUPS_SW[group] : group}</div>
                 {items.map((p) => {
                   const active = p.key === current?.key;
                   return (
-                    <button key={p.key} type="button" title={p.description} className={`nav-item${active ? ' active' : ''}`} aria-current={active ? 'page' : undefined} onClick={() => navigate(p.key)}>
+                    <button key={p.key} type="button" title={p.description} className={`nav-item${active ? ' active' : ''}`} aria-current={active ? 'page' : undefined} onClick={() => { setMenuOpen(false); navigate(p.key); }}>
                       <Icon name={p.icon} />
-                      <span>{p.label}</span>
+                      <span>{label(p)}</span>
                       {p.key === 'worklogs' && isReviewer && <QueueCount />}
                     </button>
                   );
@@ -234,7 +290,7 @@ function App() {
         </nav>
         <div className="sidebar-foot">
           <Icon name="shield" size={16} />
-          <span>Payments are executed outside this system and recorded with proof.</span>
+          <span>{lang === 'sw' ? 'Malipo hufanyika nje ya mfumo huu na hurekodiwa kwa uthibitisho.' : 'Payments are executed outside this system and recorded with proof.'}</span>
         </div>
       </aside>
       <button type="button" className="sidebar-scrim" aria-label="Close menu" tabIndex={-1} onClick={() => setMenuOpen(false)} />
@@ -247,10 +303,10 @@ function App() {
           <nav className="crumbs" aria-label="Breadcrumb">
             {current && (
               <>
-                <span className="crumb-group">{current.group}</span>
+                <span className="crumb-group">{lang === 'sw' ? GROUPS_SW[current.group] : current.group}</span>
                 <Icon name="chevron" size={14} />
                 <span className="crumb-page" aria-current="page">
-                  {current.label}
+                  {label(current)}
                 </span>
               </>
             )}
@@ -275,16 +331,37 @@ function App() {
             </button>
           </div>
         </header>
-        <main className="content">
+        <main className="content" ref={mainRef} tabIndex={-1}>
           {current ? (
-            <React.Fragment key={current.key}>
-              {current.render()}
+            <React.Fragment key={`${current.key}-${route.id || ''}`}>
+              {banded && (
+                <header className="page-band">
+                  <span className="band-icon"><Icon name={current.icon} /></span>
+                  <div>
+                    <h1>{label(current)}</h1>
+                    <p>{lang === 'sw' ? DESCRIPTIONS_SW[current.key] || current.description : current.description}</p>
+                  </div>
+                </header>
+              )}
+              <div className={banded ? 'banded' : undefined}>{current.render(route.id || undefined)}</div>
             </React.Fragment>
           ) : (
             <p className="empty">Your account has no roles with pages yet. Ask an administrator.</p>
           )}
         </main>
       </div>
+      <nav className="bottom-nav" aria-label={lang === 'sw' ? 'Kurasa kuu' : 'Main pages'}>
+        {phonePages.map((page) => (
+          <button key={page.key} type="button" className={page.key === current?.key ? 'active' : ''} aria-current={page.key === current?.key ? 'page' : undefined} onClick={() => navigate(page.key)}>
+            <Icon name={page.icon} />
+            <span>{PHONE_LABELS[page.key]?.[lang === 'sw' ? 'sw' : 'en'] || label(page)}</span>
+          </button>
+        ))}
+        <button type="button" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}>
+          <Icon name="menu" />
+          <span>{lang === 'sw' ? 'Menyu' : 'Menu'}</span>
+        </button>
+      </nav>
       {passwordOpen && (
         <Modal title="Change password" onClose={() => setPasswordOpen(false)}>
           <ChangePasswordForm onDone={() => setPasswordOpen(false)} />

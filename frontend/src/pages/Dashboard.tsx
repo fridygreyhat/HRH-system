@@ -29,15 +29,20 @@ const PIPELINE = [
   'PENDING_PROVIDER_OTP_CONFIRMATION',
   'PENDING_TECHNICAL_REVIEW',
   'PENDING_RPM_AUTHORIZATION',
+  'PENDING_FINANCE_REVIEW',
+  'FINANCE_REVIEWED',
+  'ROUTED_FHI360',
+  'ROUTED_CSO',
   'RETURNED_TO_PROVIDER',
   'APPROVED',
+  'PAID',
   'REJECTED',
 ];
 
 // Claim lifecycle and payment progress grouped into five stable categories each (fixed color slots).
 const CLAIM_GROUPS = [
   { key: 'preparing', label: 'Preparing', statuses: ['DRAFT', 'VALIDATION_NEEDED', 'PENDING_COMMUNITY_VERIFICATION'] },
-  { key: 'awaiting', label: 'Awaiting approval', statuses: ['AWAITING_APPROVAL'] },
+  { key: 'awaiting', label: 'Awaiting approval', statuses: ['AWAITING_APPROVAL', 'PENDING_FINANCE_REVIEW', 'PENDING_CENTRAL_REVIEW'] },
   { key: 'approved', label: 'Approved / ready', statuses: ['APPROVED', 'READY'] },
   { key: 'held', label: 'Held', statuses: ['BUDGET_HOLD', 'HELD'] },
   { key: 'exported', label: 'Exported / handed off', statuses: ['EXPORTED', 'HANDED_OFF'] },
@@ -138,7 +143,6 @@ function DashboardBody({ d, periodSelected }: { d: DashboardData; periodSelected
         <Kpi icon="clock" label={`Waiting ${reminderHours} h or more`} value={num(late)} tone={late ? 'danger' : 'success'} hint={late ? 'Reminder checks run hourly' : 'All queues within target'} />
         <Kpi icon="receipt" label="Approved, not yet paid" value={compactMoney(Math.max(approvedUnpaid, 0))} hint="Liabilities still moving to payment" />
         <Kpi icon="wallet" label="Paid & recorded" value={compactMoney(paid)} tone="success" hint="Payment status Paid or Reconciled" />
-        <Kpi icon="receipt" label="Services rate basis" value="Fixed daily amount" hint="Highest eligible service amount per day" />
       </div>
 
       <div className="grid-charts">

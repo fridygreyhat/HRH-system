@@ -189,7 +189,7 @@ function ClaimList({ rows, onOpen, meId }: { rows: ClaimSummary[]; onOpen: (id: 
   );
 }
 
-export function CsoPortal() {
+export function CsoPortal({ initialSection }: { initialSection?: 'export' } = {}) {
   const { me } = useAuth();
   const claims = useApi<ClaimSummary[]>('/claims');
   const batches = useApi<Batch[]>('/batches');
@@ -197,7 +197,7 @@ export function CsoPortal() {
   const organizations = useApi<CsoFinanceOrganization[]>('/cso-finance/organizations');
   const receive = useAction();
   const payrollExport = useAction();
-  const [section, setSection] = useState<SectionKey>('all');
+  const [section, setSection] = useState<SectionKey>(initialSection || 'all');
   const [claimId, setClaimId] = useState<number | null>(null);
   const [batchId, setBatchId] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);

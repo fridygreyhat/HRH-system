@@ -16,7 +16,7 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from ..core.roles import FACILITY_IN_CHARGE, PROVIDER, RPM, SUPERVISOR, TECHNICAL_OFFICER, REGIONAL_FINANCE
+from ..core.roles import CSO_TECHNICAL, FACILITY_IN_CHARGE, PROVIDER, RPM, SUPERVISOR, TECHNICAL_OFFICER, REGIONAL_FINANCE
 from ..core.security import CurrentUser
 from ..core.settings import get_setting
 from ..core.timeutil import local_today
@@ -94,6 +94,17 @@ FINANCE_TIMESHEET_APPROVE = "finance_timesheet_approve"
 FACILITY_ENDORSEMENT = "FACILITY_IN_CHARGE"
 
 
+def acting_role(db: Session, log: WorkLog, role: str) -> str:
+    """CTC In-Charge deals with facilities only. With no facility, CSO Technical takes the first step, then FHI360 Technical the second."""
+    if role == SUPERVISOR and db.get(StaffAssignment, log.assignment_id).facility_id is None:
+        return CSO_TECHNICAL
+    return role
+
+
+def stage_owner(db: Session, log: WorkLog) -> str:
+    return acting_role(db, log, STAGE_OWNER[log.status])
+
+
 def transitions_for(log):
     if getattr(log, "work_type", None) == "PAYROLL":
         # Payroll ends with RM's operational approval. It is not a payable claim.
@@ -136,7 +147,7 @@ def check_action(db: Session, current: CurrentUser, log: WorkLog, action: str) -
     transition = transitions_for(log).get((log.status, action))
     if not transition:
         return f"Cannot '{action}' a work log in status {log.status}"
-    role = transition[1]
+    role = acting_role(db, log, transition[1])
     if role not in current.roles:
         return f"Requires the {role} role"
     # A corrupt period may be returned/rejected/reopened for correction, but
@@ -159,7 +170,7 @@ def check_action(db: Session, current: CurrentUser, log: WorkLog, action: str) -
         return "You cannot review your own work log"
     if not assignment_in_role_scope(db, current, role, log.assignment_id):
         return "This work log is outside your assigned scope"
-    if log.workflow_version >= 2 and role in {TECHNICAL_OFFICER, RPM, REGIONAL_FINANCE}:
+    if log.workflow_version >= 2 and role in {CSO_TECHNICAL, TECHNICAL_OFFICER, RPM, REGIONAL_FINANCE}:
         from .v22_scope import may_manage
         assignment = db.get(StaffAssignment, log.assignment_id)
         if not may_manage(current, assignment.region_id, log.cadre_id, role=role):
@@ -213,6 +224,10 @@ def queue_condition(current: CurrentUser):
                 if version >= 2 and role in {TECHNICAL_OFFICER, RPM, REGIONAL_FINANCE}:
                     condition &= record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id, role=role)
                 conditions.append(condition)
+    community = assignments_in_role_scope(current, CSO_TECHNICAL)
+    if community is not None:
+        conditions.append((WorkLog.status == PENDING_CTC) & WorkLog.assignment_id.in_(community)
+                          & record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id, role=CSO_TECHNICAL))
     if not conditions:
         return None
     return or_(*conditions) & (WorkLog.staff_id != current.staff_id)
@@ -261,6 +276,7 @@ def transition(
 
     old = log.status
     next_status, role = transitions_for(log)[(old, action)]
+    role = acting_role(db, log, role)
     now = utcnow()
     if action == "verify":
         log.version += 1
@@ -359,14 +375,14 @@ def _notify(db: Session, log: WorkLog, action: str, comment: Optional[str]) -> N
 
     def to_role(role: str, event: str) -> None:
         for user in users_in_scope_for(db, role, assignment, cadre_id=log.cadre_id,
-                                       strict_cadre=log.workflow_version >= 2 and role in {TECHNICAL_OFFICER, RPM, REGIONAL_FINANCE}):
+                                       strict_cadre=log.workflow_version >= 2 and role in {CSO_TECHNICAL, TECHNICAL_OFFICER, RPM, REGIONAL_FINANCE}):
             notifications.enqueue(db, event, user, None, related=related, **ctx)
 
     def to_provider(event: str) -> None:
         notifications.enqueue(db, event, provider_user, staff.verified_phone, related=related, **ctx)
 
     if log.status == PENDING_CTC:
-        to_role(SUPERVISOR, "WORKLOG_RETURNED_TO_REVIEWER" if action == "return_to_reviewer" else "WORKLOG_SUBMITTED")
+        to_role(acting_role(db, log, SUPERVISOR), "WORKLOG_RETURNED_TO_REVIEWER" if action == "return_to_reviewer" else "WORKLOG_SUBMITTED")
     elif log.status == PENDING_TECH:
         to_role(TECHNICAL_OFFICER, "WORKLOG_RETURNED_TO_REVIEWER" if action in {"return", "return_to_reviewer"} else "WORKLOG_CONFIRMED")
     elif log.status == PENDING_RPM and action == "endorse":

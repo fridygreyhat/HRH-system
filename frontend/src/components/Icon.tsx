@@ -60,6 +60,7 @@ const PATHS: Record<string, React.ReactNode> = {
     </>
   ),
   menu: <path d="M3.5 6.5h17M3.5 12h17M3.5 17.5h17" />,
+  home: <path d="M3.5 11 12 4l8.5 7M6 9.5V20h12V9.5M10 20v-6h4v6" />,
   close: <path d="M6 6l12 12M18 6 6 18" />,
   sun: (
     <>

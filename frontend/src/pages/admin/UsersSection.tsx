@@ -34,7 +34,7 @@ const PHONE_RE = /^\+?\d{9,15}$/;
 /** Granted automatically with a staff record; never ticked by hand. */
 const PROVIDER = 'PROVIDER';
 const SUPER_ADMIN = 'SUPER_ADMIN';
-const REVIEW_CADRE_ROLES = ['TECHNICAL_OFFICER', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE'];
+const REVIEW_CADRE_ROLES = ['CSO_TECHNICAL_OFFICER', 'TECHNICAL_OFFICER', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE'];
 
 type Maps = Record<Dim, Map<string, string>>;
 

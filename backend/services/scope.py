@@ -1,7 +1,8 @@
 """Server-side data scoping. Every list and every action goes through these conditions.
 
 A reviewer sees only work whose assignment falls inside the scopes granted for that role:
-  SUPERVISOR          facility or community area
+  SUPERVISOR          facility only
+  CSO_TECHNICAL       organization (the CSO), community-only placements, and only their regions and cadres
   FACILITY_IN_CHARGE  facility
   TECHNICAL_OFFICER   cluster (via facility.cluster_id) or region, and only the cadres in their technical area
   RPM                 region
@@ -20,6 +21,7 @@ from ..core.roles import (
     CENTRAL_ADMIN,
     COMMUNITY_VERIFIER,
     CSO_FINANCE,
+    CSO_TECHNICAL,
     FACILITY_IN_CHARGE,
     FHI360_FINANCE,
     OVERSIGHT,
@@ -46,7 +48,8 @@ from ..models import (
 )
 
 ROLE_SCOPE_DIMENSIONS: dict[str, tuple[str, ...]] = {
-    SUPERVISOR: ("facility_id", "community_area_id"),
+    SUPERVISOR: ("facility_id",),
+    CSO_TECHNICAL: ("organization_id",),
     FACILITY_IN_CHARGE: ("facility_id",),
     TECHNICAL_OFFICER: ("cluster_id", "region_id"),
     RPM: ("region_id",),
@@ -63,7 +66,7 @@ def _assignment_condition(current: CurrentUser, role: str):
         return None
     if current.unrestricted:
         return true()
-    if role == TECHNICAL_OFFICER and not current.review_cadres:
+    if role in (TECHNICAL_OFFICER, CSO_TECHNICAL) and not current.review_cadres:
         return None  # a technical officer with no technical area reviews nothing
     conditions = []
     for dim in ROLE_SCOPE_DIMENSIONS.get(role, ()):
@@ -76,8 +79,10 @@ def _assignment_condition(current: CurrentUser, role: str):
             conditions.append(getattr(StaffAssignment, dim).in_(values))
     if not conditions:
         return None
-    if role == TECHNICAL_OFFICER:
+    if role in (TECHNICAL_OFFICER, CSO_TECHNICAL):
         in_area = StaffAssignment.staff_id.in_(select(Staff.id).where(Staff.cadre_id.in_(current.review_cadres)))
+        if role == CSO_TECHNICAL:
+            return and_(or_(*conditions), in_area, StaffAssignment.facility_id.is_(None))
         return and_(or_(*conditions), in_area)
     return or_(*conditions)
 
@@ -128,7 +133,7 @@ def _worklog_visibility(current: CurrentUser):
                 routed = and_(WorkLog.status.in_(("ROUTED_CSO", "PAID")), WorkLog.work_type != "SERVICES",
                               record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id, role=role))
                 condition = and_(condition, or_(WorkLog.workflow_version == 1, routed))
-            elif role in (TECHNICAL_OFFICER, RPM):
+            elif role in (TECHNICAL_OFFICER, CSO_TECHNICAL, RPM):
                 condition = and_(condition, or_(WorkLog.workflow_version == 1, record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id, role=role)))
             conditions.append(condition)
     return or_(*conditions)
@@ -188,7 +193,7 @@ def can_see_gps(db: Session, current: CurrentUser, staff_id: int, assignment_id:
     """GPS coordinates: the staff member and the CTC/technical reviewers responsible for them only."""
     if current.staff_id == staff_id:
         return True
-    return any(assignment_in_role_scope(db, current, role, assignment_id) for role in (SUPERVISOR, TECHNICAL_OFFICER))
+    return any(assignment_in_role_scope(db, current, role, assignment_id) for role in (SUPERVISOR, CSO_TECHNICAL, TECHNICAL_OFFICER))
 
 
 def staff_visibility(current: CurrentUser):
@@ -254,7 +259,9 @@ def users_in_scope_for(db: Session, role: str, assignment: StaffAssignment, cadr
         .join(UserScope, UserScope.user_id == User.id)
         .filter(Role.name == role, User.is_active.is_(True), or_(*matches))
     )
-    if role == TECHNICAL_OFFICER or (strict_cadre and role != RPM):
+    if role == CSO_TECHNICAL:
+        query = query.filter(User.id.in_(select(UserScope.user_id).where(UserScope.region_id == assignment.region_id)))
+    if role in (TECHNICAL_OFFICER, CSO_TECHNICAL) or (strict_cadre and role != RPM):
         cadre_id = cadre_id or db.get(Staff, assignment.staff_id).cadre_id
         query = query.join(UserReviewCadre, UserReviewCadre.user_id == User.id).filter(UserReviewCadre.cadre_id == cadre_id)
     return query.distinct().all()

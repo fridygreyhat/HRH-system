@@ -1,5 +1,6 @@
 import { ApprovalStepper } from './ApprovalStepper';
 import { PrintWorkLog } from '../../pages/PrintWorkLog';
+import { ServiceTargets } from './ServiceTargets';
 import { PaymentSetupNotice } from './PaymentSetupNotice';
 import { AdminAudit } from '../AdminAudit';
 import React, { useEffect, useRef, useState } from 'react';
@@ -211,7 +212,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
   const isRpmWithoutFinanceRole = hasRole('RPM') && !hasRole('REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE');
   const financeSummaryOnly = hasRole('REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE')
     && !hasRole('SUPER_ADMIN', 'SYSTEM_ADMIN', 'CENTRAL_ADMIN', 'REGIONAL_ADMIN', 'SUPERVISOR', 'TECHNICAL_OFFICER', 'RPM');
-  const showTimesheet = hasRole('SUPERVISOR', 'FACILITY_IN_CHARGE', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE');
+  const showTimesheet = hasRole('SUPERVISOR', 'FACILITY_IN_CHARGE', 'CSO_TECHNICAL_OFFICER', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE');
   const { data: log, error, loading, setData, reload } = useApi<WorkLogDetail>(`/worklogs/${logId}`);
   const [action, setAction] = useState<string | null>(null);
   const [flags, setFlags] = useState<ReturnFlag[]>([]);
@@ -235,7 +236,8 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
   const decisionTitle = timesheetStep ? 'Review 1 of 2 · Timesheet'
     : paymentStep ? 'Review 2 of 2 · Services payment'
       : routingActionAvailable ? 'Send to Central Finance' : 'Review and decide';
-  const decisionLabel = (value: string) => regionalDecision && value === 'return' ? 'Return to cadre Technical'
+  const decisionLabel = (value: string) => value === 'verify' && log?.assignment && !log.assignment.facility ? 'Verify and approve (CSO Technical)'
+    : regionalDecision && value === 'return' ? 'Return to cadre Technical'
     : regionalDecision && value === 'reject' ? 'Reject to provider' : actionDisplayLabel(value, Boolean(log?.finance_snapshot));
   const payors = useApi<FinancePayorsResponse>(routingActionAvailable ? `/finance/payors?work_log_id=${logId}` : null);
   const centralReviewers = useApi<{ id: number; name: string; username: string }[]>(routingActionAvailable ? `/finance/central-reviewers?work_log_id=${logId}` : null);
@@ -406,7 +408,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
               Print view
             </button>
           </div>
-          <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} technicalReviewer={log.cadre?.technical_reviewer_title} workflowVersion={log.workflow_version} workType={log.work_type} financeTimesheetApproved={Boolean(timesheetApprovedAt)} />
+          <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} technicalReviewer={log.cadre?.technical_reviewer_title} communityOnly={!!log.assignment && !log.assignment.facility} workflowVersion={log.workflow_version} workType={log.work_type} financeTimesheetApproved={Boolean(timesheetApprovedAt)} />
           {showTimesheet && <ReviewSummary log={log} task={reviewTask} amount={summaryAmount} />}
           {!!log.review_feedback?.length && <Section title="Current review feedback">
             {log.review_feedback.map((feedback, index) => <div key={index}>
@@ -418,6 +420,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
           {showTimesheet && (timesheetFolded
             ? <Folded title={`Timesheet · approved ${dateTime(timesheetApprovedAt)}`}>{timesheetIntro}</Folded>
             : <Section title="Timesheet">{timesheetIntro}</Section>)}
+          <ServiceTargets rows={log.service_targets} lang="en" />
           <Section title="Monthly provider summary">
             <div className="row">
               <span className="badge badge-neutral">Weekday daily limit: {log.review_summary?.limits.daily_hours} h</span>

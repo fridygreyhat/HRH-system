@@ -16,7 +16,7 @@ from .models import PaymentClaim, PayPeriod, SMSOutbox, Staff, StaffAssignment, 
 from .services import notifications
 from .services.scope import users_in_scope_for
 from .services.sms_gateway import get_sms_gateway
-from .services.worklog_workflow import STAGE_OWNER, period_label
+from .services.worklog_workflow import STAGE_OWNER, period_label, stage_owner
 
 logger = logging.getLogger("hrh.worker")
 OUTBOX_INTERVAL_SECONDS = 15
@@ -80,7 +80,7 @@ def run_reminders(db: Session) -> int:
     for log in logs:
         assignment = db.get(StaffAssignment, log.assignment_id)
         staff = db.get(Staff, log.staff_id)
-        for user in users_in_scope_for(db, STAGE_OWNER[log.status], assignment):
+        for user in users_in_scope_for(db, stage_owner(db, log), assignment):
             if user.id == staff.user_id:
                 continue
             recent = (

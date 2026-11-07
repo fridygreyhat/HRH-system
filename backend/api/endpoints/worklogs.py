@@ -37,7 +37,7 @@ from ...models import (
 from ...services import claims as claims_service
 from ...core.audit_access import can_view_audit
 from ...services import notifications
-from ...services import public_holidays
+from ...services import public_holidays, service_targets
 from ...services import worklog_workflow as wf
 from ...services.forms import assignment_out, cadre_fields, cadre_out, entries_with_measures, review_summary, totals
 from ...services.activities import activity_fields, activity_for
@@ -198,6 +198,7 @@ def _detail(db: Session, current: CurrentUser, log: WorkLog) -> dict:
         "financial_preview": finance_gate.preview(db, log) if log.workflow_version >= 2 and log.work_type != "PAYROLL" else None,
         "assignment": assignment_out(db, db.get(StaffAssignment, log.assignment_id)),
         "period": {**to_dict(period), "holidays": public_holidays.for_period(db, period)},
+        "service_targets": service_targets.progress(db, log),
         "backdate_access": provider_access(db, log.staff_id),
         "entries": entries,
         "totals": totals(db, log),

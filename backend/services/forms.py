@@ -214,6 +214,10 @@ def review_summary(db: Session, log: WorkLog, current=None) -> dict:
     months = monthly_provider_totals(db, log, current)
     for month in months:
         anomalies.extend(month["anomalies"])
+    if log.status != "DRAFT":  # while the month is being filled in, the provider's progress card says this instead
+        from .service_targets import progress
+        anomalies.extend({"code": "SERVICE_MINIMUM_DAYS", "message": f"{row['service']}: {row['days']} of {row['min_days']} minimum days this month."}
+                         for row in progress(db, log) if row["left"])
     return {
         "metrics": {key: str(value) for key, value in totals_by_key.items()},
         "months": months,

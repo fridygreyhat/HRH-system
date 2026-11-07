@@ -29,3 +29,13 @@ test('the restored Budget tab points to monthly regional Services budgets', () =
     window.history.replaceState(null, '', original);
   }
 });
+
+test('every login lands on Home, and menus only offer pages the role can use', () => {
+  const page = (key) => PAGES.find((item) => item.key === key);
+  expect(PAGES[0].key).toBe('home');
+  ['PROVIDER', 'SUPERVISOR', 'FACILITY_IN_CHARGE', 'CSO_TECHNICAL_OFFICER', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE',
+    'COMMUNITY_VERIFIER', 'OVERSIGHT', 'CENTRAL_ADMIN', 'REGIONAL_ADMIN', 'SYSTEM_ADMIN', 'SUPER_ADMIN'].forEach((role) => expect(PAGES[0].roles).toContain(role));
+  expect(page('review-cadres').roles).toEqual(['SYSTEM_ADMIN', 'SUPER_ADMIN']);
+  expect(page('worklogs').roles).not.toContain('CSO_FINANCE');
+  expect(page('worklogs').roles).not.toContain('COMMUNITY_VERIFIER');
+});

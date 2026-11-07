@@ -6,6 +6,13 @@ import { dateOnly, money, todayLocal } from '../format';
 import { useAction, useApi } from '../hooks';
 import { RateActivity, RateTemplates } from '../types';
 
+/** The agreed monthly minimums, offered as a starting point. The person adding the service can change them. */
+export function suggestedDays(name: string): string {
+  if (/\bsns\b/i.test(name)) return '5';
+  if (/\bindex\b|\bmobile\b/i.test(name)) return '10';
+  return '';
+}
+
 export function CreateRate({ lookups, onClose, onSaved }: { lookups: RateTemplates; onClose: () => void; onSaved: () => void }) {
   const type = 'SERVICES';
   const [cadreId, setCadreId] = useState('');
@@ -17,7 +24,10 @@ export function CreateRate({ lookups, onClose, onSaved }: { lookups: RateTemplat
   const [rate, setRate] = useState('');
   const [billableIndex, setBillableIndex] = useState('');
   const [effective, setEffective] = useState(todayLocal());
+  const [minDays, setMinDays] = useState('');
+  const [minDaysEdited, setMinDaysEdited] = useState(false);
   const action = useAction();
+  const suggest = (name: string) => { if (!minDaysEdited) setMinDays(suggestedDays(name)); };
   const templates = lookups.templates.filter((item) => (!cadreId || String(item.cadre_id) === cadreId) && item.item_type === type);
   const selectedTemplate = lookups.templates.find((item) => item.key === template);
   const genericCascadeFields = [
@@ -35,6 +45,9 @@ export function CreateRate({ lookups, onClose, onSaved }: { lookups: RateTemplat
     if (item) {
       setCadreId(String(item.cadre_id));
       setMode(item.form_mode);
+      if (!labelEn.trim()) setLabelEn(item.label_en);
+      if (!labelSw.trim()) setLabelSw(item.label_sw);
+      suggest(labelEn.trim() || item.label_en);
     }
   };
   const submit = async (event: React.FormEvent) => {
@@ -42,6 +55,11 @@ export function CreateRate({ lookups, onClose, onSaved }: { lookups: RateTemplat
     const amount = Number(rate);
     if (!cadreId || !Number.isFinite(amount) || amount < 0) {
       action.setError('Choose a cadre and enter a valid rate.');
+      return;
+    }
+    const days = Number(minDays);
+    if (minDays === '' || !Number.isInteger(days) || days < 0 || days > 31) {
+      action.setError('Enter the minimum days per month, from 0 to 31.');
       return;
     }
     if (requiresBillableIndex && (billableIndex === '' || Number(billableIndex) < 0 || Number(billableIndex) >= billableFields.length)) {
@@ -52,7 +70,7 @@ export function CreateRate({ lookups, onClose, onSaved }: { lookups: RateTemplat
       label_en: labelEn.trim(),
       label_sw: labelSw.trim(),
       cadre_id: Number(cadreId),
-      region_id: regionId ? Number(regionId) : null,
+      region_id: Number(regionId),
       item_type: type,
       form_mode: mode,
       ...(template ? { template_key: template } : {}),
@@ -60,6 +78,7 @@ export function CreateRate({ lookups, onClose, onSaved }: { lookups: RateTemplat
       currency: 'TZS',
       unit_type: 'PER_DAY',
       effective_start_date: effective,
+      min_days_per_month: days,
       ...(requiresBillableIndex ? { billable_index: Number(billableIndex) } : {}),
     }));
     if (result) onSaved();
@@ -75,14 +94,14 @@ export function CreateRate({ lookups, onClose, onSaved }: { lookups: RateTemplat
           </select>
         </Field>
         <Field label="Activity name (English)">
-          <input required maxLength={160} value={labelEn} onChange={(event) => setLabelEn(event.target.value)} />
+          <input required maxLength={160} value={labelEn} onChange={(event) => { setLabelEn(event.target.value); suggest(event.target.value); }} />
         </Field>
         <Field label="Activity name (Kiswahili)">
           <input required maxLength={160} value={labelSw} onChange={(event) => setLabelSw(event.target.value)} />
         </Field>
         <Field label="Region">
-          <select value={regionId} onChange={(event) => setRegionId(event.target.value)}>
-            <option value="">All available regions</option>{lookups.regions.map((region) => <option key={region.id} value={region.id}>{region.name}</option>)}
+          <select required value={regionId} onChange={(event) => setRegionId(event.target.value)}>
+            <option value="">Choose…</option>{lookups.regions.map((region) => <option key={region.id} value={region.id}>{region.name}</option>)}
           </select>
         </Field>
         <Field label="Indicator template" hint="Templates preserve the existing clinical indicator set.">
@@ -99,6 +118,9 @@ export function CreateRate({ lookups, onClose, onSaved }: { lookups: RateTemplat
         )}
         <Field label="Fixed amount per service per day (TZS)">
           <input type="number" min="0" step="any" required value={rate} onChange={(event) => setRate(event.target.value)} />
+        </Field>
+        <Field label="Minimum days per month" hint="The least each provider should work on this service from the 26th to the 25th. Enter 0 if there is no minimum.">
+          <input type="number" min="0" max="31" step="1" required value={minDays} onChange={(event) => { setMinDays(event.target.value); setMinDaysEdited(true); }} />
         </Field>
         <Field label="Payment rule"><input readOnly value="One service per day — highest fixed amount" /></Field>
         <Field label="Effective from">
@@ -128,17 +150,21 @@ export function CreateRate({ lookups, onClose, onSaved }: { lookups: RateTemplat
 function ReviseRate({ activity, onClose, onSaved }: { activity: RateActivity; onClose: () => void; onSaved: () => void }) {
   const [rate, setRate] = useState(String(activity.rate_value));
   const [date, setDate] = useState(todayLocal());
+  const [minDays, setMinDays] = useState(String(activity.min_days_per_month ?? suggestedDays(activity.label_en)));
   const action = useAction();
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     const value = Number(rate);
     if (!Number.isFinite(value) || value < 0) return action.setError('Enter a valid rate of zero or more.');
-    const result = await action.run(() => api.post<RateActivity>(`/rates/${activity.id}/revise`, { rate_value: value, effective_start_date: date }));
+    const days = Number(minDays);
+    if (minDays === '' || !Number.isInteger(days) || days < 0 || days > 31) return action.setError('Enter the minimum days per month, from 0 to 31.');
+    const result = await action.run(() => api.post<RateActivity>(`/rates/${activity.id}/revise`, { rate_value: value, effective_start_date: date, min_days_per_month: days }));
     if (result) onSaved();
   };
   return <form className="stack" onSubmit={submit}>
     <p className="notice notice-info">This creates a fixed daily service amount. Older hourly or per-count definitions are converted only in this new version; recorded work and paid history retain their original snapshots.</p>
     <Field label="New fixed daily amount (TZS)"><input type="number" min="0" step="any" required value={rate} onChange={(event) => setRate(event.target.value)} /></Field>
+    <Field label="Minimum days per month" hint="Enter 0 if there is no minimum."><input type="number" min="0" max="31" step="1" required value={minDays} onChange={(event) => setMinDays(event.target.value)} /></Field>
     <Field label="Effective from"><input type="date" required value={date} onChange={(event) => setDate(event.target.value)} /></Field>
     <Alert>{action.error}</Alert>
     <div className="row"><button className="btn btn-primary" disabled={action.busy}>{action.busy ? 'Saving…' : 'Create revision'}</button><button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button></div>
@@ -172,7 +198,7 @@ export function Rates() {
       </div>
       <AsyncState data={rates.data} error={rates.error} loading={rates.loading} empty="No rate definitions are visible in your scope.">
         {() => visible.length ? <div className="table-wrap"><table>
-          <thead><tr><th>Activity</th><th>Type</th><th>Cadre</th><th>Region</th><th>Form</th><th>Measures</th><th>Billable indicator</th><th>Unit</th><th className="num">Rate</th><th>Effective</th><th>Status</th><th /></tr></thead>
+          <thead><tr><th>Activity</th><th>Type</th><th>Cadre</th><th>Region</th><th>Form</th><th>Measures</th><th>Billable indicator</th><th>Unit</th><th className="num">Min. days / month</th><th className="num">Rate</th><th>Effective</th><th>Status</th><th /></tr></thead>
           <tbody>{visible.map((activity) => {
             const cadre = templates.data?.cadres.find((item) => item.id === activity.cadre_id);
             const region = templates.data?.regions.find((item) => item.id === activity.region_id);
@@ -183,7 +209,7 @@ export function Rates() {
               <td>{activity.item_type === 'PAYROLL' ? 'Hours only' : activity.form_mode}</td>
               <td className="small">{labels.length ? labels.join(', ') : activity.item_type === 'PAYROLL' ? 'None' : activity.fields.join(', ') || 'Single count'}</td>
               <td>{activity.billable_field ? activity.field_definitions.find((field) => field.key === activity.billable_field)?.label_en || activity.billable_field : '—'}</td>
-              <td>{activity.unit_type.replace('_', ' ').toLowerCase()}</td><td className="num nowrap">{money(activity.rate_value, activity.currency)}</td><td className="nowrap">{dateOnly(activity.effective_start_date)}</td>
+              <td>{activity.unit_type.replace('_', ' ').toLowerCase()}</td><td className="num">{activity.min_days_per_month ? activity.min_days_per_month : '—'}</td><td className="num nowrap">{money(activity.rate_value, activity.currency)}</td><td className="nowrap">{dateOnly(activity.effective_start_date)}</td>
               <td><span className={`badge ${activity.is_active ? 'badge-success' : 'badge-neutral'}`}>{activity.is_active ? 'Active' : 'Inactive'}</span></td>
               <td>{canEdit && activity.item_type === 'SERVICES' && <button className="btn btn-secondary btn-sm" onClick={() => setEditing(activity)}>Revise daily amount</button>}{activity.item_type === 'PAYROLL' && <span className="muted small">Historical only</span>}</td>
             </tr>;

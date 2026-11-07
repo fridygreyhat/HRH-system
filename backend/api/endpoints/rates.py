@@ -32,11 +32,13 @@ class RateIn(BaseModel):
     unit_type: Literal["PER_UNIT", "PER_HOUR", "PER_DAY"]
     effective_start_date: date
     billable_index: Optional[int] = Field(default=None, ge=0)
+    min_days_per_month: int = Field(ge=0, le=31)
 
 
 class RevisionIn(BaseModel):
     rate_value: Decimal = Field(gt=0, max_digits=15, decimal_places=2)
     effective_start_date: date
+    min_days_per_month: Optional[int] = Field(default=None, ge=0, le=31)
 
 
 def _scope(query, current):
@@ -126,6 +128,7 @@ def revise_rate(rate_id: int, body: RevisionIn, db: Session = Depends(get_db), c
     )}
     values["unit_type"] = "PER_DAY"
     values["billable_field"] = None
+    values["min_days_per_month"] = old.min_days_per_month if body.min_days_per_month is None else body.min_days_per_month
     row = ActivityRate(**values, key="activity_" + uuid.uuid4().hex[:24], rate_value=body.rate_value,
                        effective_start_date=body.effective_start_date, created_by=current.id, supersedes_id=old.id)
     db.add(row)

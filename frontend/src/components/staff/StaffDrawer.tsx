@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../AuthContext';
 import { useApi } from '../../hooks';
 import { dateOnly, humanize } from '../../format';
@@ -10,7 +10,7 @@ import { FacilityNameModal } from './FacilityNameModal';
 
 type Dialog = 'edit' | 'start-date' | 'rotate' | 'facility-name' | 'exit' | 'login' | null;
 
-export function StaffDrawer({ staffId, cadres, onClose, onChanged }: { staffId: number; cadres: Cadre[]; onClose: () => void; onChanged: () => void }) {
+export function StaffDrawer({ staffId, cadres, onClose, onChanged, startLogin = false }: { staffId: number; cadres: Cadre[]; onClose: () => void; onChanged: () => void; startLogin?: boolean }) {
   const { hasRole } = useAuth();
   const isAdmin = hasRole('CENTRAL_ADMIN', 'REGIONAL_ADMIN');
   const isCso = hasRole('CSO_FINANCE') && !isAdmin;
@@ -21,6 +21,10 @@ export function StaffDrawer({ staffId, cadres, onClose, onChanged }: { staffId: 
   const orgs = useApi<Organization[]>('/admin/organizations');
   const orgName = useMemo(() => new Map((orgs.data || []).map((o) => [o.id, o.name])), [orgs.data]);
   const [dialog, setDialog] = useState<Dialog>(null);
+  // Straight after registering, the next job is the login, so open it rather than making people look for it.
+  useEffect(() => {
+    if (startLogin && canCreateLogin && data && !data.username && !data.user_id) setDialog('login');
+  }, [startLogin, canCreateLogin, data?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [notice, setNotice] = useState<string | null>(null);
 
   const done = (message: string, updated?: StaffDetail) => {

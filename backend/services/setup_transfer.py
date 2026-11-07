@@ -115,7 +115,7 @@ def user_data(db, row):
 def rate_data(db, row):
     result = {key: getattr(row, key) for key in (
         "key", "source_key", "label_en", "label_sw", "item_type", "form_mode", "field_definitions",
-        "hours_input", "rate_value", "currency", "unit_type", "billable_field", "effective_start_date")}
+        "hours_input", "rate_value", "currency", "unit_type", "billable_field", "effective_start_date", "min_days_per_month")}
     result.update(cadre=db.get(Cadre, row.cadre_id).code, region=name(db, Region, row.region_id))
     return result
 

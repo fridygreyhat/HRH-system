@@ -15,13 +15,15 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 
 from ..core.period_dates import pay_month_range
 from ..models import PaymentClaim, Staff, StaffAssignment, Facility, Region, WorkLog, WorkLogEntry
+from .service_targets import monthly_minimums
 from .v22_scope import record_condition
 from .provider_payment_details import details
 from .monthly_report_exports import _cell
 
 
 HEADERS = ["Region", "Facility", "Provider name", "Services name", "Days worked",
-           "Payable days", "Service amount", "Currency", "Mobile number", "Claim ID", "Payment status"]
+           "Payable days", "Service amount", "Currency", "Mobile number", "Claim ID", "Payment status",
+           "Minimum days", "Days short"]
 
 
 def rows(db, current, month, region_id=None):
@@ -35,7 +37,7 @@ def rows(db, current, month, region_id=None):
     # Aliases prevent outer joins from accidentally correlating scope subqueries.
     assignment, facility, region = aliased(StaffAssignment), aliased(Facility), aliased(Region)
     cadre = select(WorkLog.cadre_id).where(WorkLog.id == PaymentClaim.work_log_id).scalar_subquery()
-    query = (db.query(PaymentClaim, Staff, facility.name, region.name)
+    query = (db.query(PaymentClaim, Staff, facility.name, region.name, region.id)
              .join(Staff, Staff.id == PaymentClaim.staff_id)
              .join(assignment, assignment.id == PaymentClaim.assignment_id)
              .outerjoin(facility, facility.id == assignment.facility_id)
@@ -57,8 +59,8 @@ def rows(db, current, month, region_id=None):
     for entry in db.query(WorkLogEntry).filter(
             WorkLogEntry.work_log_id.in_(logs), WorkLogEntry.entry_date.between(start, end)):
         entries[entry.work_log_id].append(entry)
-    output = []
-    for claim, staff, facility_name, region_name in claims:
+    built, done = [], defaultdict(set)
+    for claim, staff, facility_name, region_name, region_id in claims:
         groups = {}
         def service(key, name):
             return groups.setdefault((key, name), {"worked": set(), "paid": set(), "amount": Decimal(0)})
@@ -74,11 +76,25 @@ def rows(db, current, month, region_id=None):
                 group["worked"].add(line["date"])
                 group["paid"].add(line["date"])
                 group["amount"] += Decimal(str(line["amount"]))
+        for (_, name), group in groups.items():
+            done[(staff.id, name)] |= group["worked"]
+        built.append((claim, staff, facility_name, region_name, region_id, groups))
+    minimums, output, listed = monthly_minimums(db, end), [], set()
+    for claim, staff, facility_name, region_name, region_id, groups in built:
         mobile = details(staff)["mobile_money_number"] or staff.verified_phone
+        targets = minimums.get((staff.cadre_id, region_id), {})
+
+        def row(name, worked, paid, amount):
+            minimum = targets.get(name)
+            short = max(minimum - len(done[(staff.id, name)]), 0) if minimum else ""
+            return [region_name, facility_name or "Community / no facility", staff.legal_name, name, worked, paid, str(amount),
+                    claim.currency, mobile, claim.id, claim.payment_status, minimum or "", short]
+
         for (_, name), group in sorted(groups.items(), key=lambda item: str(item[0])):
-            output.append([region_name, facility_name or "Community / no facility", staff.legal_name,
-                           name, len(group["worked"]), len(group["paid"]), str(group["amount"]),
-                           claim.currency, mobile, claim.id, claim.payment_status])
+            output.append(row(name, len(group["worked"]), len(group["paid"]), group["amount"]))
+        if staff.id not in listed:  # a service never worked has no claim line, so its shortfall needs a row of its own
+            listed.add(staff.id)
+            output.extend(row(name, 0, 0, Decimal(0)) for name in sorted(targets) if (staff.id, name) not in done)
     if not output:
         raise HTTPException(404, "No routed Services are available for this month and finance scope.")
     return output
@@ -97,7 +113,7 @@ def csv_file(rows):
     writer.writerow(HEADERS)
     writer.writerows([_cell(value) for value in row] for row in rows)
     for currency, total in sorted(totals(rows).items()):
-        writer.writerow(["TOTAL ALL SERVICES", "", "", "", "", "", str(total), currency, "", "", ""])
+        writer.writerow(["TOTAL ALL SERVICES", "", "", "", "", "", str(total), currency, "", "", "", "", ""])
     return ("\ufeff" + output.getvalue()).encode("utf-8")
 
 
@@ -111,10 +127,11 @@ def pdf_file(rows, month):
     content = [Paragraph(f"Services payment report — {escape(month)}", styles["Title"]),
                p("Days worked include all recorded services. Payable days and amounts follow the frozen claim: "
                  "only the highest fixed daily service is paid. Approved or routed does not mean paid. "
-                 "Mobile number is the configured wallet number, otherwise the registered contact."),
+                 "Mobile number is the configured wallet number, otherwise the registered contact. "
+                 "Days short shows how far a provider is below a service's monthly minimum. It does not change the amount paid."),
                Spacer(1, 10)]
     table = Table([[p(h) for h in HEADERS]] + [[p(v) for v in row] for row in rows],
-                  colWidths=[65, 70, 85, 122, 40, 40, 65, 35, 80, 40, 55], repeatRows=1)
+                  colWidths=[62, 68, 82, 112, 38, 38, 62, 33, 78, 38, 55, 42, 34], repeatRows=1)
     table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e7f2ef")),
                                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                                ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))

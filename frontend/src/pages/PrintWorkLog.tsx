@@ -3,6 +3,7 @@ import { useAuth } from '../AuthContext';
 import { Alert } from '../components/ui';
 import { dateOnly, dateTime, datesBetween, dayOfMonth, num, payMonth, payMonthDates, periodDateError, timeShort, weekday, workHours } from '../format';
 import { useApi } from '../hooks';
+import { navigate } from '../nav';
 import { WorkLogAudit, WorkLogDetail, WorkLogEntry } from '../types';
 
 // Statuses a log only reaches once that stage is finished. Audit rows are for administrators only, so other
@@ -80,7 +81,7 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
   const monthLabelText = embedded ? 'Month' : 'Print month';
   const toolbar = !embedded || months.length > 1 || error ? (
     <div className="print-toolbar no-print">
-      {!embedded && <button className="btn btn-ghost btn-sm" onClick={() => window.history.back()}>
+      {!embedded && <button className="btn btn-ghost btn-sm" onClick={() => (window.history.length > 1 ? window.history.back() : navigate('home'))}>
         ← Back
       </button>}
       {!embedded && <button className="btn btn-primary btn-sm" onClick={() => window.print()} disabled={!log || !!dateError}>
@@ -248,6 +249,11 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
         {holidays.length > 0 && <div className="paper-comments">
           <b>SIKUKUU / Public holidays:</b> {holidays.map(day => `${dateOnly(day.date)} ${day.name_sw} / ${day.name_en}`).join(' · ')}
         </div>}
+        {log.status !== 'DRAFT' && !!log.service_targets?.some(row => row.left) && <div className="paper-comments">
+          <b>SIKU CHINI YA KIWANGO / Below minimum service days:</b>{' '}
+          {log.service_targets.filter(row => row.left).map(row => `${row.service}: ${num(row.days)} of ${num(row.min_days)} days, ${num(row.left)} short`).join(' · ')}.
+          {' '}Payment is not affected.
+        </div>}
         <div className="paper-comments">
           {(log.period_comment || !['CHW', 'HCP', 'DATA_CLERK'].includes(log.cadre.code)) && <><b>MAONI / Comments:</b> {log.period_comment || ''}</>}
           {comments.map((e) => (
@@ -258,7 +264,7 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
         </div>
         <div className="signoff">
           <SignBox titleSw="Imeandaliwa na kuthibitishwa na" titleEn="Prepared and attested by provider" name={log.staff.name} at={log.attested_at} />
-          <SignBox titleSw="Uhakiki wa CTC" titleEn="CTC verification" row={signOff(log, 'verify')} done={AFTER_CTC.includes(log.status)} />
+          <SignBox titleSw={a && !a.facility ? 'Idhini ya kitaalamu ya CSO' : 'Uhakiki wa CTC'} titleEn={a && !a.facility ? 'CSO Technical approval' : 'CTC verification'} row={signOff(log, 'verify')} done={AFTER_CTC.includes(log.status)} />
           {(me?.client_settings.provider_otp_required !== false || !!signOff(log, 'confirm_otp')) && (
             <SignBox
               titleSw="Uthibitisho wa mtoa huduma"

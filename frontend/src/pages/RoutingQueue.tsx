@@ -59,7 +59,7 @@ export function RoutingQueue() {
           error={null}
           loading={queue.loading}
           isEmpty={(items) => items.every((item) => item.work_type !== 'SERVICES')}
-          empty={<div className="routing-empty"><span aria-hidden="true">✓</span><strong>No service claims need finance action</strong><p>RM-approved service claims appear here for timesheet approval, fixed daily amount review, channel selection or historical hold review. Payroll is reported separately by calendar month.</p></div>}
+          empty={<div className="routing-empty"><span aria-hidden="true">✓</span><strong>No service claims need finance action</strong><p>RM-approved service claims appear here for timesheet approval, fixed daily amount review, channel selection or historical hold review. Payroll is reported separately by pay month.</p></div>}
         >
           {(items) => (
             <div className="table-wrap routing-table-wrap">

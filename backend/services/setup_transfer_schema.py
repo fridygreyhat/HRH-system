@@ -135,7 +135,7 @@ class StaffData(Strict):
 
 
 TRANSFER_ROLES = {
-    "PROVIDER", "SUPERVISOR", "FACILITY_IN_CHARGE", "TECHNICAL_OFFICER", "RPM",
+    "PROVIDER", "SUPERVISOR", "FACILITY_IN_CHARGE", "CSO_TECHNICAL_OFFICER", "TECHNICAL_OFFICER", "RPM",
     "REGIONAL_FINANCE", "FHI360_FINANCE", "CSO_FINANCE", "COMMUNITY_VERIFIER", "OVERSIGHT",
 }
 
@@ -188,6 +188,7 @@ class RateData(Strict):
     unit_type: Literal["PER_DAY"]
     billable_field: None = None
     effective_start_date: date
+    min_days_per_month: int | None = Field(default=None, ge=0, le=31)
 
     @field_validator("field_definitions")
     @classmethod

@@ -45,7 +45,7 @@ afterEach(() => { act(() => root.unmount()); container.remove(); });
 
 const open = async () => act(async () => root.render(<WorkLogDrawer logId={7} onClose={() => {}} />));
 
-test.each(['SUPERVISOR', 'FACILITY_IN_CHARGE', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE'])('%s sees the standard timesheet first, even with no action to take', async (role) => {
+test.each(['SUPERVISOR', 'FACILITY_IN_CHARGE', 'CSO_TECHNICAL_OFFICER', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE'])('%s sees the standard timesheet first, even with no action to take', async (role) => {
   mockRoles = [role];
   await open();
   const text = container.textContent;
@@ -183,6 +183,23 @@ test('records finished before this approval existed show no timesheet step', asy
   const steps = [...container.querySelectorAll('.step')];
   expect(steps.some((node) => node.textContent.includes('Regional finance: timesheet'))).toBe(false);
   expect(steps.find((node) => node.textContent.includes('Regional finance: Services payment')).className).toContain('step-done');
+});
+
+test('community-only work names CSO Technical as the first approver', async () => {
+  mockRoles = ['CSO_TECHNICAL_OFFICER'];
+  mockLog = baseLog({ status: 'PENDING_CTC_VERIFICATION', available_actions: ['verify'], assignment: { community_area: 'Village', facility: null } });
+  await open();
+  expect(container.textContent).toContain('CSO Technical approval');
+  expect(container.textContent).toContain('Verify and approve (CSO Technical)');
+  expect(container.textContent).not.toContain('Verify and approve (CTC)');
+});
+
+test('facility work keeps the CTC In-Charge as the first approver', async () => {
+  mockRoles = ['SUPERVISOR'];
+  mockLog = baseLog({ status: 'PENDING_CTC_VERIFICATION', available_actions: ['verify'], assignment: { facility: 'Clinic' } });
+  await open();
+  expect(container.textContent).toContain('Verify and approve (CTC)');
+  expect(container.textContent).not.toContain('CSO Technical approval');
 });
 
 test('other roles keep their existing view', async () => {

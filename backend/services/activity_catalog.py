@@ -62,7 +62,7 @@ def definition_out(row: ActivityRate) -> dict:
         "form_mode": row.form_mode, "field_definitions": fields,
         "fields": [f["key"] for f in fields], "required_fields": [f["key"] for f in fields],
         "hours_input": row.hours_input, "rate_value": str(row.rate_value), "currency": row.currency,
-        "unit_type": row.unit_type, "billable_field": row.billable_field,
+        "unit_type": row.unit_type, "billable_field": row.billable_field, "min_days_per_month": row.min_days_per_month,
         "is_active": row.is_active, "effective_start_date": str(row.effective_start_date),
         "supersedes_id": row.supersedes_id,
         "source_key": row.source_key, "requires_location": row.source_key == "secondary_facility",

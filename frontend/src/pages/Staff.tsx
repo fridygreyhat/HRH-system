@@ -31,6 +31,7 @@ function Registry({ cadres }: { cadres: Cadre[] }) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [cadre, setCadre] = useState('');
+  const [justRegistered, setJustRegistered] = useState(false);
   const [openId, setOpenId] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -75,7 +76,7 @@ function Registry({ cadres }: { cadres: Cadre[] }) {
         )}
       </div>
       <Alert kind="success">{notice}</Alert>
-      <AsyncState data={data} error={error} loading={loading} empty="No staff members match these filters.">
+      <AsyncState data={data} error={error} loading={loading} empty={search || status || cadre ? 'No staff members match these filters.' : 'No staff registered yet. Register your first provider to get started.'}>
         {(rows) => (
           <>
             <div className="table-wrap">
@@ -123,7 +124,7 @@ function Registry({ cadres }: { cadres: Cadre[] }) {
           </>
         )}
       </AsyncState>
-      {openId !== null && <StaffDrawer staffId={openId} cadres={cadres} onClose={() => setOpenId(null)} onChanged={reload} />}
+      {openId !== null && <StaffDrawer staffId={openId} cadres={cadres} onClose={() => { setOpenId(null); setJustRegistered(false); }} onChanged={reload} startLogin={justRegistered} />}
       {creating && (
         <CreateStaffModal
           cadres={cadres}
@@ -132,6 +133,7 @@ function Registry({ cadres }: { cadres: Cadre[] }) {
             setCreating(false);
             setNotice(`${s.legal_name} registered.`);
             reload();
+            setJustRegistered(true);
             setOpenId(s.id);
           }}
         />

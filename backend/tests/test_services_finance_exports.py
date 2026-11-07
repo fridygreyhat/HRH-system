@@ -69,6 +69,20 @@ def test_multiple_services_count_worked_days_but_pay_only_one(api, db, empty_per
     assert Decimal(tb["Service amount"]) == 0
     assert Decimal(rows[-1]["Service amount"]) == claim.amount
 
+    # Shortfalls show beside the money and never change it, including a service with no days at all.
+    placement = db.get(StaffAssignment, claim.assignment_id)
+    target = {"label_sw": "Huduma", "cadre_id": db.get(WorkLog, claim.work_log_id).cadre_id, "region_id": placement.region_id, "item_type": "SERVICES",
+              "form_mode": "SINGLE", "unit_type": "PER_DAY", "rate_value": 100, "currency": "TZS", "effective_start_date": empty_period["start_date"]}
+    api.post("/rates", "admin", {**target, "label_en": "TB Contact tracing", "min_days_per_month": 5})
+    api.post("/rates", "admin", {**target, "label_en": "Never worked service", "min_days_per_month": 3})
+    rows = list(csv.DictReader(StringIO(fetch(api, empty_period["start_date"][:7]).content.decode("utf-8-sig"))))
+    tb = next(row for row in rows if row["Services name"] == "TB Contact tracing")
+    assert (tb["Days worked"], tb["Minimum days"], tb["Days short"]) == ("1", "5", "4")
+    missing = next(row for row in rows if row["Services name"] == "Never worked service")
+    assert (missing["Days worked"], missing["Service amount"], missing["Minimum days"], missing["Days short"]) == ("0", "0", "3", "3")
+    assert Decimal(rows[-1]["Service amount"]) == claim.amount
+    assert fetch(api, empty_period["start_date"][:7], "pdf").status_code == 200
+
     # The report follows the pay month: the 26th already belongs to the next month. Same test, as past months are limited.
     original = entry.entry_date
     entry.entry_date = original.replace(day=26)

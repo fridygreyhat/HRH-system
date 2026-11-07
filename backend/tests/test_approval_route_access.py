@@ -4,9 +4,9 @@ from datetime import date, timedelta
 
 import pytest
 
-from backend.core.roles import TECHNICAL_OFFICER
+from backend.core.roles import SUPERVISOR, TECHNICAL_OFFICER
 from backend.core.security import hash_password
-from backend.models import Cadre, PayPeriod, Role, Staff, StaffAssignment, User, UserReviewCadre, UserRole, UserScope, WorkLog, utcnow
+from backend.models import Cadre, PayPeriod, Role, Staff, StaffAssignment, User, UserReviewCadre, UserRole, UserScope, WorkLog, WorkLogEntry, utcnow
 from .conftest import PASSWORD
 from .test_finance_monthly_reports import all_cadres
 from .test_salary_timesheets import temporary
@@ -112,6 +112,45 @@ def test_facility_in_charge_reads_their_cadres_at_every_stage_and_never_decides(
     assert actions(api, "facilityic1", log) == []
     assert not in_queue(api, "facilityic1", log)
     assert log.id in {row["id"] for row in api.get(f"/worklogs?work_type=PAYROLL&cadre={PROVIDERS[provider]}", "facilityic1")}
+
+
+@pytest.fixture
+def other_facility_ctc(db):
+    """A CTC In-Charge at hcp2's facility, which is not supervisor1's. Opening a record is audited, so the account stays."""
+    staff = db.query(Staff).join(User, User.id == Staff.user_id).filter(User.username == "hcp2").one()
+    facility = db.query(StaffAssignment).filter_by(staff_id=staff.id).first().facility_id
+    user = User(username="route_ctc_other", full_name="Route CTC", phone="+255700099002", hashed_password=hash_password(PASSWORD), must_change_password=False)
+    db.add(user)
+    db.flush()
+    db.add(UserRole(user_id=user.id, role_id=db.query(Role).filter_by(name=SUPERVISOR).one().id))
+    db.add(UserScope(user_id=user.id, facility_id=facility))
+    db.commit()
+    return user.username
+
+
+def test_a_ctc_in_charge_sees_every_cadre_at_their_own_facility_only(api, route, other_facility_ctc):
+    own = [route["log"](provider, "PAYROLL", "PENDING_CTC_VERIFICATION") for provider in PROVIDERS]
+    other = route["log"]("hcp2", "PAYROLL", "PENDING_CTC_VERIFICATION")
+    listed = {row["id"] for row in api.get("/worklogs?work_type=PAYROLL", "supervisor1")}
+    assert {log.id for log in own} <= listed and other.id not in listed
+    assert all(in_queue(api, "supervisor1", log) for log in own) and not in_queue(api, "supervisor1", other)
+    assert actions(api, "supervisor1", other) is None
+    assert in_queue(api, other_facility_ctc, other) and "verify" in actions(api, other_facility_ctc, other)
+    assert not any(in_queue(api, other_facility_ctc, log) for log in own)
+    assert all(actions(api, other_facility_ctc, log) is None for log in own)
+
+
+def test_a_ctc_in_charge_gets_the_full_timesheet_at_their_facility(api, db, route):
+    log = route["log"]("hcp1", "PAYROLL", "PENDING_CTC_VERIFICATION")
+    for day in (5, 6, 7):
+        db.add(WorkLogEntry(work_log_id=log.id, entry_date=date(2093, 2, day), hours_worked=8, evidence_text="Aggregate counts", activity_key="route_test",
+                            activity_snapshot={"key": "route_test", "label_en": "Test", "label_sw": "Jaribio", "item_type": "PAYROLL", "form_mode": "SINGLE",
+                                               "fields": [], "required_fields": [], "field_definitions": [], "rate_value": None, "currency": "TZS",
+                                               "unit_type": "PER_DAY", "billable_field": None}))
+    db.commit()
+    detail = api.get(f"/worklogs/{log.id}", "supervisor1")
+    assert len(detail["entries"]) == 3 and detail["totals"]["days"] == 3 and float(detail["totals"]["hours"]) == 24
+    assert detail["entries"][0]["evidence_text"] == "Aggregate counts"
 
 
 def test_the_cadre_filter_works_on_the_waiting_list(api, route):

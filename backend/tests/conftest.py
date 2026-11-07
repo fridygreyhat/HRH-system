@@ -115,6 +115,8 @@ class Api:
         # may act. test_finance_timesheet_approval.py uses `call` to test this step.
         if path.endswith("/actions/finance_review") and kw.get("expect") != 403:
             self._approve_finance_timesheet(path.removesuffix("/actions/finance_review"), user)
+        if path == "/rates" and isinstance(json, dict):
+            json = {"min_days_per_month": 0, **json}  # required of real users; only test_service_targets.py is about it
         return self.call("POST", path, user, json=json if json is not None else {}, **kw)
 
     def _approve_finance_timesheet(self, log_path, user):
