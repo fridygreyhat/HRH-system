@@ -63,7 +63,7 @@ def approve_to_regional_finance(api, log, finance_user):
         assert log["approved_at"] and not log["claims"]
         return log
     row = next(row for row in queue if row["work_log_id"] == log["id"])
-    assert row["finance_review_required"] and row["next_action"] == "REVIEW_AMOUNT"
+    assert row["finance_review_required"] and row["next_action"] == "REVIEW_TIMESHEET"
     assert row["provider_name"] and row["period_label"] and row["cadre_name"] and row["region_name"]
     assert log["id"] not in {row["work_log_id"] for row in api.get(f"/finance/pending-routing?work_type={other}", finance_user)}
     return log

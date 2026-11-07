@@ -2,8 +2,9 @@
 import csv
 import io
 from decimal import Decimal
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -14,7 +15,8 @@ from ...core.serialize import to_dict
 from ...db.session import get_db
 from ...models import BudgetLine, Organization, PayPeriod, PaymentClaim, Staff, StaffAssignment
 from ...services import batches as bt, budgets as bg, payments as pay
-from ...services import claims as cl
+from ...services import claims as cl, salary_timesheets as timesheets
+from ...services import monthly_report_approval as monthly_reports
 from ...services.provider_payment_details import details
 from ...services.scope import claim_visibility
 from .provider_payment_details import private_response
@@ -43,9 +45,11 @@ def organizations(db: Session = Depends(get_db), current: CurrentUser = Depends(
 @router.get("/pay-periods")
 def periods(db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(CSO_FINANCE))):
     from ...services.v22_scope import regions_for
+    # CSO accounts usually carry only their organization, so include the regions it is linked to.
+    regions = regions_for(current) | monthly_reports.cso_regions(db, current)
     return [to_dict(period) for period in db.query(PayPeriod).filter(
         PayPeriod.status != "ARCHIVED",
-        or_(PayPeriod.region_id.is_(None), PayPeriod.region_id.in_(regions_for(current))),
+        or_(PayPeriod.region_id.is_(None), PayPeriod.region_id.in_(regions)),
     ).order_by(PayPeriod.start_date.desc(), PayPeriod.id.desc())]
 
 
@@ -83,6 +87,36 @@ def dashboard(cso_id: int, db: Session = Depends(get_db),
         "pending_payroll_count": sum(c.work_type == "PAYROLL" or c.route_code == "B" for c in pending),
         "pending_community_count": sum(c.route_code == "C" for c in pending),
     }
+
+
+MONTH = r"^\d{4}-(0[1-9]|1[0-2])$"
+Setting = Literal["Facility", "Community"]
+
+
+@router.get("/salary-timesheets")
+def salary_timesheets(cso_id: int, month: str = Query(pattern=MONTH), region_id: int | None = Query(default=None, gt=0),
+                      setting: Setting | None = None, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(CSO_FINANCE))):
+    result = timesheets.signed(db, current, organization(db, current, cso_id), month, region_id, setting)
+    result["providers"] = [{key: p[key] for key in timesheets.SCREEN_FIELDS} for p in result["providers"]]
+    return result
+
+
+@router.get("/salary-timesheets/export")
+def export_salary_timesheets(cso_id: int, month: str = Query(pattern=MONTH), region_id: int | None = Query(default=None, gt=0),
+                             setting: Setting | None = None, format: Literal["csv", "pdf"] = "csv",
+                             db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(CSO_FINANCE))):
+    org = organization(db, current, cso_id)
+    result = timesheets.signed(db, current, org, month, region_id, setting)
+    if not result["providers"]:
+        raise HTTPException(404, "No signed Payroll timesheets are available for this month.")
+    payload = timesheets.csv_file(result) if format == "csv" else timesheets.pdf_file(result)
+    system_audit.record(db, current, "organization", org.id, "download_salary_timesheets",
+                        after={"month": month, "region_id": region_id, "work_setting": setting, "format": format, "bank_details": True,
+                               "salaries": {p["staff_id"]: p["monthly_salary"] for p in result["providers"]}})
+    db.commit()
+    return Response(payload, media_type="text/csv; charset=utf-8" if format == "csv" else "application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="salary-timesheets-{month}-cso-{org.id}.{format}"',
+                             "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
 
 def spreadsheet_text(value):

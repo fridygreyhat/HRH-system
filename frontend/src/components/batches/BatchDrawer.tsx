@@ -5,7 +5,7 @@ import { PAYMENT_STATUSES, dateTime, money, num } from '../../format';
 import { useAction, useApi } from '../../hooks';
 import { BatchDetail } from '../../types';
 import { ClaimDrawer } from '../claims/ClaimDrawer';
-import { Alert, AsyncState, Drawer, Facts, RouteBadge, Section, StatusBadge } from '../ui';
+import { Alert, AsyncState, Drawer, Facts, ReasonDialog, RouteBadge, Section, StatusBadge } from '../ui';
 
 /** Payment-status counts for the claims in a batch, as small payment badges. */
 export function PaymentProgress({ progress }: { progress: Record<string, number> }) {
@@ -33,7 +33,8 @@ export function BatchDrawer({ batchId, onClose, onChanged }: { batchId: number; 
   const action = useAction();
   const [notice, setNotice] = useState<string | null>(null);
   const [claimId, setClaimId] = useState<number | null>(null);
-  const canDownload = hasRole('FHI360_FINANCE', 'CSO_FINANCE');
+  const [reversing, setReversing] = useState(false);
+  const canDownload = hasRole('FHI360_FINANCE', 'CSO_FINANCE') && data?.status !== 'REVERSED';
 
   const download = async (b: BatchDetail, fmt: 'csv' | 'xlsx') => {
     setNotice(null);
@@ -66,6 +67,26 @@ export function BatchDrawer({ batchId, onClose, onChanged }: { batchId: number; 
     );
   }
 
+  if (reversing && data) {
+    return (
+      <ReasonDialog
+        title={`Reverse batch ${data.reference}`}
+        description="Reverse only if nobody has paid from this file. Its claims return to Ready for payment, where they can be cancelled or added to a new batch. The file can no longer be downloaded, and this cannot be undone."
+        required
+        danger
+        confirmLabel="Reverse batch"
+        onClose={() => setReversing(false)}
+        onConfirm={async (reason) => {
+          const updated = await api.post<BatchDetail>(`/batches/${data.id}/reverse`, { reason });
+          setData(updated);
+          setReversing(false);
+          setNotice('Batch reversed. Its claims are back in Ready for payment.');
+          onChanged?.();
+        }}
+      />
+    );
+  }
+
   return (
     <Drawer title={data ? `Batch ${data.reference}` : `Batch #${batchId}`} onClose={onClose} wide>
       <AsyncState data={data} error={error} loading={loading}>
@@ -73,6 +94,11 @@ export function BatchDrawer({ batchId, onClose, onChanged }: { batchId: number; 
           <div className="stack-lg">
             <Alert kind="success">{notice}</Alert>
             <Alert>{action.error}</Alert>
+            {b.status === 'REVERSED' && (
+              <Alert kind="warn">
+                Reversed by {b.reversed_by_name} on {dateTime(b.reversed_at)}: {b.reversal_reason}. Do not pay from any copy of this file.
+              </Alert>
+            )}
             <div className="notice notice-info">
               A batch is an export of claims that were marked ready for payment. Exporting or handing off a batch does not mean staff have been paid —
               check each claim's payment status.
@@ -91,6 +117,11 @@ export function BatchDrawer({ batchId, onClose, onChanged }: { batchId: number; 
               {b.can_hand_off && (
                 <button type="button" className="btn btn-primary" onClick={() => transition(b, 'hand-off')} disabled={action.busy}>
                   Hand off to CSO
+                </button>
+              )}
+              {b.can_reverse && (
+                <button type="button" className="btn btn-danger" onClick={() => { setNotice(null); setReversing(true); }} disabled={action.busy}>
+                  Reverse batch
                 </button>
               )}
               {b.can_receive && (

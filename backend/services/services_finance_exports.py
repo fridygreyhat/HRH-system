@@ -1,9 +1,7 @@
 """Scoped Services payment documentation; monetary values use frozen claim lines."""
-import calendar
 import csv
 import io
 from collections import defaultdict
-from datetime import date
 from decimal import Decimal
 from html import escape
 
@@ -15,6 +13,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from ..core.period_dates import pay_month_range
 from ..models import PaymentClaim, Staff, StaffAssignment, Facility, Region, WorkLog, WorkLogEntry
 from .v22_scope import record_condition
 from .provider_payment_details import details
@@ -30,7 +29,7 @@ def rows(db, current, month, region_id=None):
         year, number = map(int, month.split("-"))
         if not 2000 <= year <= 2100:
             raise ValueError()
-        start, end = date(year, number, 1), date(year, number, calendar.monthrange(year, number)[1])
+        start, end = pay_month_range(month)
     except ValueError:
         raise HTTPException(422, "Select a valid month between 2000 and 2100.")
     # Aliases prevent outer joins from accidentally correlating scope subqueries.

@@ -62,6 +62,7 @@ const GENERIC_TONE: Record<string, Tone> = {
   PARTIAL: 'warn',
   UNSYNCED: 'warn',
   EXITED: 'neutral',
+  REVERSED: 'neutral',
   INACTIVE: 'neutral',
   NOT_APPLICABLE: 'neutral',
   SUPPRESSED: 'neutral',

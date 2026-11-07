@@ -6,11 +6,12 @@ import { WorkLogDrawer } from '../components/worklogs/WorkLogDrawer';
 import { ApprovalFinanceGuide } from '../components/worklogs/ApprovalFinanceGuide';
 import { dateTime, hoursAge, num, WORKLOG_STATUS_LABELS, WORKLOG_STATUSES, workHours } from '../format';
 import { useApi } from '../hooks';
-import { Cadre, PayPeriod, WorkLogSummary } from '../types';
+import { Named, PayPeriod, WorkLogSummary } from '../types';
 import { navigate } from '../nav';
 
 const REVIEWER_ROLES = ['SUPERVISOR', 'FACILITY_IN_CHARGE', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE'];
 const OPERATIONAL_APPROVER_ROLES = ['SUPERVISOR', 'FACILITY_IN_CHARGE', 'TECHNICAL_OFFICER', 'RPM'];
+const DECISION_ROLES = ['SUPERVISOR', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE'];
 const FINANCE_ROLES = ['REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'SUPER_ADMIN'];
 
 function LogTable({ rows, queue, onOpen }: { rows: WorkLogSummary[]; queue: boolean; onOpen: (id: number) => void }) {
@@ -22,6 +23,7 @@ function LogTable({ rows, queue, onOpen }: { rows: WorkLogSummary[]; queue: bool
             <th>#</th>
             <th>Provider</th>
             <th>Cadre</th>
+            <th>Region</th>
             <th>Facility</th>
             <th>Period</th>
             <th>Type</th>
@@ -46,6 +48,7 @@ function LogTable({ rows, queue, onOpen }: { rows: WorkLogSummary[]; queue: bool
                 <td>{l.id}</td>
                 <td>{l.staff_name}</td>
                 <td>{l.cadre_code}</td>
+                <td>{l.region_name}</td>
                 <td>{l.facility_name || '—'}</td>
                 <td>{l.period_label}</td>
                 <td><span className="badge badge-neutral">{l.work_type === 'LEGACY' ? 'Legacy' : l.work_type}</span></td>
@@ -78,15 +81,20 @@ export function ReviewWorkLogs() {
   const isReviewer = hasRole(...REVIEWER_ROLES);
   const isFinance = hasRole(...FINANCE_ROLES);
   const canReviewPayroll = hasRole(...OPERATIONAL_APPROVER_ROLES);
-  const [tab, setTab] = useState<'queue' | 'all'>(hasRole('RPM') || !isReviewer ? 'all' : 'queue');
+  // Facility In-Charge has no approval step, so nothing is ever waiting on them. They read their facility's timesheets.
+  const decides = hasRole(...DECISION_ROLES);
+  const viewsFacilityOnly = hasRole('FACILITY_IN_CHARGE') && !decides;
+  const [tab, setTab] = useState<'queue' | 'all'>(decides ? 'queue' : 'all');
   const [status, setStatus] = useState('');
   const [periodId, setPeriodId] = useState('');
   const [cadre, setCadre] = useState('');
+  const [regionId, setRegionId] = useState('');
   const [workType, setWorkType] = useState<'SERVICES' | 'PAYROLL' | 'LEGACY'>('SERVICES');
   const visibleWorkType = canReviewPayroll ? workType : 'SERVICES';
   const periods = useApi<PayPeriod[]>(tab === 'all' ? '/admin/pay-periods' : null);
-  const cadres = useApi<Cadre[]>(tab === 'all' ? '/admin/cadres' : null);
-  const path = tab === 'queue' ? `/worklogs${qs({ queue: true, work_type: visibleWorkType })}` : `/worklogs${qs({ status, period_id: periodId, cadre, work_type: visibleWorkType })}`;
+  const cadres = useApi<{ code: string; name: string }[]>('/worklogs/cadres');
+  const regions = useApi<Named[]>('/worklogs/regions');
+  const path = tab === 'queue' ? `/worklogs${qs({ queue: true, work_type: visibleWorkType, region_id: regionId, cadre })}` : `/worklogs${qs({ status, period_id: periodId, cadre, work_type: visibleWorkType, region_id: regionId })}`;
   const logs = useApi<WorkLogSummary[]>(path);
   const [openId, setOpenId] = useState<number | null>(null);
 
@@ -105,15 +113,15 @@ export function ReviewWorkLogs() {
                 value={tab}
                 onChange={setTab}
                 tabs={[
-                  { key: 'queue', label: `Waiting on me${tab === 'queue' && logs.data ? ` (${logs.data.length})` : ''}` },
-                  { key: 'all', label: 'All visible logs' },
+                  ...(decides ? [{ key: 'queue' as const, label: `Waiting on me${tab === 'queue' && logs.data ? ` (${logs.data.length})` : ''}` }] : []),
+                  { key: 'all' as const, label: 'All visible logs' },
                 ]}
               />
-              <Tabs label="Work type queue" value={workType} onChange={setWorkType} tabs={[
+              {canReviewPayroll && <Tabs label="Work type queue" value={workType} onChange={setWorkType} tabs={[
                 { key: 'SERVICES', label: 'Services' },
                 { key: 'PAYROLL', label: 'Payroll' },
                 { key: 'LEGACY', label: 'Legacy' },
-              ]} />
+              ]} />}
             </>
           )}
           <button className="btn btn-secondary" onClick={logs.reload} disabled={logs.loading}>
@@ -124,12 +132,31 @@ export function ReviewWorkLogs() {
       </header>
 
       {!isFinance && <ApprovalFinanceGuide />}
-      {isFinance && <p className="notice notice-info">Payroll is reported by calendar month only after CTC, Technical and RM authorization. Finance does not price, budget-review or approve Payroll. <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate('finance-monthly')}>Open monthly report</button></p>}
+      {isFinance && <p className="notice notice-info">Payroll is reported by pay month (26th to 25th) only after CTC, Technical and RM authorization. Finance does not price, budget-review or approve Payroll. <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate('finance-monthly')}>Open monthly report</button></p>}
       <p className="notice notice-info">
         {tab === 'queue'
           ? 'Waiting on me shows only records at your approval stage. Use All visible logs to track records at other stages within your assigned scope.'
           : 'All visible logs includes records at every stage within your assigned scope. Technical approval follows CTC verification; RM approval follows technical approval. Drafts cannot be approved.'}
       </p>
+      {viewsFacilityOnly && (
+        <p className="notice notice-info">These are the timesheets of the cadres at your facility. You can open and read them at every stage. CTC In-Charge verifies them, so you have no approval step here.</p>
+      )}
+      {((regions.data?.length ?? 0) > 1 || (cadres.data?.length ?? 0) > 1) && (
+        <div className="filters" role="search" aria-label="Filter by region and cadre">
+          {(regions.data?.length ?? 0) > 1 && <Field label="Region">
+            <select value={regionId} onChange={(e) => setRegionId(e.target.value)}>
+              <option value="">All my regions</option>
+              {(regions.data || []).map((region) => <option key={region.id} value={region.id}>{region.name}</option>)}
+            </select>
+          </Field>}
+          {(cadres.data?.length ?? 0) > 1 && <Field label="Cadre">
+            <select value={cadre} onChange={(e) => setCadre(e.target.value)}>
+              <option value="">All my cadres</option>
+              {(cadres.data || []).map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+            </select>
+          </Field>}
+        </div>
+      )}
       {tab === 'all' && (
         <div className="filters" role="search">
           <Field label="Work type">
@@ -153,16 +180,6 @@ export function ReviewWorkLogs() {
               {(periods.data || []).map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.period_label || p.start_date}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Cadre">
-            <select value={cadre} onChange={(e) => setCadre(e.target.value)}>
-              <option value="">All</option>
-              {(cadres.data || []).map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.name}
                 </option>
               ))}
             </select>

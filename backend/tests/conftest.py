@@ -110,7 +110,18 @@ class Api:
         return self.call("GET", path, user, **kw)
 
     def post(self, path, user, json=None, **kw):
+        # Payment-review tests start after Regional Finance's timesheet approval,
+        # including tests of the payment step's own refusals. 403 cases test who
+        # may act. test_finance_timesheet_approval.py uses `call` to test this step.
+        if path.endswith("/actions/finance_review") and kw.get("expect") != 403:
+            self._approve_finance_timesheet(path.removesuffix("/actions/finance_review"), user)
         return self.call("POST", path, user, json=json if json is not None else {}, **kw)
+
+    def _approve_finance_timesheet(self, log_path, user):
+        log = self.call("GET", log_path, user)
+        if "finance_timesheet_approve" in log["available_actions"]:
+            self.call("POST", f"{log_path}/actions/finance_timesheet_approve", user,
+                      json={"review_confirmed": True, "review_type": log["work_type"]})
 
     def put(self, path, user, json=None, **kw):
         return self.call("PUT", path, user, json=json, **kw)

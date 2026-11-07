@@ -73,6 +73,14 @@ async def upload_budget(region_id: int = Form(gt=0), month: str = Form(...),
     return budgets.summary(row)
 
 
+@router.get("/{budget_id}/deductions")
+def list_deductions(budget_id: int, db: Session = Depends(get_db), current=Depends(READ)):
+    row = budgets.visible(db, current).filter(MonthlyServiceBudget.id == budget_id).first()
+    if not row:
+        raise HTTPException(404, "Budget not found.")
+    return budgets.deductions(db, current, row)
+
+
 @router.get("/{budget_id}/document")
 def download_document(budget_id: int, db: Session = Depends(get_db), current=Depends(READ)):
     row = budgets.visible(db, current).filter(MonthlyServiceBudget.id == budget_id).first()

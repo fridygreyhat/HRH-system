@@ -153,6 +153,32 @@ test.each([
   }
 });
 
+test('Public holidays show on the calendar by name, and the day can still be recorded', () => {
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  const today = jest.spyOn(format, 'todayLocal').mockReturnValue('2026-12-20');
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  const log = {
+    work_type: 'PAYROLL', cadre: { code: 'CHW' }, can_edit: true,
+    period: { start_date: '2026-11-26', end_date: '2026-12-25', holidays: [{ id: null, date: '2026-12-09', name_en: 'Independence Day', name_sw: 'Siku ya Uhuru' }] },
+    entries: [], totals: { hours: 0 }, review_summary: { limits: { sunday_allowed: false } },
+  };
+  try {
+    act(() => root.render(<DayCalendar log={log} selected="2026-12-01" flaggedDates={new Set()} onSelect={jest.fn()} />));
+    const day = container.querySelector('[aria-label*="2026-12-09"]');
+    expect(day.className).toContain('is-holiday');
+    expect(day.getAttribute('aria-label')).toContain('Independence Day');
+    expect(day.textContent).toContain('Holiday');
+    expect(day.disabled).toBe(false);
+    expect(container.textContent).toContain('Public holidays: 09 Dec 2026 Independence Day');
+  } finally {
+    act(() => root.unmount());
+    container.remove();
+    today.mockRestore();
+  }
+});
+
 test('Swahili calendar labels months clearly and follows selection of a missing day in another month', () => {
   global.IS_REACT_ACT_ENVIRONMENT = true;
   mockLanguage = 'sw';

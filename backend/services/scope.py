@@ -108,22 +108,27 @@ def _worklog_visibility(current: CurrentUser):
     if current.unrestricted or OVERSIGHT in current.roles:
         return true()
     conditions = [WorkLog.staff_id == current.staff_id]
+    # Finance sees authorized work, not draft/submitted clinical records.
+    # Additional operational roles below retain their own reviewer access.
+    authorized = and_(WorkLog.status.in_(RM_AUTHORIZED_STATUSES),
+                      or_(WorkLog.status != "BUDGET_HOLD", WorkLog.approved_at.is_not(None)))
     if FHI360_FINANCE in current.roles:
-        # Finance sees authorized work, not draft/submitted clinical records.
-        # Additional operational roles below retain their own reviewer access.
         conditions.append(or_(
             WorkLog.workflow_version == 1,
-            and_(record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id),
-                 WorkLog.status.in_(RM_AUTHORIZED_STATUSES),
-                 or_(WorkLog.status != "BUDGET_HOLD", WorkLog.approved_at.is_not(None))),
+            and_(record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id), authorized),
         ))
     for role in ROLE_SCOPE_DIMENSIONS:
         subquery = assignments_in_role_scope(current, role)
         if subquery is not None:
             condition = WorkLog.assignment_id.in_(subquery)
             if role == REGIONAL_FINANCE:
-                condition = and_(condition, record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id))
-            elif role in (TECHNICAL_OFFICER, RPM, CSO_FINANCE):
+                condition = and_(condition, record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id), authorized)
+            elif role == CSO_FINANCE:
+                # A CSO pays from the signed monthly report. It opens a work log only once that log is routed to it.
+                routed = and_(WorkLog.status.in_(("ROUTED_CSO", "PAID")), WorkLog.work_type != "SERVICES",
+                              record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id, role=role))
+                condition = and_(condition, or_(WorkLog.workflow_version == 1, routed))
+            elif role in (TECHNICAL_OFFICER, RPM):
                 condition = and_(condition, or_(WorkLog.workflow_version == 1, record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id, role=role)))
             conditions.append(condition)
     return or_(*conditions)

@@ -15,16 +15,22 @@ jest.mock('../components/worklogs/WorkLogDrawer', () => ({ WorkLogDrawer: () => 
 
 beforeEach(() => useApi.mockClear());
 
-test('RM initially sees all regional Services and can select Payroll', () => {
+test('RM starts on the records waiting for them and can select Payroll', () => {
   mockRoles = ['RPM'];
   const html = renderToStaticMarkup(<ReviewWorkLogs />);
   const paths = useApi.mock.calls.map(([path]) => path);
-  expect(paths).toContain('/worklogs?work_type=SERVICES');
-  expect(paths.some((path) => path?.includes('queue=true'))).toBe(false);
+  expect(paths).toContain('/worklogs?queue=true&work_type=SERVICES');
   expect(html).toContain('Payroll');
   expect(html).toContain('Services');
   expect(html).toContain('All visible logs');
-  expect(html).toContain('RM approval follows technical approval');
+  expect(html).toContain('Waiting on me shows only records at your approval stage');
+});
+
+test('Regional Finance is not offered a Payroll list it cannot open', () => {
+  mockRoles = ['REGIONAL_FINANCE'];
+  const html = renderToStaticMarkup(<ReviewWorkLogs />);
+  expect(html).not.toContain('aria-label="Work type queue"');
+  expect(html).not.toContain('>Legacy<');
 });
 
 test('technical officers retain their actionable queue and both work types', () => {

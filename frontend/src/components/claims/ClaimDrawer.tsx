@@ -594,7 +594,7 @@ function actionHelp(action: string, claim: ClaimDetail): string {
     case 'verify_community':
       return 'Confirm that the community service described in the evidence took place.';
     case 'mark_ready':
-      return 'The claim will be included in the next payroll batch for its route.';
+      return 'The claim will be included in the next payment batch for its route.';
     case 'revalidate':
       if (noBudgetPolicyForClaim(claim)) {
         return claim.work_type === 'COMMUNITY'

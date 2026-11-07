@@ -99,6 +99,7 @@ def new_scenario(api, db, period, provider, kind, variant="happy_path"):
     assert pending["claim"]["status"] == "PENDING_FINANCE_REVIEW"
     assert pending["claim"]["category_name"] is None
     assert not pending["claim"]["payment_actions"]
+    act("finance_timesheet_approve", "REGIONAL_FINANCE")
     reviewed = act("finance_review", "REGIONAL_FINANCE", category_id=category_id(db, route))
     snap("Explicit payor selection", "REGIONAL_FINANCE", "Channel to eligible payor",
          "Finance selects FHI360 for Services, or the provider's assigned CSO for Payroll. Another payor is not eligible.",

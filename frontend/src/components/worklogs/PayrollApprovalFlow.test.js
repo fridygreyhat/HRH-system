@@ -19,7 +19,8 @@ test.each(['DRAFT', 'PENDING_RPM_AUTHORIZATION', 'APPROVED'])('Payroll %s has wo
 
 test('Services retains finance and payment steps', () => {
   const html = renderToStaticMarkup(<ApprovalStepper status="PENDING_FINANCE_REVIEW" audit={[]} workflowVersion={2} workType="SERVICES" />);
-  expect(html).toContain('Regional finance review');
+  expect(html).toContain('Regional finance: timesheet');
+  expect(html).toContain('Regional finance: Services payment');
   expect(html).toContain('Routed to FHI360');
   expect(html).toContain('Paid');
 });

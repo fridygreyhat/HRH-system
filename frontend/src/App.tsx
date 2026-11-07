@@ -20,6 +20,8 @@ import { Organizations } from './pages/Organizations';
 import { PrintWorkLog } from './pages/PrintWorkLog';
 import { ProviderPaymentDetails } from './pages/ProviderPaymentDetails';
 import { PayPeriods } from './pages/PayPeriods';
+import { SalaryAmounts } from './pages/SalaryAmounts';
+import { PublicHolidays } from './pages/PublicHolidays';
 import { ReviewWorkLogs } from './pages/ReviewWorkLogs';
 import { RoutingQueue } from './pages/RoutingQueue';
 import { Rates } from './pages/Rates';
@@ -56,8 +58,9 @@ export const PAGES: Page[] = [
   { key: 'backdate-access', label: 'Backdated entry access', description: 'Grant time-limited access to reopen a date-specific work log', icon: 'calendar', group: 'Work', roles: ['TECHNICAL_OFFICER', 'SUPER_ADMIN'], render: () => <BackdateAccess /> },
   { key: 'rates', label: 'Rates', description: 'Scoped activity rates and immutable revisions', icon: 'receipt', group: 'Finance', roles: ['TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'OVERSIGHT', 'SUPER_ADMIN'], render: () => <Rates /> },
   { key: 'pay-periods', label: 'Pay periods', description: 'Set regional work and pay schedules', icon: 'calendar', group: 'Finance', roles: ['TECHNICAL_OFFICER', 'CENTRAL_ADMIN', 'FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <PayPeriods /> },
+  { key: 'public-holidays', label: 'Public holidays', description: 'Holidays shown on calendars and timesheets', icon: 'calendar', group: 'System', roles: ['CENTRAL_ADMIN', 'SYSTEM_ADMIN', 'SUPER_ADMIN'], render: () => <PublicHolidays /> },
   { key: 'routing-queue', label: 'Routing queue', description: 'Verify the assignment, then choose the organization that should pay', icon: 'route', group: 'Finance', roles: ['REGIONAL_FINANCE', 'SUPER_ADMIN'], render: () => <RoutingQueue /> },
-  { key: 'finance-monthly', label: 'Monthly work report', description: 'Calendar-month approved work totals and activity indicators across cadres', icon: 'calendar', group: 'Finance', roles: ['REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'SUPER_ADMIN'], render: () => <FinanceMonthlyReport /> },
+  { key: 'finance-monthly', label: 'Monthly work report', description: 'Pay-month approved work totals and activity indicators across cadres', icon: 'calendar', group: 'Finance', roles: ['REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'SUPER_ADMIN'], render: () => <FinanceMonthlyReport /> },
   { key: 'review-cadres', label: 'Review assignments', description: 'Manage reviewer cadre and geographic scope', icon: 'users', group: 'System', roles: ['TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'SUPER_ADMIN'], render: () => <ReviewCadres /> },
   {
     key: 'worklogs',
@@ -77,9 +80,10 @@ export const PAGES: Page[] = [
     roles: ['FHI360_FINANCE', 'CSO_FINANCE', 'RPM', 'OVERSIGHT', 'COMMUNITY_VERIFIER', 'PROVIDER'],
     render: () => <Claims />,
   },
-  { key: 'batches', label: 'Payroll batches', description: 'Exports, FHI360 → CSO handoffs and receipts', icon: 'layers', group: 'Finance', roles: ['FHI360_FINANCE', 'CSO_FINANCE', 'OVERSIGHT'], render: () => <Batches /> },
+  { key: 'batches', label: 'Payment batches', description: 'Payment exports, older FHI360 → CSO handoffs and receipts', icon: 'layers', group: 'Finance', roles: ['FHI360_FINANCE', 'CSO_FINANCE', 'OVERSIGHT'], render: () => <Batches /> },
   { key: 'budgets', label: 'Budget', description: 'Monthly regional Services budgets and submission deductions', icon: 'wallet', group: 'Finance', roles: ['REGIONAL_FINANCE', 'FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <MonthlyServicesBudgets /> },
-  { key: 'cso', label: 'CSO payments', description: 'Your pending payments, proof and reconciliation', icon: 'wallet', group: 'Finance', roles: ['CSO_FINANCE'], render: () => <CsoPortal /> },
+  { key: 'salary-amounts', label: 'Salary amounts', description: 'Full monthly salary for each salary scale', icon: 'wallet', group: 'Finance', roles: ['FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <SalaryAmounts /> },
+  { key: 'cso', label: 'CSO payments', description: 'Your pending payments, proof, reconciliation and salary timesheets', icon: 'wallet', group: 'Finance', roles: ['CSO_FINANCE'], render: () => <CsoPortal /> },
   { key: 'community-claims', label: 'Community claims', description: 'Period-based community claims and direct payment', icon: 'users', group: 'Finance', roles: ['PROVIDER', 'COMMUNITY_VERIFIER', 'TECHNICAL_OFFICER', 'CSO_FINANCE', 'OVERSIGHT', 'SUPER_ADMIN'], render: () => <CommunityClaims /> },
   {
     key: 'staff',

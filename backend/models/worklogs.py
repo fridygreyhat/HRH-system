@@ -40,6 +40,18 @@ class PayPeriod(Base):
     created_at = created_at()
 
 
+class PublicHoliday(Base):
+    """Holidays announced each year, such as Eid. Fixed national holidays come from services/public_holidays.py."""
+
+    __tablename__ = "public_holidays"
+    id = Column(Integer, primary_key=True)
+    holiday_date = Column(Date, nullable=False, unique=True)
+    name_en = Column(String(100), nullable=False)
+    name_sw = Column(String(100), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = created_at()
+
+
 class WorkLog(Base):
     __tablename__ = "work_logs"
     __table_args__ = (UniqueConstraint("staff_id", "period_id", "work_type"),)
@@ -66,6 +78,9 @@ class WorkLog(Base):
     submit_gps_accuracy_m = Column(Numeric(8, 2))
     submitted_at = Column(DateTime(timezone=True))
     approved_at = Column(DateTime(timezone=True))
+    # Regional Finance's first Services approval. Cleared whenever the log leaves finance review.
+    finance_timesheet_approved_by = Column(Integer, ForeignKey("users.id"))
+    finance_timesheet_approved_at = Column(DateTime(timezone=True))
     status_changed_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     created_at = created_at()
     updated_at = updated_at()

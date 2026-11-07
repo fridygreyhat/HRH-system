@@ -75,6 +75,11 @@ def has_proof(db: Session, claim_id: int) -> bool:
     return db.query(PaymentProof).filter(PaymentProof.claim_id == claim_id).count() > 0
 
 
+def _services_claim(claim: PaymentClaim) -> bool:
+    """Central Finance confirms Services payment with proof, whatever the general setting says."""
+    return claim.workflow_version >= 2 and claim.work_type == "SERVICES"
+
+
 def payment_actions(db: Session, current: CurrentUser, claim: PaymentClaim) -> list[str]:
     actions = []
     can_execute = executor_check(current, claim) is None
@@ -131,7 +136,7 @@ def record_payment(db: Session, current: CurrentUser, claim: PaymentClaim, amoun
         claim.payment_status = "FAILED" if status == "FAILED" else "PENDING"
     elif total < claim.amount:
         claim.payment_status = "PARTIALLY_RECORDED"
-    elif (is_direct(claim) or get_setting(db, "payment_requires_proof")) and not has_proof(db, claim.id):
+    elif (is_direct(claim) or _services_claim(claim) or get_setting(db, "payment_requires_proof")) and not has_proof(db, claim.id):
         claim.payment_status = "PROOF_REQUIRED"
     else:
         claim.payment_status = "PAID"

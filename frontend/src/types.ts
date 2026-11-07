@@ -75,6 +75,13 @@ export interface Me {
   client_settings: { gps_capture_events: string[]; otp_length: number; provider_otp_required: boolean; gps_required_on_submit: boolean };
 }
 
+export interface PublicHoliday {
+  id: number | null;
+  date: string;
+  name_en: string;
+  name_sw: string;
+}
+
 export interface PayPeriod {
   id: number;
   start_date: string;
@@ -89,6 +96,7 @@ export interface PayPeriod {
   archive_block_reason?: string | null;
   can_edit_dates?: boolean;
   date_lock_reason?: string | null;
+  holidays?: PublicHoliday[];
 }
 
 export interface ProviderPeriodWorkLog {
@@ -139,6 +147,8 @@ export interface Section {
 export interface WorkLogSummary {
   id: number;
   staff_id: number;
+  region_id: number;
+  region_name: string;
   period_id: number;
   assignment_id: number;
   cadre_id: number;
@@ -156,6 +166,7 @@ export interface WorkLogSummary {
   attested_at: string | null;
   submitted_at: string | null;
   approved_at: string | null;
+  finance_timesheet_approved_at?: string | null;
   status_changed_at: string;
   created_at: string;
   updated_at: string;
@@ -191,7 +202,7 @@ export interface RoutingQueueItem {
   region_name: string;
   period_label: string;
   status: string;
-  next_action?: 'REVIEW_AMOUNT' | 'CHANNEL' | 'RESOLVE_BUDGET_HOLD';
+  next_action?: 'REVIEW_TIMESHEET' | 'REVIEW_AMOUNT' | 'CHANNEL' | 'RESOLVE_BUDGET_HOLD';
   finance_review_required?: boolean;
   amount: string | null;
   currency: string | null;
@@ -606,6 +617,9 @@ export interface Batch {
   created_at: string;
   handed_off_at: string | null;
   received_at: string | null;
+  reversed_at: string | null;
+  reversal_reason: string | null;
+  reversed_by_name: string | null;
   payor_name: string | null;
   executor_name: string | null;
   created_by_name: string | null;
@@ -640,6 +654,7 @@ export interface BatchLine {
 export interface BatchDetail extends Batch {
   lines: BatchLine[];
   claims: { id: number; status: string; payment_status: string }[];
+  can_reverse: boolean;
 }
 
 // ---- Budgets ---------------------------------------------------------------------------

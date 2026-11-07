@@ -1,5 +1,5 @@
 import type { PayPeriod, WorkLogSummary } from '../types';
-import { todayLocal } from '../format';
+import { payMonth, payMonthRange, todayLocal } from '../format';
 
 export function workMonthLabel(month: string): string {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return month;
@@ -16,9 +16,8 @@ export function resolveWorkLogMonth(
   today = todayLocal(),
 ): { period?: PayPeriod; existing?: WorkLogSummary; error?: string } {
   if (!/^(20\d{2}|2100)-(0[1-9]|1[0-2])$/.test(month)) return { error: 'Choose a valid work month.' };
-  if (month > today.slice(0, 7)) return { error: 'Future work months are not available yet.' };
-  const first = `${month}-01`;
-  const last = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
+  if (month > payMonth(today)) return { error: 'Future work months are not available yet.' };
+  const { first, last } = payMonthRange(month);
   const overlapping = periods.filter(p => p.status !== 'ARCHIVED' && p.start_date <= last && p.end_date >= first);
   // A rejected/returned record must reopen even if its schedule is now closed,
   // partial-month, or predates a subsequently configured regional schedule.

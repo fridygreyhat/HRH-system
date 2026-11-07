@@ -105,7 +105,8 @@ payment_status: NOT_STARTED → PENDING → PARTIALLY_RECORDED → PROOF_REQUIRE
   in the append-only `budget_transactions` ledger.
 - A claim is `PAID` only after an authorized payment record for the full amount **and** proof. Reconciliation must
   be done by someone other than the person who recorded the payment.
-- Exports create immutable payroll batches (snapshot + CSV, XLSX on download) per route, payor and executor.
+- Exports create immutable payment batches (snapshot + CSV, XLSX on download) per route, payor and executor. New Payroll is report-only and never enters one.
+- Central Finance can reverse an exported Route A batch, with a reason, while no claim in it has a payment or proof. Its claims return to Ready for payment and the file can no longer be downloaded.
 
 **SMS:** state changes queue messages in `sms_outbox` within the same transaction. The worker sends them after
 commit, retries with backoff, and suppresses stale messages. The hourly reminder check notifies the assigned
@@ -156,8 +157,8 @@ frontend/          React + TypeScript (Vite), built and served by nginx (nginx.c
 
 The system can hold each of these decisions as configuration, but none of them has been decided or entered yet:
 
-- Salary scales, salary and proration formulas, activity rates, transport and communication rules, caps and
-  rounding. Enter them as rate rules; each needs approval by an RPM or oversight user.
+- Activity rates, transport and communication rules, caps and rounding. Enter them as rate rules; each needs
+  approval by an RPM or oversight user. Full monthly salaries are set per salary scale on **Salary amounts**.
 - How each activity or category maps to a funding source, payor, route and budget line (claim categories).
 - Final FHI360 and CSO voucher and export layouts (the current CSV/XLSX columns are a working draft).
 - The FHI360 HQ tracker API or file format, line identifiers and reconciliation procedure (the current CSV import

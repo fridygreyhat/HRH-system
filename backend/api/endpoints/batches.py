@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ...core import audit as system_audit
@@ -18,6 +18,10 @@ class BatchCreate(BaseModel):
     route_code: str
 
 
+class BatchReverse(BaseModel):
+    reason: str = Field(min_length=1, max_length=2000)
+
+
 def _get(db: Session, current: CurrentUser, batch_id: int, lock: bool = False) -> PayrollBatch:
     query = db.query(PayrollBatch).filter(PayrollBatch.id == batch_id, bt.batch_visibility(current))
     batch = (query.with_for_update() if lock else query).first()
@@ -34,6 +38,7 @@ def _out(db: Session, batch: PayrollBatch, current: CurrentUser, lines: bool = F
         "payor_name": name(Organization, batch.payor_org_id),
         "executor_name": name(Organization, batch.executor_org_id),
         "created_by_name": name(User, batch.created_by),
+        "reversed_by_name": name(User, batch.reversed_by),
         "payment_progress": {s: sum(1 for c in claims if c.payment_status == s) for s in {c.payment_status for c in claims}},
         "can_hand_off": batch.route_code == "B" and batch.status == bt.EXPORTED and FHI360_FINANCE in current.roles,
         "can_receive": batch.route_code == "B" and batch.status == bt.HANDED_OFF and CSO_FINANCE in current.roles
@@ -45,6 +50,7 @@ def _out(db: Session, batch: PayrollBatch, current: CurrentUser, lines: bool = F
             for line in redacted_batch_lines(current, batch, batch.export_snapshot.get("lines", []))
         ]
         out["claims"] = [{"id": c.id, "status": c.status, "payment_status": c.payment_status} for c in claims]
+        out["can_reverse"] = FHI360_FINANCE in current.roles and bt.reverse_block(db, batch, claims) is None
     return out
 
 
@@ -69,6 +75,8 @@ def get_batch(batch_id: int, db: Session = Depends(get_db), current: CurrentUser
 @router.get("/{batch_id}/export.{fmt}")
 def download(batch_id: int, fmt: str, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(FHI360_FINANCE, CSO_FINANCE))):
     batch = _get(db, current, batch_id)
+    if batch.status == bt.REVERSED:
+        raise HTTPException(status_code=409, detail="This batch was reversed. Its file can no longer be downloaded.")
     lines = redacted_batch_lines(current, batch, batch.export_snapshot.get("lines", []))
     system_audit.record(db, current, "payroll_batch", batch.id, f"download_{fmt}")
     db.commit()
@@ -91,5 +99,12 @@ def hand_off(batch_id: int, db: Session = Depends(get_db), current: CurrentUser 
 @router.post("/{batch_id}/receive")
 def receive(batch_id: int, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(CSO_FINANCE))):
     batch = bt.receive(db, current, _get(db, current, batch_id, lock=True))
+    db.commit()
+    return _out(db, batch, current, lines=True)
+
+
+@router.post("/{batch_id}/reverse")
+def reverse(batch_id: int, body: BatchReverse, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(FHI360_FINANCE))):
+    batch = bt.reverse(db, current, _get(db, current, batch_id, lock=True), body.reason)
     db.commit()
     return _out(db, batch, current, lines=True)

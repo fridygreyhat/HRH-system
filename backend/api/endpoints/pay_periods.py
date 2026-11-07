@@ -1,18 +1,21 @@
 """Pay-period setup with explicit regional authority; legacy global rows stay global."""
+from calendar import month_name
 from datetime import date
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import or_, func
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from ...core import audit
-from ...core.period_dates import period_date_error
+from ...core.period_dates import pay_month_of, pay_month_range, period_date_error
 from ...core.roles import CENTRAL_ADMIN, FHI360_FINANCE, TECHNICAL_OFFICER, SUPER_ADMIN
 from ...core.security import CurrentUser, get_current_user, require_roles
 from ...core.serialize import to_dict
+from ...core.timeutil import local_today
 from ...db.session import get_db
 from ...models import (
     BudgetLine,
@@ -349,8 +352,21 @@ def period_regions(db: Session = Depends(get_db),
     return [{"id": row.id, "name": row.name} for row in query.order_by(Region.name)]
 
 
+def open_current_pay_month(db):
+    """The next pay month starts by itself on the 26th, unless a global schedule already covers those dates."""
+    month = pay_month_of(local_today())
+    start, end = pay_month_range(month)
+    if db.query(PayPeriod.id).filter(PayPeriod.region_id.is_(None), PayPeriod.status != "ARCHIVED",
+                                     PayPeriod.start_date <= end, PayPeriod.end_date >= start).first():
+        return
+    db.execute(insert(PayPeriod).values(start_date=start, end_date=end, status="OPEN",
+                                        period_label=f"{month_name[end.month]} {end.year}").on_conflict_do_nothing())
+    db.commit()
+
+
 @router.get("/pay-periods")
 def list_periods(include_archived: bool = False, db: Session = Depends(get_db), current: CurrentUser = Depends(get_current_user)):
+    open_current_pay_month(db)
     if include_archived and SUPER_ADMIN not in current.roles:
         raise HTTPException(403, "Only Super Admin may list archived periods")
     query = db.query(PayPeriod)

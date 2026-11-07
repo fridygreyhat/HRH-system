@@ -7,6 +7,7 @@ import { useAction, useApi } from '../hooks';
 import { Batch, CsoFinanceOrganization, ClaimSummary, PayPeriod } from '../types';
 import { ClaimDrawer } from '../components/claims/ClaimDrawer';
 import { BatchDrawer } from '../components/batches/BatchDrawer';
+import { SalaryTimesheets } from '../components/cso/SalaryTimesheets';
 import { Alert, AsyncState, Empty, Field, RouteBadge, Section, StatTile, StatusBadge } from '../components/ui';
 
 type SectionKey = 'all' | 'pending' | 'receipt' | 'routec' | 'recon' | 'export';
@@ -253,7 +254,7 @@ export function CsoPortal() {
     { key: 'receipt', label: `Awaiting receipt${batches.data ? ` (${awaitingReceipt.length})` : ''}` },
     { key: 'routec', label: `Community claims${claims.data ? ` (${routeCCount})` : ''}` },
     { key: 'recon', label: 'Reconciliation' },
-    { key: 'export', label: 'Payroll export' },
+    { key: 'export', label: 'Salary timesheets' },
   ];
   const show = (k: SectionKey) => section === 'all' || section === k;
 
@@ -263,7 +264,7 @@ export function CsoPortal() {
       <div className="page-header">
         <div>
           <h1>CSO payments{names.length ? ` — ${names.join(', ')}` : ''}</h1>
-          <p className="muted">Claims your CSO pays: record payments, upload proof, and keep community claims moving.</p>
+          <p className="muted">Claims your CSO pays: record payments, upload proof, download salary timesheets and keep community claims moving.</p>
         </div>
         <button type="button" className="btn btn-secondary" onClick={refreshAll} disabled={claims.loading || batches.loading || payPeriods.loading || organizations.loading}>
           {claims.loading || batches.loading || payPeriods.loading || organizations.loading ? 'Refreshing…' : 'Refresh'}
@@ -428,8 +429,10 @@ export function CsoPortal() {
         </Section>
       )}
 
+      {show('export') && <SalaryTimesheets csoId={selectedCsoId} noCso={organizations.data?.length === 0} />}
+
       {show('export') && (
-        <Section title="CSO payroll export">
+        <Section title="Older payroll claims · bank CSV">
           <p className="muted">
             Download a CSV of validated, routed payroll claims that are still unpaid. This creates a file only: it does not transfer money or change claim status.
           </p>
@@ -475,7 +478,7 @@ export function CsoPortal() {
                   </select>
                 </Field>
               </div>
-              {payPeriods.data?.length === 0 && <Empty>No pay periods are available for payroll export.</Empty>}
+              {payPeriods.data?.length === 0 && <Empty>No pay periods are available for payroll export. An administrator must create one under Pay periods, for a region linked to this CSO. Salary timesheets above use the month worked, so they do not need this.</Empty>}
               {organizations.data?.length === 0 && <Empty>No assigned CSOs are available for payroll export.</Empty>}
               <Alert>{payrollExport.error}</Alert>
               <div>

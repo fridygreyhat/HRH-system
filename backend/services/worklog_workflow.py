@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from ..core.roles import FACILITY_IN_CHARGE, PROVIDER, RPM, SUPERVISOR, TECHNICAL_OFFICER, REGIONAL_FINANCE
 from ..core.security import CurrentUser
 from ..core.settings import get_setting
+from ..core.timeutil import local_today
 from ..models import (
     Cadre,
     PaymentClaim,
@@ -89,8 +90,8 @@ TRANSITIONS: dict[tuple[str, str], tuple[str, str]] = {
 }
 COMMENT_REQUIRED = {"return", "return_to_reviewer", "reject", "hold", "release", "reopen", "decline"}
 INTERNAL_ACTIONS = {"confirm_otp"}  # has its own endpoint (needs a code)
+FINANCE_TIMESHEET_APPROVE = "finance_timesheet_approve"
 FACILITY_ENDORSEMENT = "FACILITY_IN_CHARGE"
-FACILITY_ENDORSE_STATUSES = {PENDING_OTP, PENDING_TECH}
 
 
 def transitions_for(log):
@@ -103,6 +104,7 @@ def transitions_for(log):
     return {
         **{key: value for key, value in TRANSITIONS.items() if key != (PENDING_RPM, "hold")},
         (PENDING_RPM, "authorize"): (PENDING_FINANCE, RPM),
+        (PENDING_FINANCE, FINANCE_TIMESHEET_APPROVE): (PENDING_FINANCE, REGIONAL_FINANCE),
         (PENDING_FINANCE, "finance_review"): (FINANCE_REVIEWED, REGIONAL_FINANCE),
         (FINANCE_REVIEWED, "finance_review"): (FINANCE_REVIEWED, REGIONAL_FINANCE),
         (PENDING_FINANCE, "return"): (PENDING_TECH, REGIONAL_FINANCE),
@@ -146,7 +148,13 @@ def check_action(db: Session, current: CurrentUser, log: WorkLog, action: str) -
         if date_error:
             return f"{date_error} Contact an administrator to correct the pay period before approval."
     if role == PROVIDER:
-        return None if _owns(current, log) else "Only the provider who owns this work log can do this"
+        if not _owns(current, log):
+            return "Only the provider who owns this work log can do this"
+        period = db.get(PayPeriod, log.period_id)
+        # Returned work can come back at any time; only the first submission waits for the month to finish.
+        if action == "submit" and log.status == DRAFT and local_today() < period.end_date:
+            return f"You can submit on {period.end_date:%d %b %Y}, the last day of this work month."
+        return None
     if _owns(current, log):
         return "You cannot review your own work log"
     if not assignment_in_role_scope(db, current, role, log.assignment_id):
@@ -156,6 +164,10 @@ def check_action(db: Session, current: CurrentUser, log: WorkLog, action: str) -
         assignment = db.get(StaffAssignment, log.assignment_id)
         if not may_manage(current, assignment.region_id, log.cadre_id, role=role):
             return "This work log is outside your assigned Region × Cadre"
+    if action == FINANCE_TIMESHEET_APPROVE and log.finance_timesheet_approved_at:
+        return "Cannot approve this timesheet again: it is already approved"
+    if action == "finance_review" and log.status == PENDING_FINANCE and not log.finance_timesheet_approved_at:
+        return "Cannot approve the Services payment until the timesheet is approved"
     if action.startswith("route_"):
         expected = "route_fhi360" if log.work_type == "SERVICES" else "route_cso"
         if action != expected:
@@ -201,10 +213,6 @@ def queue_condition(current: CurrentUser):
                 if version >= 2 and role in {TECHNICAL_OFFICER, RPM, REGIONAL_FINANCE}:
                     condition &= record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id, role=role)
                 conditions.append(condition)
-    if FACILITY_IN_CHARGE in current.roles:
-        scope = assignments_in_role_scope(current, FACILITY_IN_CHARGE)
-        if scope is not None:
-            conditions.append(WorkLog.status.in_(FACILITY_ENDORSE_STATUSES) & WorkLog.assignment_id.in_(scope))
     if not conditions:
         return None
     return or_(*conditions) & (WorkLog.staff_id != current.staff_id)
@@ -224,6 +232,11 @@ def audit(db: Session, current: Optional[CurrentUser], log: WorkLog, action: str
             details=jsonable_encoder(details) if details is not None else None,
         )
     )
+
+
+def _clear_finance_timesheet_approval(log: WorkLog) -> None:
+    log.finance_timesheet_approved_by = None
+    log.finance_timesheet_approved_at = None
 
 
 def transition(
@@ -273,6 +286,10 @@ def transition(
             claim = finance_gate.prepare_after_rpm(db, current, log)
             details = {**(details or {}), "prepared_claim_id": claim.id if claim else None}
             log.approved_at = now
+            _clear_finance_timesheet_approval(log)
+        elif action == FINANCE_TIMESHEET_APPROVE:
+            log.finance_timesheet_approved_by = current.id
+            log.finance_timesheet_approved_at = now
         elif action == "finance_review":
             finance_gate.review(db, current, log, (details or {}).get("category_id"),
                                 (details or {}).get("funding_source_id"))
@@ -287,7 +304,10 @@ def transition(
             log.finance_snapshot = None
             log.routed_channel = None
             log.approved_at = None
-    log.status_changed_at = now
+            _clear_finance_timesheet_approval(log)
+    # The first approval keeps the record in the same stage, so its waiting time keeps running.
+    if action != FINANCE_TIMESHEET_APPROVE:
+        log.status_changed_at = now
     if next_status in {RETURNED, REJECTED}:
         log.confirmed_version = None
     log.approved_at = now if log.status in {APPROVED, ROUTED_FHI360, ROUTED_CSO} else (None if next_status in {RETURNED, REJECTED} else log.approved_at)
@@ -351,7 +371,7 @@ def _notify(db: Session, log: WorkLog, action: str, comment: Optional[str]) -> N
         to_role(TECHNICAL_OFFICER, "WORKLOG_RETURNED_TO_REVIEWER" if action in {"return", "return_to_reviewer"} else "WORKLOG_CONFIRMED")
     elif log.status == PENDING_RPM and action == "endorse":
         to_role(RPM, "WORKLOG_ENDORSED")
-    elif log.status == PENDING_FINANCE:
+    elif log.status == PENDING_FINANCE and action != FINANCE_TIMESHEET_APPROVE:
         to_role(REGIONAL_FINANCE, "WORKLOG_FINANCE_REVIEW")
     elif log.status == BUDGET_HOLD and log.workflow_version >= 2:
         to_role(RPM, "WORKLOG_FINANCE_HOLD")

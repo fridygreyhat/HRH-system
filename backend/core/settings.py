@@ -54,7 +54,7 @@ SETTING_DESCRIPTIONS = {
     "backdate_restriction_enabled": "Enforce the missed-date limit for CHW, HCP and Data Clerk entries (temporarily disabled)",
     "backdate_grace_hours": "Hours allowed without Technical Officer permission when the backdate restriction is enabled (72 = three days)",
     "sms_max_attempts": "Delivery attempts before an SMS is marked failed",
-    "payment_requires_proof": "Require proof upload before marking a payment PAID",
+    "payment_requires_proof": "Require proof upload before marking a payment PAID (Services and community claims always require it)",
     "escalation_recipient_roles": "Roles to escalate overdue items to (empty = none)",
     "bank_only_cadres": "Cadre codes (CHW, DATA_CLERK, HCP) that must be paid into a bank account",
     "login_max_failures": "Wrong passwords in a row before an account is locked",

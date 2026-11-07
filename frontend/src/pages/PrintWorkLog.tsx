@@ -1,9 +1,29 @@
 import React, { useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { Alert } from '../components/ui';
-import { dateOnly, dateTime, datesBetween, dayOfMonth, num, periodDateError, timeShort, weekday, workHours } from '../format';
+import { dateOnly, dateTime, datesBetween, dayOfMonth, num, payMonth, payMonthDates, periodDateError, timeShort, weekday, workHours } from '../format';
 import { useApi } from '../hooks';
-import { WorkLogAudit, WorkLogDetail } from '../types';
+import { WorkLogAudit, WorkLogDetail, WorkLogEntry } from '../types';
+
+// Statuses a log only reaches once that stage is finished. Audit rows are for administrators only, so other
+// reviewers see from the current status that a stage is complete, without the signer's name or date.
+const AFTER_RM = ['PENDING_FINANCE_REVIEW', 'FINANCE_REVIEWED', 'ROUTED_FHI360', 'ROUTED_CSO', 'PAID', 'APPROVED', 'BUDGET_HOLD'];
+const AFTER_TECHNICAL = ['PENDING_RPM_AUTHORIZATION', ...AFTER_RM];
+const AFTER_OTP = ['PENDING_TECHNICAL_REVIEW', ...AFTER_TECHNICAL];
+const AFTER_CTC = ['PENDING_PROVIDER_OTP_CONFIRMATION', ...AFTER_OTP];
+
+/** Everything recorded on one date: the main activity plus any additional services, as the server totals count them. */
+function dayValues(entry?: WorkLogEntry): Record<string, number> {
+  const values: Record<string, number> = {};
+  const add = (measures: Record<string, number | boolean>) => Object.entries(measures).forEach(([key, value]) => {
+    if (value !== null && value !== undefined) values[key] = (values[key] || 0) + Number(value);
+  });
+  if (entry) {
+    add(entry.measures);
+    entry.activity_snapshot?.additional_services?.forEach((service) => add(service.measures));
+  }
+  return values;
+}
 
 /** Latest occurrence of `action` since the most recent submission (earlier sign-offs were superseded). */
 function signOff(log: WorkLogDetail, action: string): WorkLogAudit | null {
@@ -15,7 +35,7 @@ function signOff(log: WorkLogDetail, action: string): WorkLogAudit | null {
   return rows.length ? rows[rows.length - 1] : null;
 }
 
-function SignBox({ titleSw, titleEn, row, name, at }: { titleSw: string; titleEn: string; row?: WorkLogAudit | null; name?: string | null; at?: string | null }) {
+function SignBox({ titleSw, titleEn, row, name, at, done = false }: { titleSw: string; titleEn: string; row?: WorkLogAudit | null; name?: string | null; at?: string | null; done?: boolean }) {
   const who = name ?? row?.actor_name ?? null;
   const when = at ?? row?.timestamp ?? null;
   return (
@@ -29,6 +49,8 @@ function SignBox({ titleSw, titleEn, row, name, at }: { titleSw: string; titleEn
           <div>{dateTime(when)}</div>
           {row?.comment && <div>“{row.comment}”</div>}
         </>
+      ) : done ? (
+        <div className="who">Imekamilika / Completed</div>
       ) : (
         <div>—</div>
       )}
@@ -48,13 +70,15 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
     if (log && log.id === logId && !dateError && !error && (reviewLog || !loading)) onReady?.();
   }, [log, logId, dateError, error, loading, reviewLog, onReady]);
   const allDates = log ? datesBetween(log.period.start_date, log.period.end_date) : [];
-  const months = Array.from(new Set(allDates.map(date => date.slice(0, 7))));
-  const month = months.includes(selectedMonth) ? selectedMonth : months[0];
+  const months = Array.from(new Set(allDates.map(payMonth)));
+  const firstWorkedMonth = months.find(value => log?.entries.some(entry => payMonth(entry.entry_date) === value));
+  const month = months.includes(selectedMonth) ? selectedMonth : firstWorkedMonth || months[0];
   const monthLabel = (value: string) => new Intl.DateTimeFormat('en-GB', {
     month: 'long', year: 'numeric', timeZone: 'UTC',
   }).format(new Date(`${value}-01T00:00:00Z`));
 
-  const toolbar = (
+  const monthLabelText = embedded ? 'Month' : 'Print month';
+  const toolbar = !embedded || months.length > 1 || error ? (
     <div className="print-toolbar no-print">
       {!embedded && <button className="btn btn-ghost btn-sm" onClick={() => window.history.back()}>
         ← Back
@@ -62,16 +86,18 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
       {!embedded && <button className="btn btn-primary btn-sm" onClick={() => window.print()} disabled={!log || !!dateError}>
         Print
       </button>}
-      {log && !dateError && <label className="row">
-        Print month
-        <select aria-label="Print month" value={month} onChange={event => setSelectedMonth(event.target.value)}>
+      {log && !dateError && (!embedded || months.length > 1) && <label className="row">
+        {monthLabelText}
+        <select aria-label={monthLabelText} value={month} onChange={event => setSelectedMonth(event.target.value)}>
           {months.map(value => <option key={value} value={value}>{monthLabel(value)}</option>)}
         </select>
       </label>}
       {error && <button type="button" className="btn btn-secondary btn-sm" onClick={reload}>Retry</button>}
-      <span className="muted small">Landscape A4 is recommended.</span>
+      {embedded
+        ? months.length > 1 && <span className="muted small">This timesheet covers {months.length} months. Check each one.</span>
+        : <span className="muted small">Landscape A4 is recommended.</span>}
     </div>
-  );
+  ) : null;
 
   if (!log)
     return (
@@ -85,32 +111,42 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
 
   if (dateError) return <div>{toolbar}<Alert>{dateError} Contact an administrator to correct the pay period before printing.</Alert></div>;
 
-  const dates = allDates.filter(date => date.startsWith(`${month}-`));
+  const dates = allDates.filter(date => payMonth(date) === month);
+  const holidays = (log.period.holidays || []).filter(day => dates.includes(day.date));
+  const holidayDates = new Set(holidays.map(day => day.date));
+  const holidayClass = (d: string) => (holidayDates.has(d) ? 'holiday' : undefined);
   const entries = log.entries.filter(entry => dates.includes(entry.entry_date));
   const byDate = new Map(entries.map((e) => [e.entry_date, e]));
-  const measureTotal = (key: string) => entries.reduce((sum, entry) => sum + (Number(entry.measures[key]) || 0), 0);
+  const measureTotal = (key: string) => entries.reduce((sum, entry) => sum + (dayValues(entry)[key] || 0), 0);
+  const additional = (d: string) => byDate.get(d)?.activity_snapshot?.additional_services || [];
   const direct = log.cadre.hours_mode === 'DIRECT';
   const a = log.assignment;
   const comments = entries.filter((e) => e.comment);
 
-  const rows: { sw: string; en: string; cell: (d: string) => string; total: string }[] = [];
+  const rows: { key: string; sw: string; en: string; cell: (d: string) => string; total: string }[] = [];
   if (!direct) {
-    rows.push({ sw: 'Muda wa kuanza', en: 'Start time', cell: (d) => (byDate.get(d)?.start_time ? timeShort(byDate.get(d)?.start_time) : ''), total: '' });
-    rows.push({ sw: 'Muda wa kumaliza', en: 'End time', cell: (d) => (byDate.get(d)?.end_time ? timeShort(byDate.get(d)?.end_time) : ''), total: '' });
+    rows.push({ key: 'start', sw: 'Muda wa kuanza', en: 'Start time', cell: (d) => (byDate.get(d)?.start_time ? timeShort(byDate.get(d)?.start_time) : ''), total: '' });
+    rows.push({ key: 'end', sw: 'Muda wa kumaliza', en: 'End time', cell: (d) => (byDate.get(d)?.end_time ? timeShort(byDate.get(d)?.end_time) : ''), total: '' });
   }
   rows.push({
+    key: 'activity',
     sw: 'Aina ya shughuli',
     en: 'Activity',
-    cell: (d) => log.cadre.activities?.find((activity) => activity.key === byDate.get(d)?.activity_key)?.label_en || '',
+    cell: (d) => [
+      log.cadre.activities?.find((activity) => activity.key === byDate.get(d)?.activity_key)?.label_en,
+      ...additional(d).map((service) => service.activity.label_en),
+    ].filter(Boolean).join(' + '),
     total: '',
   });
   rows.push({
+    key: 'location',
     sw: 'Kituo kingine',
     en: 'Secondary facility',
-    cell: (d) => byDate.get(d)?.activity_location || '',
+    cell: (d) => Array.from(new Set([byDate.get(d)?.activity_location, ...additional(d).map((service) => service.activity_location)].filter(Boolean))).join(' + '),
     total: '',
   });
   rows.push({
+    key: 'hours',
     sw: 'Masaa uliyofanya kazi',
     en: 'Hours worked',
     cell: (d) => (byDate.has(d) ? workHours(byDate.get(d)?.hours_worked) : ''),
@@ -118,11 +154,12 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
   });
   log.cadre.fields.forEach((f) => {
     rows.push({
+      key: f.key,
       sw: f.label_sw || f.label_en,
       en: f.label_en,
       cell: (d) => {
-        const v = byDate.get(d)?.measures[f.key];
-        if (v === undefined || v === null) return '';
+        const v = dayValues(byDate.get(d))[f.key];
+        if (v === undefined) return '';
         return f.field_type === 'BOOLEAN' ? (Number(v) ? 'Ndiyo' : 'Hapana') : num(v);
       },
       total: f.field_type === 'BOOLEAN' ? `${num(measureTotal(f.key))} Ndiyo` : num(measureTotal(f.key)),
@@ -147,9 +184,9 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
   return (
     <div>
       {toolbar}
-      <article className="paper" aria-label="Printable work log">
+      <article className="paper" aria-label={embedded ? 'Timesheet' : 'Printable work log'}>
         <h1>{log.cadre.form_title || log.cadre.name}</h1>
-        <h2>{monthLabel(month)}</h2>
+        <h2>{monthLabel(month)} · {payMonthDates(month)}</h2>
         <div className="paper-header">
           {header.map(([sw, en, v]) => (
             <div key={en}>
@@ -157,29 +194,30 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
             </div>
           ))}
         </div>
+        <div className="paper-table">
         <table>
           <thead>
             <tr>
               <th>Tarehe / Date</th>
               {dates.map((d) => (
-                <th key={d} title={d}>
+                <th key={d} title={d} className={holidayClass(d)}>
                   {dayOfMonth(d)}
                   <br />
                   {weekday(d, 'sw')}
                 </th>
               ))}
-              <th>JUMLA / TOTAL</th>
+              <th>JUMLA<br />TOTAL</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.en}>
+              <tr key={r.key}>
                 <td className="rowlabel">
                   <span className="sw">{r.sw}</span>
                   {r.sw !== r.en && <span className="en">{r.en}</span>}
                 </td>
                 {dates.map((d) => (
-                  <td key={d}>{r.cell(d)}</td>
+                  <td key={d} className={holidayClass(d)}>{r.cell(d)}</td>
                 ))}
                 <td className="total">{r.total}</td>
               </tr>
@@ -190,12 +228,26 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
                 <span className="en">Days worked</span>
               </td>
               {dates.map((d) => (
-                <td key={d}>{byDate.has(d) ? '✓' : ''}</td>
+                <td key={d} className={holidayClass(d)}>{byDate.has(d) ? '✓' : ''}</td>
               ))}
               <td className="total">{num(entries.length)}</td>
             </tr>
+            {holidays.length > 0 && <tr>
+              <td className="rowlabel">
+                <span className="sw">Sikukuu</span>
+                <span className="en">Public holiday</span>
+              </td>
+              {dates.map((d) => (
+                <td key={d} className={holidayClass(d)}>{holidayDates.has(d) ? 'S' : ''}</td>
+              ))}
+              <td className="total">{num(holidays.length)}</td>
+            </tr>}
           </tbody>
         </table>
+        </div>
+        {holidays.length > 0 && <div className="paper-comments">
+          <b>SIKUKUU / Public holidays:</b> {holidays.map(day => `${dateOnly(day.date)} ${day.name_sw} / ${day.name_en}`).join(' · ')}
+        </div>}
         <div className="paper-comments">
           {(log.period_comment || !['CHW', 'HCP', 'DATA_CLERK'].includes(log.cadre.code)) && <><b>MAONI / Comments:</b> {log.period_comment || ''}</>}
           {comments.map((e) => (
@@ -206,19 +258,20 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
         </div>
         <div className="signoff">
           <SignBox titleSw="Imeandaliwa na kuthibitishwa na" titleEn="Prepared and attested by provider" name={log.staff.name} at={log.attested_at} />
-          <SignBox titleSw="Uhakiki wa CTC" titleEn="CTC verification" row={signOff(log, 'verify')} />
+          <SignBox titleSw="Uhakiki wa CTC" titleEn="CTC verification" row={signOff(log, 'verify')} done={AFTER_CTC.includes(log.status)} />
           {(me?.client_settings.provider_otp_required !== false || !!signOff(log, 'confirm_otp')) && (
             <SignBox
               titleSw="Uthibitisho wa mtoa huduma"
               titleEn={me?.client_settings.provider_otp_required === false ? 'Historical provider confirmation' : 'Provider confirmation (SMS code)'}
               row={signOff(log, 'confirm_otp')}
+              done={AFTER_OTP.includes(log.status)}
             />
           )}
           {log.cadre.requires_facility_endorsement && (
             <SignBox titleSw="Mfawidhi wa kituo" titleEn="Facility in-charge endorsement" row={signOff(log, 'facility_endorse')} />
           )}
-          <SignBox titleSw="Mapitio ya kitaalamu" titleEn="Technical review" row={signOff(log, 'endorse')} />
-          <SignBox titleSw="Idhini ya RM" titleEn="RM approval" row={signOff(log, 'authorize')} />
+          <SignBox titleSw="Mapitio ya kitaalamu" titleEn="Technical review" row={signOff(log, 'endorse')} done={AFTER_TECHNICAL.includes(log.status)} />
+          <SignBox titleSw="Idhini ya RM" titleEn="RM approval" row={signOff(log, 'authorize')} done={AFTER_RM.includes(log.status)} />
         </div>
         <p style={{ marginTop: '0.5rem' }}>
           Work log #{log.id} · version {log.version} · status {log.status} · printed {dateTime(new Date().toISOString())}. Approval is not payment.

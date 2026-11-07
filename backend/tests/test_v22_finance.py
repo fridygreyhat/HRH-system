@@ -118,6 +118,8 @@ def test_services_finance_gate_routing_and_actual_payment(api, db, period, v22):
     # Channel finance cannot bypass the Regional Finance gate.
     api.post(f"/worklogs/{log['id']}/actions/finance_review", "fhifin1",
              {"review_confirmed": True, "review_type": "SERVICES", "category_id": category_id(db, "A")}, expect=403)
+    api.post(f"/worklogs/{log['id']}/actions/finance_timesheet_approve", v22["finance"],
+             {"review_confirmed": True, "review_type": "SERVICES"})
     api.post(f"/worklogs/{log['id']}/actions/finance_review", v22["finance"], {}, expect=422)
     routed = route_log(api, db, v22, log, "A")
     assert routed["status"] == "ROUTED_FHI360" and routed["routed_channel"] == "FHI360"
@@ -131,6 +133,13 @@ def test_services_finance_gate_routing_and_actual_payment(api, db, period, v22):
         paid = api.post(f"/claims/{claim['id']}/payments", "fhifin1", {
             "amount": 300, "payment_reference": "TEST-V22-SERVICE", "payment_date": period["start_date"],
         })
+        # The general setting is off, but Services still need Central Finance proof.
+        assert paid["payment_status"] == "PROOF_REQUIRED"
+        assert api.get(f"/worklogs/{log['id']}", "chw1")["status"] != "PAID"
+        api.post(f"/claims/{claim['id']}/actions/confirm_paid", "fhifin1", expect=422)
+        api.call("POST", f"/claims/{claim['id']}/proofs", "fhifin1",
+                 files={"file": ("proof.pdf", b"%PDF-1.4 test", "application/pdf")})
+        paid = api.post(f"/claims/{claim['id']}/actions/confirm_paid", "fhifin1")
         assert paid["payment_status"] == "PAID"
         assert api.get(f"/worklogs/{log['id']}", "chw1")["status"] == "PAID"
         api.post(f"/claims/{claim['id']}/actions/cancel", "fhifin1", {"comment": "Must not cancel paid claim"}, expect=403)

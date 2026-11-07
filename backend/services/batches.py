@@ -1,13 +1,18 @@
-"""Payroll batches: one per route + payor + executor. Exporting snapshots the exact content immutably.
+"""Payment batches: one per route + payor + executor. Exporting snapshots the exact content immutably.
+New Payroll is report-only and never enters a batch.
 
 Route A: FHI360 Finance exports → FHI360 records payments.
 Route B: FHI360 Finance exports → hands off to the CSO → CSO acknowledges receipt → CSO records payments.
 Route C: CSO Finance exports its own community claims → CSO records payments.
+
+Central Finance may reverse an unpaid Route A batch. The snapshot stays as the record of
+what was exported, but the file can no longer be downloaded and its claims return to READY.
 """
 import csv
 import io
 from collections import defaultdict
 from decimal import Decimal
+from typing import Optional
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
@@ -27,6 +32,8 @@ from ..models import (
     Facility,
     Organization,
     PaymentClaim,
+    PaymentProof,
+    PaymentRecord,
     PayPeriod,
     PayrollBatch,
     Region,
@@ -40,7 +47,7 @@ from .v22_scope import record_condition
 from ..models import WorkLog
 from .worklog_workflow import period_label
 
-EXPORTED, HANDED_OFF, RECEIVED = "EXPORTED", "HANDED_OFF", "RECEIVED"
+EXPORTED, HANDED_OFF, RECEIVED, REVERSED = "EXPORTED", "HANDED_OFF", "RECEIVED", "REVERSED"
 
 CSV_COLUMNS = [
     "batch", "claim_id", "staff_id", "staff_name", "phone", "cadre", "facility", "region", "period", "category",
@@ -77,6 +84,10 @@ def batch_visibility(current: CurrentUser):
             ))
         )
     visible = or_(*conditions) if conditions else PayrollBatch.id == -1
+    # A reversed batch has no claims left to scope it by, but its snapshot still holds
+    # names and account details, so it stays with the people who handled it.
+    visible = and_(visible, or_(PayrollBatch.status != REVERSED, PayrollBatch.created_by == current.id,
+                                PayrollBatch.reversed_by == current.id))
     # Do not expose a mixed-region export because just one of its claims is visible.
     return and_(visible, ~exists().where(
         PaymentClaim.batch_id == PayrollBatch.id, PaymentClaim.workflow_version >= 2,
@@ -236,4 +247,42 @@ def receive(db: Session, current: CurrentUser, batch: PayrollBatch) -> PayrollBa
         claim.payment_status = "PENDING"
         cl.audit(db, current, claim, "cso_receive", CSO_FINANCE, claim.status, old_pay, f"CSO received batch {batch.reference}")
     system_audit.record(db, current, "payroll_batch", batch.id, "cso_receive")
+    return batch
+
+
+def reverse_block(db: Session, batch: PayrollBatch, claims: list[PaymentClaim]) -> Optional[str]:
+    """Why this batch cannot be reversed. Any payment or proof may mean money has moved."""
+    if batch.route_code != "A" or batch.status != EXPORTED:
+        return "Only exported Route A batches can be reversed"
+    if not claims:
+        return "This batch has no claims to reverse"
+    ids = [claim.id for claim in claims]
+    moved = (db.query(PaymentRecord.claim_id).filter(PaymentRecord.claim_id.in_(ids)).first()
+             or db.query(PaymentProof.claim_id).filter(PaymentProof.claim_id.in_(ids)).first())
+    if moved:
+        return f"Claim #{moved[0]} has a payment or proof recorded, so this batch cannot be reversed"
+    stuck = next((claim for claim in claims if claim.status != cl.EXPORTED or claim.payment_status != "PENDING"), None)
+    return f"Claim #{stuck.id} has moved on since export, so this batch cannot be reversed" if stuck else None
+
+
+def reverse(db: Session, current: CurrentUser, batch: PayrollBatch, reason: str) -> PayrollBatch:
+    if FHI360_FINANCE not in current.roles:
+        raise HTTPException(status_code=403, detail="Batches are reversed by Central Finance")
+    reason = reason.strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="A reason is required to reverse a batch")
+    # Payment and proof uploads lock the claim first, so check them only after these locks.
+    claims = (db.query(PaymentClaim).filter(PaymentClaim.batch_id == batch.id).order_by(PaymentClaim.id)
+              .with_for_update().populate_existing().all())
+    block = reverse_block(db, batch, claims)
+    if block:
+        raise HTTPException(status_code=409, detail=block)
+    batch.status, batch.reversed_by, batch.reversed_at, batch.reversal_reason = REVERSED, current.id, utcnow(), reason
+    for claim in claims:
+        old, old_pay = claim.status, claim.payment_status
+        claim.status, claim.payment_status, claim.batch_id = cl.READY, "NOT_STARTED", None
+        cl.audit(db, current, claim, "batch_reversed", FHI360_FINANCE, old, old_pay, reason,
+                 details={"batch_id": batch.id, "batch_reference": batch.reference})
+    system_audit.record(db, current, "payroll_batch", batch.id, "reverse", reason=reason,
+                        after={"reference": batch.reference, "claim_ids": [claim.id for claim in claims]})
     return batch

@@ -6,7 +6,7 @@ import { api } from '../api';
 
 let mockCadre = 'CHW';
 let mockLogs = [];
-const mockPeriods = [{ id: 7, start_date: '2026-10-25', end_date: '2026-10-31',
+const mockPeriods = [{ id: 7, start_date: '2026-10-26', end_date: '2026-11-25',
   status: 'CLOSED', region_id: 1, period_label: 'Hidden finance setup label' }];
 jest.mock('../AuthContext', () => ({
   useAuth: () => ({ me: { staff: { id: 1 }, cadre: { code: mockCadre, name: mockCadre } }, t: key => key }),
@@ -35,7 +35,7 @@ test.each(['CHW', 'HCP', 'DATA_CLERK'])('%s chooses a month and corrects existin
   const root = createRoot(container);
   try {
     act(() => root.render(<MyWorkLogs />));
-    expect(container.querySelector('input[type="month"]').value).toBe('2026-10');
+    expect(container.querySelector('input[type="month"]').value).toBe('2026-11');
     expect(container.querySelector('input[type="date"]')).toBeNull();
     expect(container.textContent).not.toContain('Hidden finance setup label');
     act(() => Simulate.change(container.querySelector('select'), { target: { value: 'PAYROLL' } }));
@@ -43,7 +43,7 @@ test.each(['CHW', 'HCP', 'DATA_CLERK'])('%s chooses a month and corrects existin
     const button = [...container.querySelectorAll('button')].find(b => b.textContent === 'Correct Payroll');
     expect(button.disabled).toBe(false);
     await act(async () => Simulate.submit(container.querySelector('form')));
-    expect(container.textContent).toContain('Opened record 31 for 2026-10');
+    expect(container.textContent).toContain('Opened record 31 for 2026-11');
     expect(api.post).not.toHaveBeenCalled();
   } finally {
     act(() => root.unmount());

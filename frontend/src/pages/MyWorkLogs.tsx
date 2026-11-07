@@ -4,7 +4,7 @@ import { api } from '../api';
 import { useAuth } from '../AuthContext';
 import { WorkLogEditor } from '../components/worklogs/WorkLogEditor';
 import { Alert, AsyncState, Field, StatusBadge } from '../components/ui';
-import { num, todayLocal, workHours } from '../format';
+import { num, payMonth, payMonthDates, todayLocal, workHours } from '../format';
 import { useAction, useApi } from '../hooks';
 import { PayPeriod, WorkLogDetail, WorkLogSummary } from '../types';
 import { resolveWorkLogMonth, workMonthLabel } from './workLogStart';
@@ -18,7 +18,7 @@ export function MyWorkLogs() {
   const [openId, setOpenId] = useState<number | null>(null);
   const [editorMonth, setEditorMonth] = useState<string | undefined>();
   const [workType, setWorkType] = useState<'SERVICES' | 'PAYROLL'>('SERVICES');
-  const [workMonth, setWorkMonth] = useState(todayLocal().slice(0, 7));
+  const [workMonth, setWorkMonth] = useState(payMonth(todayLocal()));
   const { busy, error, run } = useAction();
   const resolution = resolveWorkLogMonth(periods.data || [], logs.data || [], workType, workMonth);
   const loadingStartData = periods.loading || logs.loading;
@@ -100,11 +100,11 @@ export function MyWorkLogs() {
               <option value="PAYROLL">Payroll</option>
             </select>
           </Field>
-          <Field label="Work month" hint="Choose the month you want to fill or correct.">
+          <Field label="Work month" hint={`${payMonthDates(workMonth)}. Submit on the 25th.`}>
             <input
               type="month"
               required
-              max={todayLocal().slice(0, 7)}
+              max={payMonth(todayLocal())}
               value={workMonth}
               onChange={(e) => setWorkMonth(e.target.value)}
             />
@@ -204,7 +204,7 @@ export function MyWorkLogs() {
 function recordMonth(log: WorkLogSummary, periods: PayPeriod[]): string {
   const period = periods.find(p => p.id === log.period_id);
   if (!period) return 'Monthly work record';
-  const start = period.start_date.slice(0, 7);
-  const end = period.end_date.slice(0, 7);
+  const start = payMonth(period.start_date);
+  const end = payMonth(period.end_date);
   return start === end ? workMonthLabel(start) : `${workMonthLabel(start)} – ${workMonthLabel(end)}`;
 }

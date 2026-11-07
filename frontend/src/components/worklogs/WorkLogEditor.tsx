@@ -154,6 +154,12 @@ export function DayCalendar({
   const missingDates = dates.filter(d => d <= today && !byDate.has(d) &&
     !(sundayOff && new Date(`${d}T00:00:00Z`).getUTCDay() === 0));
   // Restart Monday-first padding for each month, including partial periods.
+  const holidays = new Map<string, string>();
+  (log.period.holidays || []).forEach((day) => {
+    const name = lang === 'sw' ? day.name_sw : day.name_en;
+    holidays.set(day.date, holidays.has(day.date) ? `${holidays.get(day.date)} / ${name}` : name);
+  });
+  const visibleHolidays = visibleDates.filter(d => holidays.has(d));
   const firstDow = visibleDates.length ? (new Date(`${visibleDates[0]}T00:00:00Z`).getUTCDay() + 6) % 7 : 0;
   return (
     <section className="card stack" aria-labelledby="cal-title">
@@ -206,7 +212,7 @@ export function DayCalendar({
           const future = d > today;
           const sunday = sundayOff && new Date(`${d}T00:00:00Z`).getUTCDay() === 0;
           const disabled = future || (!log.can_edit && !entry) || (chwPayroll && sunday && !entry);
-          const classes = ['day', entry ? 'has-entry' : '', flaggedDates.has(d) ? 'is-flagged' : '', selected === d ? 'is-selected' : ''].filter(Boolean).join(' ');
+          const classes = ['day', entry ? 'has-entry' : '', holidays.has(d) ? 'is-holiday' : '', flaggedDates.has(d) ? 'is-flagged' : '', selected === d ? 'is-selected' : ''].filter(Boolean).join(' ');
           const state = future ? t('future') : chwPayroll && sunday && !entry ? (lang === 'sw' ? 'Jumapili hairuhusiwi' : 'Sunday excluded') : flaggedDates.has(d) ? t('flagged') : entry ? `${t('recorded')}: ${workHours(entry.hours_worked)}` : '';
           return (
             <button
@@ -215,11 +221,12 @@ export function DayCalendar({
               className={classes}
               disabled={disabled}
               aria-pressed={selected === d}
-              aria-label={`${weekday(d, lang)} ${d}${state ? ` – ${state}` : ''}`}
+              title={holidays.get(d)}
+              aria-label={`${weekday(d, lang)} ${d}${holidays.has(d) ? ` – ${holidays.get(d)}` : ''}${state ? ` – ${state}` : ''}`}
               onClick={() => onSelect(d)}
             >
               <span className="day-num">{dayOfMonth(d)}</span>
-              <span className="day-meta">{entry ? workHours(entry.hours_worked) : flaggedDates.has(d) ? '!' : ''}</span>
+              <span className="day-meta">{entry ? workHours(entry.hours_worked) : flaggedDates.has(d) ? '!' : holidays.has(d) ? (lang === 'sw' ? 'Sikukuu' : 'Holiday') : ''}</span>
             </button>
           );
         })}
@@ -228,7 +235,11 @@ export function DayCalendar({
         <span className="lg-entry">{t('recorded')}</span>
         <span className="lg-flag">{t('flagged')}</span>
         <span>{t('future')}</span>
+        {holidays.size > 0 && <span className="lg-holiday">{lang === 'sw' ? 'Sikukuu' : 'Public holiday'}</span>}
       </div>
+      {visibleHolidays.length > 0 && <p className="muted small">
+        {lang === 'sw' ? 'Sikukuu' : 'Public holidays'}: {visibleHolidays.map(d => `${dateOnly(d)} ${holidays.get(d)}`).join(' · ')}
+      </p>}
     </section>
   );
 }
@@ -407,6 +418,13 @@ export function WorkLogEditor({ logId, initialDate, initialMonth, onBack }: { lo
       <TotalsPanel log={log} lang={lang} title={t('totals')} />
 
       {log.available_actions.includes('submit') && <SubmitPanel log={log} onSubmitted={setData} />}
+      {log.status === 'DRAFT' && log.can_edit && todayLocal() < log.period.end_date && (
+        <p className="notice notice-info">
+          {lang === 'sw'
+            ? `Utawasilisha tarehe ${dateOnly(log.period.end_date)}, siku ya mwisho ya mwezi huu wa kazi. Endelea kujaza siku zako hadi wakati huo.`
+            : `You can submit on ${dateOnly(log.period.end_date)}, the last day of this work month. Keep recording your days until then.`}
+        </p>
+      )}
 
       {log.available_actions.includes('cancel') && (
         <div className="row">

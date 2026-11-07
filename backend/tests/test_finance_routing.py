@@ -172,7 +172,7 @@ def test_dashboard_includes_rpm_approved_claims_before_finance_review_without_al
     rows = api.get("/finance/pending-routing?stage=PENDING_FINANCE_REVIEW", v22["finance"])
     row = next(r for r in rows if r["work_log_id"] == pending["id"])
     assert row["claim_id"] == claim["id"]
-    assert row["finance_review_required"] and row["next_action"] == "REVIEW_AMOUNT"
+    assert row["finance_review_required"] and row["next_action"] == "REVIEW_TIMESHEET"
     assert float(row["amount"]) == float(claim["amount"]) and row["currency"] == claim["currency"]
     assert row["provider_name"] and row["cadre_name"] and row["region_name"]
     assert all(r["work_log_id"] != pending["id"] for r in api.get("/finance/pending-routing?stage=FINANCE_REVIEWED", v22["finance"]))

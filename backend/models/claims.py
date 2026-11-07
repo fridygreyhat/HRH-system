@@ -10,6 +10,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     BigInteger,
     Boolean,
     text,
@@ -54,6 +55,22 @@ class ClaimCategory(Base):
     requires_work_log = Column(Boolean, nullable=False, default=True)
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = created_at()
+
+
+class SalaryScaleAmount(Base):
+    """Full monthly salary for a salary scale from a month onward. Shown in CSO salary files; never creates a claim."""
+
+    __tablename__ = "salary_scale_amounts"
+    __table_args__ = (
+        UniqueConstraint("scale", "start_month"),
+        CheckConstraint("monthly_amount > 0", name="amount"),
+    )
+    id = Column(Integer, primary_key=True)
+    scale = Column(String(50), nullable=False)
+    start_month = Column(String(7), nullable=False)
+    monthly_amount = Column(Numeric(15, 2), nullable=False)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    updated_at = updated_at()
 
 
 class RateRule(Base):
@@ -179,7 +196,7 @@ class PayrollBatch(Base):
     route_code = Column(String(5), nullable=False)
     payor_org_id = Column(Integer, ForeignKey("organizations.id"))
     executor_org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
-    status = Column(String(30), nullable=False, default="EXPORTED")  # EXPORTED, HANDED_OFF, RECEIVED
+    status = Column(String(30), nullable=False, default="EXPORTED")  # EXPORTED, HANDED_OFF, RECEIVED, REVERSED
     line_count = Column(Integer, nullable=False, default=0)
     total_amount = Column(Numeric(15, 2), nullable=False, default=0)
     currency = Column(String(10), nullable=False, default="TZS")
@@ -191,6 +208,9 @@ class PayrollBatch(Base):
     handed_off_at = Column(DateTime(timezone=True))
     received_by = Column(Integer, ForeignKey("users.id"))
     received_at = Column(DateTime(timezone=True))
+    reversed_by = Column(Integer, ForeignKey("users.id"))
+    reversed_at = Column(DateTime(timezone=True))
+    reversal_reason = Column(Text)
 
 
 class PaymentRecord(Base):

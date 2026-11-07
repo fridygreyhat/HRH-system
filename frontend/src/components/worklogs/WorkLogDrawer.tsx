@@ -37,14 +37,36 @@ const ACTION_HELP: Record<string, string> = {
   hold: 'Place this historical claim on hold.',
   release: 'Release this historical hold back to RM authorization.',
   reopen: 'Reopen an approved log for correction (linked claims must be cancelled first).',
+  finance_timesheet_approve: 'Records your approval of the timesheet. The Services payment is reviewed separately next. Approval is not payment.',
   finance_review: 'Confirm the funding source and fixed daily amount before routing.',
 };
 
 function actionDisplayLabel(action: string, hasFinanceSnapshot: boolean): string {
-  if (action === 'finance_review') return hasFinanceSnapshot ? 'Re-review Services funding source' : 'Review Services funding source';
+  if (action === 'finance_review') return hasFinanceSnapshot ? 'Re-review Services payment' : 'Approve Services payment';
   if (action === 'release') return 'Release historical hold';
   if (action === 'hold') return 'Place historical claim on hold';
   return WORKLOG_ACTION_LABELS[action] || humanize(action);
+}
+
+/** Closed by default: reference details the reviewer opens only when needed. */
+function Folded({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
+  return <details className="card folded"><summary>{title}</summary><div className="stack">{children}</div></details>;
+}
+
+/** The reviewer's task and key numbers, shown before the timesheet. */
+function ReviewSummary({ log, task, amount }: { log: WorkLogDetail; task: string; amount: string | null }) {
+  const items: [string, string][] = [
+    ['Days', num(log.totals.days)],
+    ['Hours', workHours(log.totals.hours)],
+    ['Flags', num(log.review_summary?.anomalies?.length || 0)],
+    ...(amount ? [['Amount', amount] as [string, string]] : []),
+  ];
+  return (
+    <section className="card review-summary" aria-label="Review summary">
+      <p className="review-task">{task}</p>
+      <dl>{items.map(([name, value]) => <div key={name}><dt>{name}</dt><dd>{value}</dd></div>)}</dl>
+    </section>
+  );
 }
 
 function FlagEditor({ log, flags, onChange }: { log: WorkLogDetail; flags: ReturnFlag[]; onChange: (f: ReturnFlag[]) => void }) {
@@ -189,6 +211,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
   const isRpmWithoutFinanceRole = hasRole('RPM') && !hasRole('REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE');
   const financeSummaryOnly = hasRole('REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE')
     && !hasRole('SUPER_ADMIN', 'SYSTEM_ADMIN', 'CENTRAL_ADMIN', 'REGIONAL_ADMIN', 'SUPERVISOR', 'TECHNICAL_OFFICER', 'RPM');
+  const showTimesheet = hasRole('SUPERVISOR', 'FACILITY_IN_CHARGE', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE');
   const { data: log, error, loading, setData, reload } = useApi<WorkLogDetail>(`/worklogs/${logId}`);
   const [action, setAction] = useState<string | null>(null);
   const [flags, setFlags] = useState<ReturnFlag[]>([]);
@@ -205,6 +228,13 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
   const fundingSources = useApi<FundingSource[]>(log?.workflow_version === 2 && log.work_type === 'SERVICES' && (Boolean(log.finance_snapshot) || log.available_actions.includes('finance_review')) ? '/admin/funding-sources' : null);
   const routingActionAvailable = Boolean(log?.available_actions.some((item) => item === 'route_fhi360' || item === 'route_cso'));
   const regionalDecision = !!log && ['PENDING_FINANCE_REVIEW', 'FINANCE_REVIEWED'].includes(log.status);
+  const timesheetStep = Boolean(log?.available_actions.includes('finance_timesheet_approve'));
+  const paymentStep = log?.status === 'PENDING_FINANCE_REVIEW' && log.available_actions.includes('finance_review');
+  const timesheetApprovedAt = log?.finance_timesheet_approved_at;
+  const timesheetFolded = Boolean(timesheetApprovedAt && log?.available_actions.includes('finance_review'));
+  const decisionTitle = timesheetStep ? 'Review 1 of 2 · Timesheet'
+    : paymentStep ? 'Review 2 of 2 · Services payment'
+      : routingActionAvailable ? 'Send to Central Finance' : 'Review and decide';
   const decisionLabel = (value: string) => regionalDecision && value === 'return' ? 'Return to cadre Technical'
     : regionalDecision && value === 'reject' ? 'Reject to provider' : actionDisplayLabel(value, Boolean(log?.finance_snapshot));
   const payors = useApi<FinancePayorsResponse>(routingActionAvailable ? `/finance/payors?work_log_id=${logId}` : null);
@@ -226,7 +256,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
     }, { threshold: 0.1 });
     observer.observe(marker);
     return () => observer.disconnect();
-  }, [log?.id, log?.version, log?.status]);
+  }, [log?.id, log?.version, log?.status, timesheetApprovedAt]);
 
   const perform = async (comment: string) => {
     if (!log || !action) return;
@@ -273,7 +303,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
         } : {}),
       });
       setData(result);
-      setNotice(`${decisionLabel(action)}: done.`);
+      setNotice(action === 'finance_timesheet_approve' ? 'Timesheet approved. Now review the Services payment.' : `${decisionLabel(action)}: done.`);
       setDevOtp(result.otp?.dev_otp || null);
       setAction(null);
       setFlags([]);
@@ -300,6 +330,66 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
   const availableFundingSources = supportedServiceFundingSources(fundingSources.data || []);
   const fixedDailyNoBudget = [FIXED_DAILY_NO_BUDGET, 'FIXED_DAILY_MONTHLY_REGIONAL_BUDGET'].includes(String(log?.finance_snapshot?.payment_policy || ''));
 
+  const activeClaim = log?.claims.find((claim) => claim.status !== 'CANCELLED');
+  const amountValue = activeClaim?.amount ?? log?.finance_snapshot?.total ?? log?.financial_preview?.total;
+  const amountCurrency = activeClaim?.currency ?? log?.finance_snapshot?.currency ?? log?.financial_preview?.currency ?? 'TZS';
+  const summaryAmount = log?.work_type === 'SERVICES' && !timesheetStep && amountValue != null ? `${amountCurrency} ${num(Number(amountValue))}` : null;
+  const reviewTask = timesheetStep ? 'Your turn: approve the timesheet (review 1 of 2)'
+    : paymentStep ? 'Your turn: approve the Services payment (review 2 of 2)'
+      : routingActionAvailable ? 'Your turn: send to Central Finance'
+        : log?.available_actions.length ? 'Your turn: review and decide' : 'No action needed from you';
+  const decisionHelp = timesheetStep ? 'Check the timesheet, monthly totals and flags above. The Services payment is reviewed separately after this.'
+    : paymentStep ? 'The timesheet is approved. Check the funding source and fixed daily amount, then approve the Services payment.'
+      : financeSummaryOnly ? 'Review the timesheet, monthly totals and payment setup above before recording your Services decision.'
+        : `Review the ${showTimesheet ? 'timesheet, ' : ''}monthly summary, flags, and all daily entries above before recording your decision.`;
+  const confirmText = timesheetStep ? 'I have checked the timesheet, monthly totals and flags.'
+    : paymentStep ? 'I have checked the funding source and Services payment amount.'
+      : financeSummaryOnly ? 'I have cross-checked the timesheet, monthly summary and Services payment setup.' : 'I have cross-checked all entries and the monthly summary.';
+  const flagsAlert = log && log.review_summary?.anomalies?.length > 0 && (
+    <div className="alert alert-warn" role="status">
+      <strong>Review flags — check these before deciding.</strong>
+      <ul>{log.review_summary.anomalies.map((anomaly, index) => (
+        <li key={`${anomaly.date || 'monthly'}-${anomaly.code}-${index}`}>{anomaly.date ? `${dateOnly(anomaly.date)} · ` : ''}{anomaly.message}</li>
+      ))}</ul>
+    </div>
+  );
+  const providerDetails = log && <>
+    <Facts
+      items={[
+        ['Provider', log.staff.name],
+        ['Cadre', `${log.cadre.name} (${log.cadre.code})`],
+        ['Occupation', log.occupation ? `${log.occupation}${log.occupation_other ? ` – ${log.occupation_other}` : ''}` : null],
+        ['Section', log.section],
+        ['Salary scale', log.staff.salary_scale],
+        ['Region', log.assignment?.region],
+        ['District', log.assignment?.district],
+        ['Ward', log.assignment?.ward],
+        ['Facility', log.assignment?.facility],
+        ['Community area', log.assignment?.community_area],
+        ['Period', `${dateOnly(log.period.start_date)} – ${dateOnly(log.period.end_date)}`],
+        ['Submitted', dateTime(log.submitted_at)],
+        ['Attested', dateTime(log.attested_at)],
+        ['Provider confirmed version', log.confirmed_version],
+      ]}
+    />
+    {log.period_comment && <p className="small">Period comment: “{log.period_comment}”</p>}
+  </>;
+  const versionList = log && (log.versions.length ? (
+    <div className="row">
+      {log.versions.map((v) => (
+        <button key={v.version} className="btn btn-secondary btn-sm" onClick={() => setVersion(v.version)}>
+          Version {v.version} · {dateTime(v.created_at)}
+        </button>
+      ))}
+    </div>
+  ) : (
+    <p className="muted">No frozen versions yet (created at CTC verification).</p>
+  ));
+  const timesheetIntro = <>
+    <p className="muted small">The provider's timesheet in its standard form. Review it before recording a decision. Printing alone does not approve work.</p>
+    {log && <PrintWorkLog logId={log.id} reviewLog={log} embedded />}
+  </>;
+
   return (
     <Drawer title={log ? `${log.staff_name} · ${log.period_label}` : `Work log #${logId}`} onClose={onClose} wide>
       <Alert>{error}</Alert>
@@ -316,13 +406,18 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
               Print view
             </button>
           </div>
-          <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} technicalReviewer={log.cadre?.technical_reviewer_title} workflowVersion={log.workflow_version} workType={log.work_type} />
+          <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} technicalReviewer={log.cadre?.technical_reviewer_title} workflowVersion={log.workflow_version} workType={log.work_type} financeTimesheetApproved={Boolean(timesheetApprovedAt)} />
+          {showTimesheet && <ReviewSummary log={log} task={reviewTask} amount={summaryAmount} />}
           {!!log.review_feedback?.length && <Section title="Current review feedback">
             {log.review_feedback.map((feedback, index) => <div key={index}>
               {feedback.comment && <p>{feedback.comment}</p>}
               {!!feedback.details?.flags?.length && <FlagsList flags={feedback.details.flags} cadre={log.cadre} lang="en" />}
             </div>)}
           </Section>}
+          {showTimesheet && flagsAlert}
+          {showTimesheet && (timesheetFolded
+            ? <Folded title={`Timesheet · approved ${dateTime(timesheetApprovedAt)}`}>{timesheetIntro}</Folded>
+            : <Section title="Timesheet">{timesheetIntro}</Section>)}
           <Section title="Monthly provider summary">
             <div className="row">
               <span className="badge badge-neutral">Weekday daily limit: {log.review_summary?.limits.daily_hours} h</span>
@@ -343,15 +438,8 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
                 </dl>
               </div>
             ))}
-            <p className="muted small">Calendar-month totals include this provider's work logs visible within your permissions. The daily entries below belong to the selected log.</p>
-            {log.review_summary?.anomalies?.length > 0 && (
-              <div className="alert alert-warn" role="status">
-                <strong>Review flags — check these before deciding.</strong>
-                <ul>{log.review_summary.anomalies.map((anomaly, index) => (
-                  <li key={`${anomaly.date || 'monthly'}-${anomaly.code}-${index}`}>{anomaly.date ? `${dateOnly(anomaly.date)} · ` : ''}{anomaly.message}</li>
-                ))}</ul>
-              </div>
-            )}
+            <p className="muted small">Pay-month totals (26th to 25th) include this provider's work logs visible within your permissions. The daily entries below belong to the selected log.</p>
+            {!showTimesheet && flagsAlert}
             <p className="muted small">Hour limits are enforced when entries are saved. Measure flags highlight possible data issues and do not automatically reject a log.</p>
           </Section>
           {conflict && (
@@ -371,27 +459,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
             </p>
           )}
 
-          <Section title="Header">
-            <Facts
-              items={[
-                ['Provider', log.staff.name],
-                ['Cadre', `${log.cadre.name} (${log.cadre.code})`],
-                ['Occupation', log.occupation ? `${log.occupation}${log.occupation_other ? ` – ${log.occupation_other}` : ''}` : null],
-                ['Section', log.section],
-                ['Salary scale', log.staff.salary_scale],
-                ['Region', log.assignment?.region],
-                ['District', log.assignment?.district],
-                ['Ward', log.assignment?.ward],
-                ['Facility', log.assignment?.facility],
-                ['Community area', log.assignment?.community_area],
-                ['Period', `${dateOnly(log.period.start_date)} – ${dateOnly(log.period.end_date)}`],
-                ['Submitted', dateTime(log.submitted_at)],
-                ['Attested', dateTime(log.attested_at)],
-                ['Provider confirmed version', log.confirmed_version],
-              ]}
-            />
-            {log.period_comment && <p className="small">Period comment: “{log.period_comment}”</p>}
-          </Section>
+          {!showTimesheet && <Section title="Header">{providerDetails}</Section>}
 
           {!financeSummaryOnly && <Section title={`Daily entries (${log.entries.length})`}>
             <EntriesView log={log} lang="en" />
@@ -399,6 +467,8 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
           </Section>}
 
           <TotalsPanel log={log} lang="en" title="Totals (server-calculated)" />
+
+          {showTimesheet && <Folded title="Provider details">{providerDetails}</Folded>}
 
           {log.endorsements.length > 0 && (
             <Section title="Historical endorsements">
@@ -417,21 +487,9 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
             </Section>
           )}
 
-          {!financeSummaryOnly && <Section title="Versions">
-            {log.versions.length ? (
-              <div className="row">
-                {log.versions.map((v) => (
-                  <button key={v.version} className="btn btn-secondary btn-sm" onClick={() => setVersion(v.version)}>
-                    Version {v.version} · {dateTime(v.created_at)}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="muted">No frozen versions yet (created at CTC verification).</p>
-            )}
-          </Section>}
+          {!financeSummaryOnly && (showTimesheet ? <Folded title="Versions">{versionList}</Folded> : <Section title="Versions">{versionList}</Section>)}
 
-          {log.claims.length > 0 && (
+          {!timesheetStep && log.claims.length > 0 && (
             <Section title="Linked claims">
               {log.claims.some((claim) => claim.status === 'PENDING_FINANCE_REVIEW') && (
                 <p className="notice notice-info">
@@ -449,12 +507,12 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
             </Section>
           )}
 
-          {log.workflow_version >= 2 && (
+          {!timesheetStep && log.workflow_version >= 2 && (
             <p className="notice notice-info">{log.work_type === 'PAYROLL'
               ? 'Payroll is a monthly work report. CTC verification, Technical review and RM approval remain required. No activity rate, budget, finance approval or payment routing is required.'
               : 'RM approval confirms the recorded work. Regional Finance confirms the funding source and fixed daily amount before routing.'}</p>
           )}
-          {log.workflow_version === 2 && log.work_type !== 'PAYROLL' && log.financial_preview && (
+          {!timesheetStep && log.workflow_version === 2 && log.work_type !== 'PAYROLL' && log.financial_preview && (
             <Section title="Payment estimate">
               {log.work_type === 'SERVICES' && <p className="notice notice-info">Services use a fixed amount per service day. Only the highest eligible service amount on each date is payable. Unpriced work uses approved amounts effective on its work date; already priced work keeps its saved payment rules.</p>}
               <p className="muted small">Finance confirms the final payable amount. Later rate changes do not alter completed payments.</p>
@@ -521,17 +579,9 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
           </Section></AdminAudit>
 
           {log.available_actions.length > 0 && (
-            <Section title="Review and decide">
-              {hasRole('RPM', 'REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE') && (
-                <Section title="Approval print preview">
-                  <p className="muted small">Review this report before confirming your decision. Printing alone does not approve work.</p>
-                  <PrintWorkLog logId={log.id} reviewLog={log} embedded />
-                </Section>
-              )}
+            <Section title={decisionTitle}>
               <div ref={reviewMarker} aria-hidden="true" style={{ height: 1 }} />
-              <p className="muted small">
-                {financeSummaryOnly ? 'Review the monthly totals and payment setup above before recording your Services decision.' : 'Review the monthly summary, flags, and all daily entries above before recording your decision.'}
-              </p>
+              <p className="muted small">{decisionHelp}</p>
               {!reviewReached && <p className="notice notice-info">Scroll through the full work-log detail before confirming your review.</p>}
               {log.workflow_version === 2 && log.work_type === 'SERVICES' && (
                 <div className="stack">
@@ -564,7 +614,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
               )}
               <label className="row">
                 <input type="checkbox" checked={reviewConfirmed} disabled={!reviewReached} onChange={(e) => setReviewConfirmed(e.target.checked)} />
-                <span>{financeSummaryOnly ? 'I have cross-checked the monthly summary and Services payment setup.' : 'I have cross-checked all entries and the monthly summary.'}</span>
+                <span>{confirmText}</span>
               </label>
               <div className="row">
                 {log.available_actions.filter((a) => (!isRpmWithoutFinanceRole || !['route_fhi360', 'route_cso', 'paid'].includes(a)) && !(a === 'hold' && fixedDailyNoBudget)).map((a) => (
@@ -574,6 +624,12 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
                 ))}
               </div>
             </Section>
+          )}
+          {showTimesheet && log.available_actions.length > 0 && (
+            <div className="review-bar">
+              <span>{reviewReached ? 'Tick the box above, then record your decision.' : 'Scroll to the end to finish review.'}</span>
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => reviewMarker.current?.scrollIntoView()}>Go to decision</button>
+            </div>
           )}
         </div>
       )}

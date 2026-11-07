@@ -12,6 +12,10 @@ from .finance_reports import monthly_summary
 from .v22_scope import regions_for
 
 
+# Saved for the salary timesheet files only; the on-screen report stays aggregate.
+TIMESHEET_KEYS = ("attendance", "salary_scale", "days_signed", "community_area_name")
+
+
 def cso_only(current):
     return not current.unrestricted and current.has_any(CSO_FINANCE) and not current.has_any(REGIONAL_FINANCE, FHI360_FINANCE)
 
@@ -66,7 +70,8 @@ def merge_reports(reports, month, work_type, codes):
     result = empty(month, work_type)
     groups = {}
     for report in reports:
-        providers = [p for p in report["providers"] if p["cadre_code"] in codes]
+        providers = [{key: value for key, value in p.items() if key not in TIMESHEET_KEYS}
+                     for p in report["providers"] if p["cadre_code"] in codes]
         result["providers"].extend(providers)
         # Source report logs are never needed for CSO documentation; provider totals are authoritative.
         for p in providers:
@@ -89,8 +94,7 @@ def merge_reports(reports, month, work_type, codes):
     return result
 
 
-def view(db, current, month, region_id, work_type):
-    # Validate month even when there is no published snapshot.
+def check_month(month):
     from datetime import date
     try:
         year, number = map(int, month.split("-"))
@@ -99,6 +103,11 @@ def view(db, current, month, region_id, work_type):
             raise ValueError()
     except ValueError:
         raise HTTPException(422, "Select a valid calendar month between 2000 and 2100.")
+
+
+def view(db, current, month, region_id, work_type):
+    # Validate month even when there is no published snapshot.
+    check_month(month)
     allowed = cso_regions(db, current) if cso_only(current) else regions_for(current)
     if region_id and not current.unrestricted and region_id not in allowed:
         raise HTTPException(403, "This region is outside your assigned scope.")
@@ -143,13 +152,15 @@ def approve(db, current, data):
         raise HTTPException(409, "The monthly report changed. Refresh and review it before approving.")
     if not result["report"]["providers"]:
         raise HTTPException(422, "There is no RM-authorized work to approve for this region and month.")
-    previous = latest(db, data.month, data.region_id, data.work_type)
-    if previous and previous.digest == result["digest"]:
-        return result
     organizations = {}
     for org, in db.query(StaffAssignment.organization_id).filter(
             StaffAssignment.region_id == region.id, StaffAssignment.organization_id.isnot(None)).distinct():
-        organizations[str(org)] = monthly_summary(db, current, data.month, region.id, data.work_type, organization_id=org)
+        organizations[str(org)] = monthly_summary(db, current, data.month, region.id, data.work_type,
+                                                  organization_id=org, daily=data.work_type == "PAYROLL")
+    previous = latest(db, data.month, data.region_id, data.work_type)
+    # The digest covers the regional report only. A corrected CSO or placement must still reach the CSO's copy.
+    if previous and previous.digest == result["digest"] and previous.snapshot["organizations"] == organizations:
+        return result
     row = FinanceMonthlyReport(region_id=region.id, month=data.month, work_type=data.work_type,
         approved_by=current.id, digest=result["digest"],
         snapshot={"region_name": region.name, "approved_by_name": current.user.full_name or current.user.username,

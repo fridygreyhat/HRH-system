@@ -67,6 +67,9 @@ function PayPeriodForm({
     <Modal title={period ? 'Edit pay period' : 'Set up pay period'} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
         <p className="muted small">
+          Pay months run from the 26th to the 25th, and providers submit on the 25th. The global month opens by itself on the 26th, so set one up here only for a region with its own dates.
+        </p>
+        <p className="muted small">
           Edit the label and open/closed status after creation. Dates can also be corrected for unused or draft-only periods, provided every saved workday remains inside the period.
         </p>
         {datesLocked && <Alert kind="info">{period?.date_lock_reason || 'Submitted records, claims or budgets protect these dates. You can still edit the label and status.'}</Alert>}

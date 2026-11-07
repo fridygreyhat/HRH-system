@@ -42,6 +42,30 @@ const weekdaySwahili = ['Jpl', 'Jtt', 'Jnn', 'Jtn', 'Alh', 'Ijm', 'Jms']; // Sun
 /** A calendar date ("YYYY-MM-DD") — no timezone shift. */
 export const dateOnly = (d: string | null | undefined): string => (d ? dateFormat.format(new Date(`${d.slice(0, 10)}T00:00:00Z`)) : '—');
 
+/** A pay month runs from the 26th to the 25th and takes the name of the month it ends in. Matches backend/core/period_dates.py. */
+export const PAY_MONTH_END_DAY = 25;
+
+const addMonths = (month: string, count: number): string => {
+  const date = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1 + count, 1));
+  return date.toISOString().slice(0, 7);
+};
+
+export const payMonth = (d: string): string => (Number(d.slice(8, 10)) > PAY_MONTH_END_DAY ? addMonths(d.slice(0, 7), 1) : d.slice(0, 7));
+
+export const previousMonth = (month: string): string => addMonths(month, -1);
+
+export const payMonthRange = (month: string): { first: string; last: string } => ({
+  first: `${addMonths(month, -1)}-${PAY_MONTH_END_DAY + 1}`,
+  last: `${month}-${PAY_MONTH_END_DAY}`,
+});
+
+/** "26 Oct 2026 – 25 Nov 2026", for showing beside a month picker. */
+export const payMonthDates = (month: string): string => {
+  if (!/^\d{4}-\d{2}$/.test(month)) return '';
+  const { first, last } = payMonthRange(month);
+  return `${dateOnly(first)} – ${dateOnly(last)}`;
+};
+
 export const weekday = (d: string, lang: 'en' | 'sw' = 'en'): string => {
   const date = new Date(`${d}T00:00:00Z`);
   return lang === 'sw' ? weekdaySwahili[date.getUTCDay()] : weekdayFormat.format(date);
@@ -179,6 +203,7 @@ export const WORKLOG_ACTION_LABELS: Record<string, string> = {
   return_to_reviewer: 'Return to previous reviewer',
   reject: 'Reject',
   authorize: 'Authorize (RM)',
+  finance_timesheet_approve: 'Approve timesheet',
   finance_review: 'Complete finance review',
   route_fhi360: 'Route to FHI360',
   route_cso: 'Route to CSO',
@@ -204,6 +229,7 @@ export const CLAIM_ACTION_LABELS: Record<string, string> = {
   mark_ready: 'Mark ready for payment',
   cancel: 'Cancel claim',
   export: 'Exported in batch',
+  batch_reversed: 'Batch reversed',
   hand_off: 'Handed off to CSO',
   cso_receive: 'CSO acknowledged receipt',
   record_payment: 'Payment recorded',

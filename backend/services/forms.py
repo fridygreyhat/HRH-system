@@ -2,11 +2,11 @@
 from decimal import Decimal
 from collections import defaultdict
 from datetime import timedelta
-from calendar import monthrange
 
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
+from ..core.period_dates import pay_month_of, pay_month_range
 from ..models import (
     Cadre,
     CadreFormField,
@@ -223,14 +223,14 @@ def review_summary(db: Session, log: WorkLog, current=None) -> dict:
 
 
 def monthly_provider_totals(db: Session, log: WorkLog, current=None) -> list[dict]:
-    """Calendar-month totals for this work type, including weekly pay periods."""
+    """Pay-month totals for this work type, including weekly pay periods."""
     from .scope import worklog_visibility
     from ..core.period_dates import period_date_error
 
     period = db.get(PayPeriod, log.period_id)
     invalid_period = period_date_error(period.start_date, period.end_date) is not None
-    start = period.start_date.replace(day=1)
-    end = period.end_date.replace(day=monthrange(period.end_date.year, period.end_date.month)[1])
+    start = pay_month_range(pay_month_of(period.start_date))[0]
+    end = pay_month_range(pay_month_of(period.end_date))[1]
     query = (
         db.query(WorkLogEntry).join(WorkLog, WorkLog.id == WorkLogEntry.work_log_id)
         .filter(WorkLog.staff_id == log.staff_id, WorkLog.work_type == log.work_type)
@@ -248,12 +248,12 @@ def monthly_provider_totals(db: Session, log: WorkLog, current=None) -> list[dic
     activity_rules = {entry.activity_key: (entry.activity_snapshot or {}).get("cascade_pairs", CASCADES.get(entry.activity_key, [])) for entry in entries}
     measures = db.query(WorkLogMeasure).filter(WorkLogMeasure.entry_id.in_(by_id)).all() if by_id else []
     months = {}
-    cursor = start
-    while not invalid_period and cursor <= end:
-        months[cursor.strftime("%Y-%m")] = {"dates": set(), "hours": Decimal(0), "metrics": defaultdict(Decimal), "activities": defaultdict(lambda: defaultdict(Decimal))}
-        cursor = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
+    cursor = end
+    while not invalid_period and cursor >= start:
+        months[pay_month_of(cursor)] = {"dates": set(), "hours": Decimal(0), "metrics": defaultdict(Decimal), "activities": defaultdict(lambda: defaultdict(Decimal))}
+        cursor = pay_month_range(pay_month_of(cursor))[0] - timedelta(days=1)
     for entry in entries:
-        month = months.setdefault(entry.entry_date.strftime("%Y-%m"), {
+        month = months.setdefault(pay_month_of(entry.entry_date), {
             "dates": set(), "hours": Decimal(0), "metrics": defaultdict(Decimal),
             "activities": defaultdict(lambda: defaultdict(Decimal)),
         })
@@ -268,7 +268,7 @@ def monthly_provider_totals(db: Session, log: WorkLog, current=None) -> list[dic
                 month["activities"][key][field] += number
     for measure in measures:
         entry = by_id[measure.entry_id]
-        month = months[entry.entry_date.strftime("%Y-%m")]
+        month = months[pay_month_of(entry.entry_date)]
         month["metrics"][measure.field_key] += measure.value
         month["activities"][entry.activity_key][measure.field_key] += measure.value
     result = []

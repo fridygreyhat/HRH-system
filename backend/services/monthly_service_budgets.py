@@ -5,8 +5,9 @@ from decimal import Decimal
 from fastapi import HTTPException
 from sqlalchemy.orm import defer
 
-from ..models import MonthlyServiceBudget, MonthlyServiceBudgetCharge, StaffAssignment, utcnow
+from ..models import MonthlyServiceBudget, MonthlyServiceBudgetCharge, PaymentClaim, PaymentProof, Staff, StaffAssignment, utcnow
 from ..core import audit
+from ..core.period_dates import pay_month_of
 from .v22_scope import regions_for
 
 
@@ -20,6 +21,34 @@ def summary(row):
             "allocated_amount": str(row.allocated_amount), "deducted_amount": str(row.deducted_amount),
             "remaining_amount": str(row.allocated_amount - row.deducted_amount),
             "document_name": row.document_name, "updated_at": row.updated_at}
+
+
+def deductions(db, current, budget):
+    """What reduced this budget, newest first. Amounts always show so the rows add
+    up to the total; provider and service details need the claim's cadre scope."""
+    from .claims import channel_scope_ok
+    rows = (db.query(MonthlyServiceBudgetCharge, PaymentClaim, Staff)
+            .join(PaymentClaim, PaymentClaim.id == MonthlyServiceBudgetCharge.claim_id)
+            .join(Staff, Staff.id == PaymentClaim.staff_id)
+            .filter(MonthlyServiceBudgetCharge.budget_id == budget.id)
+            .order_by(MonthlyServiceBudgetCharge.created_at.desc(), MonthlyServiceBudgetCharge.id.desc()).all())
+    result = []
+    for charge, claim, staff in rows:
+        item = {"id": charge.id, "amount": str(charge.amount), "deducted_at": charge.created_at,
+                "restored_at": charge.released_at, "restricted": True,
+                "claim_id": None, "claim_status": None, "payment_status": None, "proof_attached": False,
+                "provider": None, "services": []}
+        if channel_scope_ok(current, claim):
+            lines = (claim.calculation_snapshot or {}).get("lines", [])
+            item.update(restricted=False, claim_id=claim.id, claim_status=claim.status,
+                        payment_status=claim.payment_status,
+                        proof_attached=db.query(PaymentProof.id).filter_by(claim_id=claim.id).first() is not None,
+                        provider=staff.legal_name,
+                        services=[{"date": line["date"], "activity": line["activity"], "amount": line["amount"]}
+                                  for line in lines
+                                  if line["date"].startswith(budget.month) and Decimal(str(line["amount"])) > 0])
+        result.append(item)
+    return result
 
 
 def validate_month(month):
@@ -45,7 +74,7 @@ def deduct(db, current, claim):
             raise HTTPException(409, "Review the Services payment calculation before submitting.")
         if not amount.is_finite() or amount < 0:
             raise HTTPException(409, "The Services payment calculation has an invalid amount.")
-        amounts[day.strftime("%Y-%m")] += amount
+        amounts[pay_month_of(day)] += amount
     if not amounts or sum(amounts.values()) != claim.amount:
         raise HTTPException(409, "The Services monthly breakdown does not match the claim. Review it again.")
     assignment = db.get(StaffAssignment, claim.assignment_id)
@@ -58,7 +87,7 @@ def deduct(db, current, claim):
                   .filter_by(region_id=assignment.region_id, month=month, currency=claim.currency)
                   .with_for_update().populate_existing().first())
         if not budget:
-            raise HTTPException(409, f"Upload the regional Services budget for {month} ({claim.currency}) before submitting to Central Finance.")
+            raise HTTPException(409, f"Enter the approved regional Services budget for {month} ({claim.currency}) before submitting to Central Finance.")
         previous = db.query(MonthlyServiceBudgetCharge).filter_by(budget_id=budget.id, claim_id=claim.id).first()
         if previous:
             if previous.released_at or previous.amount != amount:

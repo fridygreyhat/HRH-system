@@ -348,6 +348,8 @@ def check_action(db: Session, current: CurrentUser, claim: PaymentClaim, action:
     if claim.workflow_version >= 2:
         if action not in {"cancel"}:
             return "New claims are validated and routed through the Regional Finance work-log gate"
+        if s == EXPORTED and claim.payment_status == "PENDING":
+            return "Reverse this claim's payment batch before cancelling it"
         if claim.payment_status not in {"NOT_STARTED", "FAILED"}:
             return "A claim with recorded payments cannot be cancelled"
     if action == "verify_community":

@@ -6,6 +6,7 @@ from typing import Optional, Union
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...core import config
@@ -22,6 +23,7 @@ from ...models import (
     PayPeriod,
     Section,
     Staff,
+    Region,
     StaffAssignment,
     User,
     WorkLog,
@@ -35,6 +37,7 @@ from ...models import (
 from ...services import claims as claims_service
 from ...core.audit_access import can_view_audit
 from ...services import notifications
+from ...services import public_holidays
 from ...services import worklog_workflow as wf
 from ...services.forms import assignment_out, cadre_fields, cadre_out, entries_with_measures, review_summary, totals
 from ...services.activities import activity_fields, activity_for
@@ -144,10 +147,12 @@ def _summary(db: Session, log: WorkLog) -> dict:
     hours_pending = (utcnow() - log.status_changed_at).total_seconds() / 3600
     reminder_after = get_setting(db, "reminder_after_hours")
     return {
-        **to_dict(log, exclude=("submit_gps_lat", "submit_gps_lon", "submit_gps_accuracy_m")),
+        **to_dict(log, exclude=("submit_gps_lat", "submit_gps_lon", "submit_gps_accuracy_m", "finance_timesheet_approved_by")),
         "staff_name": staff.legal_name,
         "cadre_code": db.get(Cadre, log.cadre_id).code,
         "facility_name": facility.name if facility else None,
+        "region_id": assignment.region_id,
+        "region_name": db.get(Region, assignment.region_id).name,
         "period_label": wf.period_label(db.get(PayPeriod, log.period_id)),
         "entry_count": t["days"],
         "total_hours": t["hours"],
@@ -192,7 +197,7 @@ def _detail(db: Session, current: CurrentUser, log: WorkLog) -> dict:
         "cadre": log_cadre_out(db, log),
         "financial_preview": finance_gate.preview(db, log) if log.workflow_version >= 2 and log.work_type != "PAYROLL" else None,
         "assignment": assignment_out(db, db.get(StaffAssignment, log.assignment_id)),
-        "period": to_dict(period),
+        "period": {**to_dict(period), "holidays": public_holidays.for_period(db, period)},
         "backdate_access": provider_access(db, log.staff_id),
         "entries": entries,
         "totals": totals(db, log),
@@ -237,12 +242,30 @@ def statuses():
     return {"statuses": wf.ALL_STATUSES}
 
 
+@router.get("/regions")
+def worklog_regions(db: Session = Depends(get_db), current: CurrentUser = Depends(get_current_user)):
+    """The regions of the logs this user can see, for reviewers who cover more than one."""
+    rows = (db.query(Region.id, Region.name).join(StaffAssignment, StaffAssignment.region_id == Region.id)
+            .join(WorkLog, WorkLog.assignment_id == StaffAssignment.id).filter(worklog_visibility(current))
+            .distinct().order_by(Region.name))
+    return [{"id": row.id, "name": row.name} for row in rows]
+
+
+@router.get("/cadres")
+def worklog_cadres(db: Session = Depends(get_db), current: CurrentUser = Depends(get_current_user)):
+    """The cadres of the logs this user can see, so each reviewer can look at one cadre at a time."""
+    rows = (db.query(Cadre.code, Cadre.name).join(WorkLog, WorkLog.cadre_id == Cadre.id)
+            .filter(worklog_visibility(current)).distinct().order_by(Cadre.name))
+    return [{"code": row.code, "name": row.name} for row in rows]
+
+
 @router.get("")
 def list_worklogs(
     queue: bool = False,
     mine: bool = False,
     status: Optional[str] = None,
     period_id: Optional[int] = None,
+    region_id: Optional[int] = None,
     cadre: Optional[str] = None,
     work_type: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -263,6 +286,8 @@ def list_worklogs(
         query = query.filter(WorkLog.period_id == period_id)
     if work_type:
         query = query.filter(WorkLog.work_type == work_type)
+    if region_id:
+        query = query.filter(WorkLog.assignment_id.in_(select(StaffAssignment.id).where(StaffAssignment.region_id == region_id)))
     if cadre:
         query = query.join(Cadre, Cadre.id == WorkLog.cadre_id).filter(Cadre.code == cadre)
     order = WorkLog.status_changed_at.asc() if queue else WorkLog.updated_at.desc()

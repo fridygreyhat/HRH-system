@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { api, qs, saveBlob } from '../api';
 import { useAuth } from '../AuthContext';
 import { Alert, AsyncState, Field, Modal } from '../components/ui';
-import { todayLocal, num, workHours } from '../format';
+import { todayLocal, num, payMonth, payMonthDates, workHours } from '../format';
 import { useApi } from '../hooks';
 import { Named } from '../types';
 import './finance-monthly-report.css';
@@ -162,7 +162,7 @@ function ProviderGroup({
 }
 
 export function FinanceMonthlyReport() {
-  const [month, setMonth] = useState(() => todayLocal().slice(0, 7));
+  const [month, setMonth] = useState(() => payMonth(todayLocal()));
   const [workType, setWorkType] = useState<WorkType>('PAYROLL');
   const [regionId, setRegionId] = useState('');
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
@@ -252,9 +252,9 @@ export function FinanceMonthlyReport() {
     <div className="stack-lg finance-monthly">
       <header className="page-header finance-monthly-heading">
         <div>
-          <p className="routing-eyebrow">Finance · calendar-month totals</p>
+          <p className="routing-eyebrow">Finance · pay-month totals</p>
           <h1>Monthly work report</h1>
-          <p className="muted small">One approved-work view across CHW, HCP and Data Clerk cadres. Totals follow entry dates within the selected calendar month.</p>
+          <p className="muted small">One approved-work view across CHW, HCP and Data Clerk cadres. Totals follow entry dates within the selected pay month, the 26th to the 25th.</p>
         </div>
         <div className="finance-report-actions">
           <button type="button" className="btn btn-secondary" onClick={() => { summary.reload(); regions.reload(); }} disabled={summary.loading}>Refresh report</button>
@@ -269,8 +269,8 @@ export function FinanceMonthlyReport() {
       </section>
 
       <div className="filters finance-monthly-filters" role="search" aria-label="Filter monthly report">
-        <Field label="Calendar month">
-          <input type="month" value={month} onChange={(event) => setMonth(event.target.value)} aria-label="Calendar month" />
+        <Field label="Pay month" hint={payMonthDates(month)}>
+          <input type="month" value={month} onChange={(event) => setMonth(event.target.value)} aria-label="Pay month" />
         </Field>
         <Field label="Work type">
           <select value={workType} onChange={(event) => setWorkType(event.target.value as WorkType)} aria-label="Work type">

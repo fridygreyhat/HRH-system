@@ -34,8 +34,8 @@ export function Batches() {
     <div className="stack-lg">
       <div className="page-header">
         <div>
-          <h1>Payroll batches</h1>
-          <p className="muted">Exports of approved claims grouped by route, payor and executor.</p>
+          <h1>Payment batches</h1>
+          <p className="muted">Exports of approved claims grouped by route, payor and executor. New Payroll is report-only and is not included.</p>
         </div>
         <div className="row">
           {routes.map((r) => (

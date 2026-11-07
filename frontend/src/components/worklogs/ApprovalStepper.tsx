@@ -78,6 +78,7 @@ export function ApprovalStepper({
   technicalReviewer,
   workflowVersion = 1,
   workType = 'LEGACY',
+  financeTimesheetApproved = false,
 }: {
   status: string;
   audit: WorkLogAudit[];
@@ -87,6 +88,7 @@ export function ApprovalStepper({
   workType?: 'LEGACY' | 'SERVICES' | 'PAYROLL';
   /** The cadre's technical reviewer position, shown in place of the generic "Technical Officer" */
   technicalReviewer?: string | null;
+  financeTimesheetApproved?: boolean;
 }) {
   const { lang, me } = useAuth();
   const l = lang === 'sw' ? 'sw' : 'en';
@@ -99,19 +101,22 @@ export function ApprovalStepper({
       { action: 'confirm_otp', title: 'Provider confirmation' },
       { action: 'endorse', title: 'Technical review' },
       { action: 'authorize', title: 'RM authorization' },
-      { action: 'finance_review', title: 'Regional finance review' },
+      { action: 'finance_timesheet_approve', title: 'Regional finance: timesheet' },
+      { action: 'finance_review', title: 'Regional finance: Services payment' },
       { action: routeAction, title: status === 'ROUTED_CSO' ? 'Routed to CSO' : 'Routed to FHI360' },
       { action: 'paid', title: 'Paid' },
     ];
     const showOtpV2 = !otpSkipped || latestCycleHasOtp(audit);
-    const v2Steps = showOtpV2 ? allV2Steps : allV2Steps.filter((step) => step.action !== 'confirm_otp');
+    // Records past finance review before this approval existed have no timesheet step to show.
+    const noTimesheetStep = !financeTimesheetApproved && ['FINANCE_REVIEWED', 'ROUTED_FHI360', 'ROUTED_CSO', 'PAID', 'APPROVED'].includes(status);
+    const v2Steps = allV2Steps.filter((step) => (showOtpV2 || step.action !== 'confirm_otp') && !(noTimesheetStep && step.action === 'finance_timesheet_approve'));
     const v2Position: Record<string, number> = {
       DRAFT: 0, RETURNED_TO_PROVIDER: 0, PENDING_CTC_VERIFICATION: 1, PENDING_PROVIDER_OTP_CONFIRMATION: 2,
-      PENDING_TECHNICAL_REVIEW: 3, PENDING_RPM_AUTHORIZATION: 4, PENDING_FINANCE_REVIEW: 5,
-      FINANCE_REVIEWED: 6, ROUTED_FHI360: 7, ROUTED_CSO: 7, PAID: 8, APPROVED: 8,
+      PENDING_TECHNICAL_REVIEW: 3, PENDING_RPM_AUTHORIZATION: 4, PENDING_FINANCE_REVIEW: financeTimesheetApproved ? 6 : 5,
+      FINANCE_REVIEWED: 7, ROUTED_FHI360: 8, ROUTED_CSO: 8, PAID: 9, APPROVED: 9,
     };
     const basePosition = v2Position[status] ?? 0;
-    const currentStep = !showOtpV2 && basePosition > 2 ? basePosition - 1 : basePosition;
+    const currentStep = basePosition - (!showOtpV2 && basePosition > 2 ? 1 : 0) - (noTimesheetStep ? 1 : 0);
     const doneRows: Record<string, WorkLogAudit> = {};
     audit.forEach((row) => { doneRows[row.action] = row; });
     const rejected = status === 'REJECTED';
@@ -129,7 +134,7 @@ export function ApprovalStepper({
             return <li key={`${step.action}-${index}`} className={`step step-${currentState}`} aria-current={currentState === 'current' ? 'step' : undefined}>
               <span className="step-marker" aria-hidden="true">{currentState === 'done' ? <Icon name="check" size={15} /> : currentState === 'danger' ? <Icon name="close" size={14} /> : index + 1}</span>
               <div className="step-text"><span className="step-title">{title}</span><span className="step-sub">
-                {auditRow ? `${auditRow.actor_name || 'Recorded'} · ${dateTime(auditRow.timestamp)}` : currentState === 'current' ? `Waiting${hoursInStatus !== undefined ? ` · ${hoursAge(hoursInStatus)}` : ''}` : isPaid ? 'Not yet paid' : 'Pending'}
+                {auditRow ? `${auditRow.actor_name || 'Recorded'} · ${dateTime(auditRow.timestamp)}` : currentState === 'done' ? 'Completed' : currentState === 'current' ? `Waiting${hoursInStatus !== undefined ? ` · ${hoursAge(hoursInStatus)}` : ''}` : isPaid ? 'Not yet paid' : 'Pending'}
               </span></div>
             </li>;
           })}

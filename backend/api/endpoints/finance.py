@@ -205,6 +205,14 @@ def central_reviewers(work_log_id: int = Query(gt=0), db: Session = Depends(get_
             for user in eligible_reviewers(db, log) if user.id != current.id]
 
 
+def _next_action(log: WorkLog, review_required: bool, snapshot: dict) -> str:
+    if review_required and not log.finance_timesheet_approved_at:
+        return "REVIEW_TIMESHEET"
+    if review_required or snapshot.get("payment_policy") not in finance_gate.FIXED_DAILY_POLICIES:
+        return "REVIEW_AMOUNT"
+    return "CHANNEL"
+
+
 @router.get("/pending-routing")
 def pending_routing(
     region_id: Optional[int] = Query(default=None, gt=0),
@@ -238,7 +246,7 @@ def pending_routing(
             "region_id": region.id, "region_name": region.name, "period_label": wf.period_label(period),
             "status": log.status, "amount": str(amount) if amount is not None else None, "currency": currency,
             "finance_review_required": review_required,
-            "next_action": "REVIEW_AMOUNT" if review_required or snapshot.get("payment_policy") not in finance_gate.FIXED_DAILY_POLICIES else "CHANNEL",
+            "next_action": _next_action(log, review_required, snapshot),
             **_payors(db, log),
         })
     return rows

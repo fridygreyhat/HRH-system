@@ -6,6 +6,17 @@ import { api, saveBlob } from '../api';
 
 let mockRoles, container, root;
 const mockReload = jest.fn();
+const mockDeductions = [{
+  id: 1, amount: '40000.00', deducted_at: '2026-11-03T08:00:00Z', restored_at: null, restricted: false,
+  claim_id: 21, claim_status: 'READY', payment_status: 'PAID', proof_attached: true, provider: 'Asha Mushi',
+  services: [{ date: '2026-11-02', activity: 'Home visits', amount: '40000.00' }],
+}, {
+  id: 2, amount: '15000.00', deducted_at: '2026-11-02T08:00:00Z', restored_at: null, restricted: true,
+  claim_id: null, claim_status: null, payment_status: null, proof_attached: false, provider: null, services: [],
+}, {
+  id: 3, amount: '5000.00', deducted_at: '2026-11-01T08:00:00Z', restored_at: '2026-11-02T09:00:00Z', restricted: false,
+  claim_id: 19, claim_status: 'CANCELLED', payment_status: 'NOT_STARTED', proof_attached: false, provider: 'Juma Said', services: [],
+}];
 jest.mock('../AuthContext', () => ({ useAuth: () => ({
   hasRole: (...wanted) => wanted.some(role => mockRoles.includes(role)),
 }) }));
@@ -15,7 +26,7 @@ jest.mock('../api', () => ({
 }));
 jest.mock('../hooks', () => ({ useApi: path => ({
   loading: false, error: null, reload: mockReload,
-  data: path === '/finance/regions' ? [{ id: 11, name: 'Iringa' }] : [{
+  data: path === '/finance/regions' ? [{ id: 11, name: 'Iringa' }] : path.endsWith('/deductions') ? mockDeductions : [{
     id: 3, region_id: 11, month: '2026-11', currency: 'TZS',
     allocated_amount: '100000', deducted_amount: '40000', remaining_amount: '60000',
     document_name: 'budget.csv',
@@ -75,4 +86,18 @@ test('upload failures are visible instead of reporting success', async () => {
   await act(async () => Simulate.submit(form));
   expect(container.textContent).toContain('Budget cannot be lower than deductions.');
   expect(mockReload).not.toHaveBeenCalled();
+});
+
+test('deductions show the provider, services and amount behind the balance', () => {
+  act(() => root.render(<MonthlyServicesBudgets />));
+  expect(container.textContent).toContain('Approved budget');
+  act(() => [...container.querySelectorAll('button')].find(b => b.textContent === 'View deductions').click());
+  const drawer = container.querySelector('[role=dialog]');
+  expect(drawer.textContent).toContain('Deductions: Iringa, 2026-11');
+  expect(drawer.textContent).toContain('Asha Mushi');
+  expect(drawer.textContent).toContain('Claim #21');
+  expect(drawer.textContent).toContain('Home visits');
+  expect(drawer.textContent).toContain('Another cadre');
+  expect(drawer.textContent).toContain('Restored');
+  expect(drawer.textContent).toContain('Proof attached');
 });

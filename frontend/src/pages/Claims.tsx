@@ -7,7 +7,7 @@ import { CreateClaim } from '../components/claims/CreateClaim';
 import { ServicesProofPaymentDialog } from '../components/claims/ServicesProofPaymentDialog';
 import { RegionalFinanceNextSteps } from '../components/claims/RegionalFinanceNextSteps';
 import { Alert, AsyncState, Field, RouteBadge, StatusBadge } from '../components/ui';
-import { CLAIM_STATUS_LABELS, CLAIM_STATUSES, dateTime, money, PAYMENT_STATUS_LABELS, PAYMENT_STATUSES, routeLabel, todayLocal } from '../format';
+import { CLAIM_STATUS_LABELS, CLAIM_STATUSES, dateTime, money, PAYMENT_STATUS_LABELS, PAYMENT_STATUSES, payMonth, payMonthDates, routeLabel, todayLocal } from '../format';
 import { useApi } from '../hooks';
 import { ClaimSummary, PayPeriod } from '../types';
 
@@ -29,7 +29,7 @@ export function Claims() {
   const [creating, setCreating] = useState(false);
   const [servicesProofPayment, setServicesProofPayment] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [exportMonth, setExportMonth] = useState(todayLocal().slice(0, 7));
+  const [exportMonth, setExportMonth] = useState(payMonth(todayLocal()));
   const [exportBusy, setExportBusy] = useState(false);
   const [exportError, setExportError] = useState('');
   const downloadServices = async (format: 'csv' | 'pdf') => {
@@ -78,7 +78,7 @@ export function Claims() {
         <h2>Services payment report</h2>
         <p className="muted small">Routed Services across your assigned regions and cadres, including facilities, providers, service days, amounts and mobile numbers. Only the highest fixed service amount per day is payable. Payment status remains separate.</p>
         <div className="row">
-          <Field label="Services report month"><input type="month" required value={exportMonth} onChange={e => setExportMonth(e.target.value)} /></Field>
+          <Field label="Services report month" hint={payMonthDates(exportMonth)}><input type="month" required value={exportMonth} onChange={e => setExportMonth(e.target.value)} /></Field>
           <button className="btn btn-secondary" disabled={exportBusy || !exportMonth} onClick={() => downloadServices('csv')}>Download Services CSV</button>
           <button className="btn btn-secondary" disabled={exportBusy || !exportMonth} onClick={() => downloadServices('pdf')}>Download Services PDF</button>
         </div>

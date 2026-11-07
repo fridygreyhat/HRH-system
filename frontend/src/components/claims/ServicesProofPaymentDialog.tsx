@@ -42,6 +42,14 @@ export function ServicesProofPaymentDialog({
   const canSubmit = !!file && !fileError && selectedRows.length > 0 && selectedRows.length <= 25 &&
     !mismatch && reference.trim().length >= 1 && reference.trim().length <= 200 && !!paymentDate && confirmed;
 
+  const missing = [
+    !selectedRows.length && 'select at least one claim',
+    !reference.trim() && 'enter the payment reference',
+    !paymentDate && 'choose the payment date',
+    !file && 'choose the proof document',
+    !confirmed && 'tick the confirmation',
+  ].filter(Boolean);
+
   const toggle = (row: PaymentManifest, checked: boolean) => {
     setSelected((current) => {
       if (!checked) return current.filter((id) => id !== row.claim_id);
@@ -88,7 +96,10 @@ export function ServicesProofPaymentDialog({
           <Alert>{eligible.error} <button type="button" className="link" onClick={eligible.reload}>Retry</button></Alert>
         )}
         {!eligible.loading && !eligible.error && rows.length === 0 && (
-          <div className="empty">No Services claims are currently eligible for proof.</div>
+          <div className="empty">
+            <strong>No Services claims are ready for proof yet.</strong>
+            <p className="small">The proof upload appears here once there is a claim to attach it to. A claim is listed after Regional Finance submits it and the named Central Finance reviewer approves it.</p>
+          </div>
         )}
         {rows.length > 0 && (
           <>
@@ -171,10 +182,13 @@ export function ServicesProofPaymentDialog({
           </>
         )}
         <Alert>{error}</Alert>
+        {rows.length > 0 && missing.length > 0 && <p className="muted small">To save: {missing.join(', ')}.</p>}
         <div className="row">
-          <button className="btn btn-primary" disabled={busy || !canSubmit || (manifests === undefined && (!eligible.data || eligible.loading))}>
-            {busy ? 'Saving proof and payment…' : 'Save proof and payment'}
-          </button>
+          {rows.length > 0 && (
+            <button className="btn btn-primary" disabled={busy || !canSubmit || (manifests === undefined && (!eligible.data || eligible.loading))}>
+              {busy ? 'Saving proof and payment…' : 'Save proof and payment'}
+            </button>
+          )}
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
         </div>
       </form>

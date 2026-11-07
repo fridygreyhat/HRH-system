@@ -5,6 +5,7 @@ from .users import User, Role, UserRole, UserScope, UserReviewCadre
 from .staff import Cadre, CadreFormField, Staff, StaffAssignment, StaffChangeRequest, RosterImport
 from .worklogs import (
     PayPeriod,
+    PublicHoliday,
     WorkLog,
     WorkLogEntry,
     WorkLogMeasure,
@@ -18,6 +19,7 @@ from .claims import (
     FundingSource,
     ClaimCategory,
     RateRule,
+    SalaryScaleAmount,
     PaymentClaim,
     ClaimComponent,
     ClaimAudit,

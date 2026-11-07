@@ -60,7 +60,7 @@ def test_multiple_services_count_worked_days_but_pay_only_one(api, db, empty_per
     claim = route(api, db, empty_period, v22)
     entry = db.query(WorkLogEntry).filter_by(work_log_id=claim.work_log_id).one()
     entry.activity_snapshot = {**entry.activity_snapshot, "additional_services": [
-        {"activity": {"key": "tb_contact", "label_en": "TB Contact tracing"}}]}
+        {"activity": {"key": "tb_contact", "label_en": "TB Contact tracing"}, "measures": {}}]}
     db.commit()
     response = fetch(api, empty_period["start_date"][:7])
     rows = list(csv.DictReader(StringIO(response.content.decode("utf-8-sig"))))
@@ -68,6 +68,16 @@ def test_multiple_services_count_worked_days_but_pay_only_one(api, db, empty_per
     assert tb["Days worked"] == "1" and tb["Payable days"] == "0"
     assert Decimal(tb["Service amount"]) == 0
     assert Decimal(rows[-1]["Service amount"]) == claim.amount
+
+    # The report follows the pay month: the 26th already belongs to the next month. Same test, as past months are limited.
+    original = entry.entry_date
+    entry.entry_date = original.replace(day=26)
+    db.commit()
+    later = f"{original.year + 1}-01" if original.month == 12 else f"{original.year}-{original.month + 1:02d}"
+    assert list(csv.DictReader(StringIO(fetch(api, original.strftime("%Y-%m")).content.decode("utf-8-sig")))) == []
+    assert list(csv.DictReader(StringIO(fetch(api, later).content.decode("utf-8-sig"))))[0]["Days worked"] == "1"
+    entry.entry_date = original
+    db.commit()
 
 
 def test_services_export_includes_over_one_thousand_providers_without_n_plus_one(api, db, empty_period, v22):

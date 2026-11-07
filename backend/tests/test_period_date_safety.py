@@ -33,7 +33,7 @@ def test_legacy_bad_dates_are_bounded_and_reviews_recover_after_correction(api, 
     log.status = "PENDING_CTC_VERIFICATION"
     stored_period = db.get(PayPeriod, period["id"])
     original_start = stored_period.start_date
-    original_end = stored_period.end_date
+    original_end = stored_period.end_date.replace(day=25)  # one pay month after correction
     stored_period.start_date = date(206, original_start.month, 1)
     db.commit()
 
@@ -47,7 +47,7 @@ def test_legacy_bad_dates_are_bounded_and_reviews_recover_after_correction(api, 
 
     # Even if BOTH years were mistyped, preserve visibility of real workdays
     # instead of filtering them out using the corrupt period bounds.
-    stored_period.end_date = date(206, original_end.month, original_end.day)
+    stored_period.end_date = date(206, original_end.month, min(original_end.day, 28))  # 206 is not a leap year
     db.commit()
     detail = api.get(f"/worklogs/{log_id}", "admin")
     assert detail["review_summary"]["months"][0]["month"] == day.strftime("%Y-%m")
@@ -60,7 +60,7 @@ def test_legacy_bad_dates_are_bounded_and_reviews_recover_after_correction(api, 
     approval_transitions = [
         (status, action, role)
         for (status, action), (_, role) in wf.transitions_for(log).items()
-        if action in {"verify", "endorse", "authorize", "finance_review", "route_cso", "route_fhi360"}
+        if action in {"verify", "endorse", "authorize", wf.FINANCE_TIMESHEET_APPROVE, "finance_review", "route_cso", "route_fhi360"}
         and (not action.startswith("route_") or action == ("route_fhi360" if kind == "SERVICES" else "route_cso"))
     ]
     current.roles.update(role for _, _, role in approval_transitions)
@@ -73,6 +73,7 @@ def test_legacy_bad_dates_are_bounded_and_reviews_recover_after_correction(api, 
     db.commit()
     for status, action, _ in approval_transitions:
         log.status = status
+        log.finance_timesheet_approved_at = stored_period.created_at if action == "finance_review" else None
         assert wf.check_action(db, current, log, action) is None
     db.commit()
     detail = api.get(f"/worklogs/{log_id}", "admin")

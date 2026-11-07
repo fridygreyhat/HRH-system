@@ -5,12 +5,13 @@ export function ApprovalFinanceGuide() {
   return <details className="card">
     <summary><strong>How Services and Payroll move through approval and payment</strong></summary>
     <div className="stack">
-      <p>Payroll: Provider → CTC → Technical → RM → monthly report. Services: Provider → CTC → Technical → RM → Regional Finance → FHI360 → payment, proof and reconciliation.</p>
+      <p>Payroll: Provider → CTC → Technical → RM → monthly report. Services: Provider → CTC → Technical → RM → Regional Finance timesheet approval → Regional Finance Services payment approval → FHI360 → payment, proof and reconciliation.</p>
       <p>Services and Payroll are separate records, separate review lists and separate approvals. Approving one does not approve the other.</p>
       <div className="table-wrap"><table className="table">
         <thead><tr><th>Role / screen</th><th>What appears</th><th>Next action</th></tr></thead>
         <tbody>
           <tr><td>CTC In-Charge · Work log reviews</td><td>Services or Payroll submitted by CHWs, HCPs and Data Clerks at the assigned facility.</td><td>Select Services or Payroll, open the record, review and verify. Each record then goes to Technical.</td></tr>
+          <tr><td>Facility In-Charge · Work log reviews</td><td>Every cadre's timesheets at the assigned facility, at every stage.</td><td>Read only. Filter by cadre. CTC In-Charge verifies the work.</td></tr>
           <tr><td>Technical · Work log reviews</td><td>CTC-verified Services or Payroll within the assigned region and cadre scope.</td><td>Review and endorse each record, or return it for correction. Endorsed records go to RM.</td></tr>
           <tr><td>RM · Work log reviews</td><td>All cadres in the assigned regions. All visible logs tracks progress; Waiting on me lists records ready for RM.</td><td>Select Services or Payroll and authorize each Technical-endorsed record separately.</td></tr>
           <tr><td>Regional Finance · Monthly report / Services routing</td><td>Monthly indicators and hours for assigned cadres. Services and Payroll remain separate.</td><td>Payroll is report-only after RM approval. For Services, select PnP, Supply Chain or EpiC, confirm the fixed daily amount preview and route to the eligible payor. The highest eligible service amount per day applies.</td></tr>

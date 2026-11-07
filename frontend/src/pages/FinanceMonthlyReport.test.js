@@ -66,7 +66,7 @@ function reviewPreview(container) {
   act(() => [...container.querySelectorAll('button')].find(button => button.textContent === 'I have reviewed this preview').click());
 }
 
-test('monthly report keeps calendar month, separate work type and cadre aggregates without daily logs', () => {
+test('monthly report keeps pay month, separate work type and cadre aggregates without daily logs', () => {
   const { container, unmount } = mountReport();
   try {
     expect(requestedPath).toContain('month=');
@@ -193,7 +193,7 @@ test('providers are grouped by cadre, searchable and paginated independently; fi
 
     act(() => Simulate.change(search, { target: { value: '' } }));
     act(() => Simulate.click(groups[0].querySelector('[aria-label="Next Community Health Worker providers"]')));
-    act(() => Simulate.change(container.querySelector('input[aria-label="Calendar month"]'), { target: { value: '2025-06' } }));
+    act(() => Simulate.change(container.querySelector('input[aria-label="Pay month"]'), { target: { value: '2025-06' } }));
     expect(container.querySelector('.finance-provider-group').textContent).toContain('Page 1 of 3');
     expect(requestedPath).toContain('month=2025-06');
     act(() => Simulate.change(container.querySelector('select[aria-label="Work type"]'), { target: { value: 'SERVICES' } }));

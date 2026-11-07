@@ -29,7 +29,7 @@ test('services queue preserves finance payment review and opens its work-log rev
   try {
     act(() => Simulate.change(container.querySelector('select[aria-label="Filter by queue stage"]'), { target: { value: 'PENDING_FINANCE_REVIEW' } }));
     expect(mockQueuePath).toContain('stage=PENDING_FINANCE_REVIEW');
-    expect(container.textContent).toContain('Amount review required');
+    expect(container.textContent).toContain('Review 2 of 2: Services payment');
     expect(container.textContent).toContain('TZS 173450');
     expect(container.textContent).toContain('Review amount');
     expect(container.textContent).toContain('Services routing queue');
@@ -38,6 +38,23 @@ test('services queue preserves finance payment review and opens its work-log rev
     act(() => Simulate.click(Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Review amount')));
     expect(container.textContent).toContain('Review work log #92');
   } finally {
+    act(() => root.unmount());
+    container.remove();
+  }
+});
+
+test('a record whose timesheet is not approved opens on the timesheet review', () => {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  mockItem.next_action = 'REVIEW_TIMESHEET';
+  act(() => root.render(<RoutingQueue />));
+  try {
+    expect(container.textContent).toContain('Review 1 of 2: timesheet');
+    expect(container.textContent).toContain('Review timesheet');
+    expect(container.textContent).not.toContain('Review amount');
+  } finally {
+    mockItem.next_action = 'REVIEW_AMOUNT';
     act(() => root.unmount());
     container.remove();
   }

@@ -5,7 +5,7 @@ from threading import Barrier
 import pytest
 from fastapi import HTTPException
 
-from backend.models import MonthlyServiceBudget, MonthlyServiceBudgetCharge, PaymentClaim, User, Region
+from backend.models import MonthlyServiceBudget, MonthlyServiceBudgetCharge, PaymentClaim, User, Region, UserReviewCadre
 from backend.core.security import load_current_user
 from backend.services.monthly_service_budgets import deduct
 from .test_named_central_review import reviewed
@@ -66,15 +66,19 @@ def test_submission_deducts_once_blocks_missing_or_short_budget_and_does_not_dou
     assert db.query(MonthlyServiceBudgetCharge).filter_by(claim_id=cid).count() == 1
     assert upload(api, v22["finance"], v22["region_id"], month, 39999).status_code == 409
     api.post(f"/claims/{cid}/actions/central_approve", "fhifin1", {"review_confirmed": True, "expected_amount": 40000})
-    api.put("/admin/settings/payment_requires_proof", "admin", {"value": False, "reason": "Isolated monthly deduction test"})
-    try:
-        api.put("/provider-details/me", "chw1", {"mobile_money_number": "+255700000001"})
-        api.post(f"/claims/{cid}/payments", "fhifin1", {
-            "amount": 40000, "payment_reference": "ISOLATED-MONTHLY-BUDGET",
-            "payment_date": empty_period["start_date"],
-        })
-    finally:
-        api.put("/admin/settings/payment_requires_proof", "admin", {"value": True, "reason": "Restore proof protection"})
+    api.put("/provider-details/me", "chw1", {"mobile_money_number": "+255700000001"})
+    api.post(f"/claims/{cid}/payments", "fhifin1", {
+        "amount": 40000, "payment_reference": "ISOLATED-MONTHLY-BUDGET",
+        "payment_date": empty_period["start_date"],
+    })
+    url = f"/monthly-service-budgets/{budget.id}/deductions"
+    row = next(item for item in api.get(url, v22["finance"]) if item["claim_id"] == cid)
+    assert row["payment_status"] == "PROOF_REQUIRED" and row["proof_attached"] is False
+    api.call("POST", f"/claims/{cid}/proofs", "fhifin1",
+             files={"file": ("proof.pdf", b"%PDF-1.4 test", "application/pdf")})
+    api.post(f"/claims/{cid}/actions/confirm_paid", "fhifin1")
+    row = next(item for item in api.get(url, v22["finance"]) if item["claim_id"] == cid)
+    assert row["payment_status"] == "PAID" and row["proof_attached"] is True
     db.refresh(budget)
     assert budget.deducted_amount == 40000
     api.post(f"/claims/{cid}/actions/cancel", "fhifin1", {"comment": "Cannot refund paid Services"}, expect=403)
@@ -92,6 +96,45 @@ def test_unpaid_cancellation_restores_monthly_budget_once(api, db, empty_period,
     api.post(f"/claims/{cid}/actions/cancel", "fhifin1", {"comment": "Repeated cancellation"}, expect=409)
     db.refresh(budget)
     assert budget.deducted_amount == 0
+
+
+def test_deductions_show_provider_services_and_hide_other_cadres(api, db, empty_period, v22):
+    log, body = reviewed(api, db, empty_period, v22)
+    cid = api.post("/finance/channel", v22["finance"], body)["claim_id"]
+    budget = db.query(MonthlyServiceBudget).filter_by(month=empty_period["start_date"][:7], region_id=v22["region_id"]).one()
+    url = f"/monthly-service-budgets/{budget.id}/deductions"
+    row = next(item for item in api.get(url, v22["finance"]) if item["claim_id"] == cid)
+    assert row["restricted"] is False and row["provider"] and row["restored_at"] is None
+    assert row["claim_status"] == "PENDING_CENTRAL_REVIEW" and Decimal(row["amount"]) == 40000
+    assert [line["date"] for line in row["services"]] == [empty_period["start_date"]]
+    assert row["services"][0]["activity"] and Decimal(row["services"][0]["amount"]) == 40000
+
+    user = db.query(User).filter_by(username=v22["finance"]).one()
+    kept = db.query(UserReviewCadre).filter_by(user_id=user.id).all()
+    saved = [row.cadre_id for row in kept]
+    for item in kept:
+        db.delete(item)
+    db.commit()
+    try:
+        hidden = next(item for item in api.get(url, v22["finance"]) if item["id"] == row["id"])
+        assert hidden["restricted"] is True and hidden["amount"] == row["amount"]
+        assert hidden["provider"] is None and hidden["claim_id"] is None and hidden["services"] == []
+    finally:
+        db.add_all(UserReviewCadre(user_id=user.id, cadre_id=cadre) for cadre in saved)
+        db.commit()
+
+    api.post(f"/claims/{cid}/actions/cancel", "fhifin1", {"comment": "Needs correction by the provider"})
+    restored = next(item for item in api.get(url, v22["finance"]) if item["id"] == row["id"])
+    assert restored["restored_at"] and restored["claim_status"] == "CANCELLED"
+    for denied in ("chw1", "csofin1"):
+        api.get(url, denied, expect=403)
+    other = db.query(Region).filter(Region.id != v22["region_id"]).first()
+    elsewhere = MonthlyServiceBudget(region_id=other.id, month="2098-01", currency="TZS", allocated_amount=1,
+                                     deducted_amount=0, document_name="b.csv", document_type="text/csv",
+                                     document_data=b"1", uploaded_by=user.id)
+    db.add(elsewhere)
+    db.commit()
+    api.get(f"/monthly-service-budgets/{elsewhere.id}/deductions", v22["finance"], expect=404)
 
 
 def test_competing_submissions_refresh_preloaded_budget_under_lock(api, db, empty_period, v22):
@@ -134,7 +177,7 @@ def test_multi_month_claim_deducts_by_dates_and_rolls_back_all_months_on_shortfa
     line = claim.calculation_snapshot["lines"][0]
     claim.calculation_snapshot = {**claim.calculation_snapshot, "lines": [
         {**line, "date": first_month + "-01", "amount": "20000"},
-        {**line, "date": later_month + "-01", "amount": "20000"},
+        {**line, "date": "2098-12-26", "amount": "20000"},  # the 26th already belongs to the next pay month
     ]}
     db.commit()
     actor = load_current_user(db, db.query(User).filter_by(username=v22["finance"]).one())
