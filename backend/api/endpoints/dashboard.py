@@ -2,7 +2,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, or_
+from sqlalchemy import DateTime, func, literal, or_
 from sqlalchemy.orm import Session
 
 from ...core.roles import CSO_FINANCE, CSO_TECHNICAL, FHI360_FINANCE, OVERSIGHT, RPM, TECHNICAL_OFFICER, SUPERVISOR, CENTRAL_ADMIN, REGIONAL_ADMIN, REGIONAL_FINANCE
@@ -37,12 +37,12 @@ def dashboard(
         staff_q = staff_q.join(Cadre, Cadre.id == Staff.cadre_id).filter(Cadre.code == cadre)
     if region_id:
         staff_q = staff_q.filter(Staff.id.in_(db.query(StaffAssignment.staff_id).filter(StaffAssignment.region_id == region_id)))
-    staff_rows = staff_q.all()
-    mid_period_exits = [s for s in staff_rows if period and s.employment_end_date and period.start_date <= s.employment_end_date < period.end_date]
-    rotations = 0
+    staff_by_status = dict(staff_q.with_entities(Staff.status, func.count(Staff.id)).group_by(Staff.status).all())
+    mid_period_exits = rotations = 0
     if period:
+        mid_period_exits = staff_q.filter(Staff.employment_end_date >= period.start_date, Staff.employment_end_date < period.end_date).count()
         rotations = db.query(StaffAssignment).filter(
-            StaffAssignment.staff_id.in_([s.id for s in staff_rows] or [-1]),
+            StaffAssignment.staff_id.in_(staff_q.with_entities(Staff.id)),
             StaffAssignment.start_date > period.start_date, StaffAssignment.start_date <= period.end_date,
         ).count()
 
@@ -54,28 +54,31 @@ def dashboard(
         log_q = log_q.join(Cadre, Cadre.id == WorkLog.cadre_id).filter(Cadre.code == cadre)
     if region_id:
         log_q = log_q.filter(WorkLog.assignment_id.in_(db.query(StaffAssignment.id).filter(StaffAssignment.region_id == region_id)))
-    logs = log_q.all()
-    by_status: dict[str, int] = {}
-    for log in logs:
-        by_status[log.status] = by_status.get(log.status, 0) + 1
+    age = func.extract("epoch", literal(now, DateTime(timezone=True)) - WorkLog.status_changed_at) / 3600
+    by_age = {row.status: row for row in log_q.with_entities(
+        WorkLog.status, func.count(WorkLog.id).label("count"), func.max(age).label("oldest"), func.avg(age).label("average"),
+        func.count(WorkLog.id).filter(age > 48).label("over_48h"),
+        func.count(WorkLog.id).filter(age >= reminder_after).label("over_threshold"),
+    ).group_by(WorkLog.status)}
+    by_status = {status: row.count for status, row in by_age.items()}
     queues = []
     for status, owner in wf.STAGE_OWNER.items():
-        ages = [(now - l.status_changed_at).total_seconds() / 3600 for l in logs if l.status == status]
+        row = by_age.get(status)
         queues.append({
             "status": status,
             "owner": owner,
-            "count": len(ages),
-            "max_age_hours": round(max(ages), 1) if ages else 0,
-            "avg_age_hours": round(sum(ages) / len(ages), 1) if ages else 0,
-            "over_48h": sum(1 for a in ages if a > 48),
-            "over_threshold": sum(1 for a in ages if a >= reminder_after),
+            "count": row.count if row else 0,
+            "max_age_hours": round(float(row.oldest), 1) if row else 0,
+            "avg_age_hours": round(float(row.average), 1) if row else 0,
+            "over_48h": row.over_48h if row else 0,
+            "over_threshold": row.over_threshold if row else 0,
         })
-    active_ids = {s.id for s in staff_rows if s.status == "ACTIVE"}
-    logged_ids = {l.staff_id for l in logs if l.status != wf.CANCELLED}
-    log_ids = [l.id for l in logs] or [-1]
+    active = staff_by_status.get("ACTIVE", 0)
+    with_log = staff_q.filter(Staff.status == "ACTIVE", Staff.id.in_(
+        log_q.filter(WorkLog.status != wf.CANCELLED).with_entities(WorkLog.staff_id))).count()
     reasons = (
         db.query(WorkLogAudit.action, func.count())
-        .filter(WorkLogAudit.work_log_id.in_(log_ids), WorkLogAudit.action.in_(("return", "return_to_reviewer", "reject", "hold", "reopen", "decline")))
+        .filter(WorkLogAudit.work_log_id.in_(log_q.with_entities(WorkLog.id)), WorkLogAudit.action.in_(("return", "return_to_reviewer", "reject", "hold", "reopen", "decline")))
         .group_by(WorkLogAudit.action)
         .all()
     )
@@ -91,14 +94,16 @@ def dashboard(
     if region_id:
         claim_q = claim_q.filter(PaymentClaim.assignment_id.in_(db.query(StaffAssignment.id).filter(StaffAssignment.region_id == region_id)))
     claim_totals: dict[str, dict] = {}
-    for c in claim_q.all():
-        key = c.route_code or "UNROUTED"
-        bucket = claim_totals.setdefault(key, {"by_status": {}, "by_payment_status": {}, "count": 0})
-        bucket["count"] += 1
-        for field, value in (("by_status", c.status), ("by_payment_status", c.payment_status)):
+    claim_groups = claim_q.with_entities(
+        PaymentClaim.route_code, PaymentClaim.status, PaymentClaim.payment_status, func.count(PaymentClaim.id), func.sum(PaymentClaim.amount),
+    ).group_by(PaymentClaim.route_code, PaymentClaim.status, PaymentClaim.payment_status)
+    for route_code, status, payment_status, count, amount in claim_groups:
+        bucket = claim_totals.setdefault(route_code or "UNROUTED", {"by_status": {}, "by_payment_status": {}, "count": 0})
+        bucket["count"] += count
+        for field, value in (("by_status", status), ("by_payment_status", payment_status)):
             entry = bucket[field].setdefault(value, {"count": 0, "amount": 0.0})
-            entry["count"] += 1
-            entry["amount"] += float(c.amount)
+            entry["count"] += count
+            entry["amount"] += float(amount)
 
     # Budgets
     budget_q = db.query(BudgetLine).filter(budget_visibility(current)) if current.has_any(FHI360_FINANCE, CSO_FINANCE, RPM, OVERSIGHT) else None
@@ -108,24 +113,30 @@ def dashboard(
             budget_q = budget_q.filter(BudgetLine.period_id == period_id)
         if region_id:
             budget_q = budget_q.filter(or_(BudgetLine.region_id.is_(None), BudgetLine.region_id == region_id))
-        rows = budget_q.all()
+        lines, allocated, committed, spent, unsynced = budget_q.with_entities(
+            func.count(BudgetLine.id),
+            func.coalesce(func.sum(BudgetLine.allocated_amount), 0),
+            func.coalesce(func.sum(BudgetLine.committed_amount), 0),
+            func.coalesce(func.sum(BudgetLine.spent_amount), 0),
+            func.count(BudgetLine.id).filter(BudgetLine.sync_status.in_(("UNSYNCED", "ERROR"))),
+        ).one()
         held = claim_q.filter(PaymentClaim.status.in_(("HELD", "BUDGET_HOLD"))).count()
         budgets = {
-            "allocated": float(sum(b.allocated_amount for b in rows)),
-            "committed": float(sum(b.committed_amount for b in rows)),
-            "spent": float(sum(b.spent_amount for b in rows)),
-            "remaining": float(sum(b.allocated_amount - b.committed_amount - b.spent_amount for b in rows)),
-            "lines": len(rows),
+            "allocated": float(allocated),
+            "committed": float(committed),
+            "spent": float(spent),
+            "remaining": float(allocated - committed - spent),
+            "lines": lines,
             "claims_on_hold": held,
-            "unsynced_tracker_lines": sum(1 for b in rows if b.sync_status in ("UNSYNCED", "ERROR")),
+            "unsynced_tracker_lines": unsynced,
         }
 
     return {
         "staff": {
-            "total": len(staff_rows),
-            "active": len(active_ids),
-            "exited": sum(1 for s in staff_rows if s.status == "EXITED"),
-            "mid_period_exits": len(mid_period_exits),
+            "total": sum(staff_by_status.values()),
+            "active": active,
+            "exited": staff_by_status.get("EXITED", 0),
+            "mid_period_exits": mid_period_exits,
             "rotations_in_period": rotations,
         },
         "work_logs": {
@@ -133,9 +144,9 @@ def dashboard(
             "by_status": by_status,
             "queues": queues,
             "completeness": {
-                "active_staff": len(active_ids),
-                "with_log": len(active_ids & logged_ids),
-                "missing": len(active_ids - logged_ids) if period_id else None,
+                "active_staff": active,
+                "with_log": with_log,
+                "missing": active - with_log if period_id else None,
             },
             "exceptions": {action: count for action, count in reasons},
         },

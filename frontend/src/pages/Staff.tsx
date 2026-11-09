@@ -99,8 +99,12 @@ function Registry({ cadres }: { cadres: Cadre[] }) {
                       key={s.id}
                       tabIndex={0}
                       onClick={() => setOpenId(s.id)}
+                      aria-label={`Open ${s.legal_name}`}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') setOpenId(s.id);
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setOpenId(s.id);
+                        }
                       }}
                     >
                       <td>

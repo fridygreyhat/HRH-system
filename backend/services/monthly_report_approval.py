@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlalchemy import or_
-from ..models import Cadre, CSORegionAssignment, FinanceMonthlyReport, Region, StaffAssignment
+from ..models import Cadre, CadreFormField, CSORegionAssignment, FinanceMonthlyReport, Region, StaffAssignment
 from ..core.roles import REGIONAL_FINANCE, FHI360_FINANCE, CSO_FINANCE
 from ..core import audit
 from .finance_reports import monthly_summary
@@ -105,7 +105,20 @@ def check_month(month):
         raise HTTPException(422, "Select a valid calendar month between 2000 and 2100.")
 
 
+def labels_sw(db, report) -> dict:
+    """Swahili names for the report's indicators. Kept beside the report, not in it, so signed digests do not change."""
+    keys = {indicator["key"] for group in ("cadres", "providers") for item in report.get(group, []) for indicator in item.get("indicators", [])}
+    if not keys:
+        return {}
+    return {key: label for key, label in db.query(CadreFormField.key, CadreFormField.label_sw).filter(CadreFormField.key.in_(keys)) if label}
+
+
 def view(db, current, month, region_id, work_type):
+    result = _view(db, current, month, region_id, work_type)
+    return {**result, "labels_sw": labels_sw(db, result["report"])}
+
+
+def _view(db, current, month, region_id, work_type):
     # Validate month even when there is no published snapshot.
     check_month(month)
     allowed = cso_regions(db, current) if cso_only(current) else regions_for(current)

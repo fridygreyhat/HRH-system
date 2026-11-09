@@ -2,7 +2,7 @@ from .base import Base, utcnow
 from .backdate import BackdateAccess
 from .org import Organization, CSORegionAssignment, Region, Cluster, District, Ward, Facility, CommunityArea, Section
 from .users import User, Role, UserRole, UserScope, UserReviewCadre
-from .staff import Cadre, CadreFormField, Staff, StaffAssignment, StaffChangeRequest, RosterImport
+from .staff import Cadre, CadreFormField, PaymentDetailsCode, Staff, StaffAssignment, StaffChangeRequest, RosterImport
 from .worklogs import (
     PayPeriod,
     PublicHoliday,
@@ -33,3 +33,4 @@ from .audit import AuditEvent, SystemSetting
 from .activities import ActivityRate
 from .finance_reports import FinanceMonthlyReport
 from .monthly_budgets import MonthlyServiceBudget, MonthlyServiceBudgetCharge
+from .payment_requests import PaymentRequestForm, PaymentRequestFormClaim, ServicesReportDownload

@@ -8,6 +8,7 @@ import { dateTime, hoursAge, num, WORKLOG_STATUS_LABELS, WORKLOG_STATUSES, workH
 import { useApi } from '../hooks';
 import { Named, PayPeriod, WorkLogSummary } from '../types';
 import { navigate } from '../nav';
+import { printBatchTarget } from './PrintBatch';
 
 const REVIEWER_ROLES = ['SUPERVISOR', 'FACILITY_IN_CHARGE', 'CSO_TECHNICAL_OFFICER', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE'];
 const OPERATIONAL_APPROVER_ROLES = ['SUPERVISOR', 'FACILITY_IN_CHARGE', 'CSO_TECHNICAL_OFFICER', 'TECHNICAL_OFFICER', 'RPM'];
@@ -42,7 +43,7 @@ function LogTable({ rows, queue, onOpen }: { rows: WorkLogSummary[]; queue: bool
                 className={overdue ? 'row-over-48' : undefined}
                 tabIndex={0}
                 onClick={() => onOpen(l.id)}
-                onKeyDown={(e) => e.key === 'Enter' && onOpen(l.id)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(l.id); } }}
                 aria-label={`Open work log ${l.id} for ${l.staff_name}`}
               >
                 <td>{l.id}</td>
@@ -103,6 +104,9 @@ export function ReviewWorkLogs({ initialType }: { initialType?: 'SERVICES' | 'PA
     chosen.current = true;
     if (!waitingCount('SERVICES') && waitingCount('PAYROLL')) setWorkType('PAYROLL');
   }, [waiting.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const listFilters = tab === 'queue'
+    ? { queue: true, work_type: visibleWorkType, region_id: regionId, cadre }
+    : { status, period_id: periodId, cadre, work_type: visibleWorkType, region_id: regionId };
   const path = tab === 'queue' ? `/worklogs${qs({ queue: true, work_type: visibleWorkType, region_id: regionId, cadre })}` : `/worklogs${qs({ status, period_id: periodId, cadre, work_type: visibleWorkType, region_id: regionId })}`;
   const logs = useApi<WorkLogSummary[]>(path);
   const [openId, setOpenId] = useState<number | null>(null);
@@ -136,6 +140,11 @@ export function ReviewWorkLogs({ initialType }: { initialType?: 'SERVICES' | 'PA
           <button className="btn btn-secondary" onClick={logs.reload} disabled={logs.loading}>
             Refresh
           </button>
+          {(logs.data?.length ?? 0) > 0 && (
+            <button type="button" className="btn btn-secondary" onClick={() => navigate('print-batch', printBatchTarget(listFilters))}>
+              Print all ({logs.data?.length})
+            </button>
+          )}
           {isFinance && <button type="button" className="btn btn-primary" onClick={() => navigate('finance-monthly')}>Monthly work report</button>}
         </div>
       </header>

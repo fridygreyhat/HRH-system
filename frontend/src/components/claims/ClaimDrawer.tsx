@@ -3,6 +3,7 @@ import { api, openBlob, saveBlob } from '../../api';
 import { useAuth } from '../../AuthContext';
 import {
   CLAIM_ACTION_LABELS,
+  CLAIM_ACTION_LABELS_SW,
   CLAIM_REASON_REQUIRED,
   DESTRUCTIVE_ACTIONS,
   dateOnly,
@@ -13,6 +14,7 @@ import {
   money,
   num,
   PAYMENT_STATUS_LABELS,
+  PAYMENT_STATUS_LABELS_SW,
   todayLocal,
 } from '../../format';
 import { useAction, useApi } from '../../hooks';
@@ -26,21 +28,25 @@ import { navigate } from '../../nav';
 
 const MAX_PROOF_BYTES = 10 * 1024 * 1024;
 const PROOF_TYPES = ['application/pdf', 'image/png', 'image/jpeg'];
+const UNIT_TYPE_LABELS_SW: Record<string, string> = { PER_DAY: 'Kwa siku', PER_HOUR: 'Kwa saa', PER_UNIT: 'Kwa kipimo', FIXED: 'Kiasi maalum' };
+const ORIGIN_LABELS_SW: Record<string, string> = { FACILITY: 'Kituo', COMMUNITY: 'Jamii' };
 
 export function ComponentsTable({ components, currency }: { components: ClaimComponent[]; currency: string }) {
-  if (!components.length) return <p className="muted">No priced components.</p>;
+  const { lang } = useAuth();
+  const sw = lang === 'sw';
+  if (!components.length) return <p className="muted">{sw ? 'Hakuna vipengele vyenye bei.' : 'No priced components.'}</p>;
   const total = components.reduce((s, c) => s + Number(c.amount), 0);
   return (
     <div className="table-wrap">
       <table>
         <thead>
           <tr>
-            <th>Component</th>
-            <th>Unit</th>
-            <th className="num">Units</th>
-            <th className="num">Rate</th>
-            <th className="num">Cap</th>
-            <th className="num">Amount</th>
+            <th>{sw ? 'Kipengele' : 'Component'}</th>
+            <th>{sw ? 'Kipimo' : 'Unit'}</th>
+            <th className="num">{sw ? 'Idadi' : 'Units'}</th>
+            <th className="num">{sw ? 'Kiwango' : 'Rate'}</th>
+            <th className="num">{sw ? 'Kikomo' : 'Cap'}</th>
+            <th className="num">{sw ? 'Kiasi' : 'Amount'}</th>
           </tr>
         </thead>
         <tbody>
@@ -48,7 +54,7 @@ export function ComponentsTable({ components, currency }: { components: ClaimCom
             <tr key={c.id ?? `${c.component_name}-${i}`}>
               <td>{c.component_name}</td>
               <td>
-                {humanize(c.unit_type)}
+                {(sw && c.unit_type && UNIT_TYPE_LABELS_SW[c.unit_type]) || humanize(c.unit_type)}
                 {c.measure_key ? <div className="muted small">{c.measure_key}</div> : null}
               </td>
               <td className="num">{num(c.units)}</td>
@@ -60,7 +66,7 @@ export function ComponentsTable({ components, currency }: { components: ClaimCom
         </tbody>
         <tfoot>
           <tr>
-            <th colSpan={5}>Total</th>
+            <th colSpan={5}>{sw ? 'Jumla' : 'Total'}</th>
             <th className="num">{money(total, currency)}</th>
           </tr>
         </tfoot>
@@ -90,6 +96,8 @@ function auditRows(rows: ClaimAudit[]) {
 }
 
 function RecordPaymentDialog({ claim, onDone, onClose }: { claim: ClaimDetail; onDone: (c: ClaimDetail) => void; onClose: () => void }) {
+  const { lang } = useAuth();
+  const sw = lang === 'sw';
   const outstanding = Math.max(0, Number(claim.amount) - Number(claim.amount_paid));
   const [amount, setAmount] = useState(String(outstanding));
   const [reference, setReference] = useState('');
@@ -113,44 +121,44 @@ function RecordPaymentDialog({ claim, onDone, onClose }: { claim: ClaimDetail; o
     if (result) onDone(result);
   };
   return (
-    <Modal title={`Record payment – claim #${claim.id}`} onClose={onClose}>
+    <Modal title={sw ? `Rekodi malipo – dai #${claim.id}` : `Record payment – claim #${claim.id}`} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
         <p className="notice notice-info">
-          Record a payment that was made outside this system (bank or wallet). Outstanding: <strong>{money(outstanding, claim.currency)}</strong>.
+          {sw ? 'Rekodi malipo yaliyofanyika nje ya mfumo huu (benki au pesa kwa simu). Kilichobaki:' : 'Record a payment that was made outside this system (bank or wallet). Outstanding:'} <strong>{money(outstanding, claim.currency)}</strong>.
         </p>
         <div className="grid-2">
-          <Field label="Amount" hint={`At most ${money(outstanding, claim.currency)} for a paid/partial record`}>
+          <Field label={sw ? 'Kiasi' : 'Amount'} hint={sw ? `Kisichozidi ${money(outstanding, claim.currency)} kwa rekodi ya malipo kamili au ya sehemu` : `At most ${money(outstanding, claim.currency)} for a paid/partial record`}>
             <input type="number" min="0.01" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} />
           </Field>
-          <Field label="Result">
+          <Field label={sw ? 'Matokeo' : 'Result'}>
             <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="PAID">Paid (full or final instalment)</option>
-              <option value="PARTIAL">Partial payment</option>
-              <option value="FAILED">Failed attempt</option>
+              <option value="PAID">{sw ? 'Imelipwa (kamili au awamu ya mwisho)' : 'Paid (full or final instalment)'}</option>
+              <option value="PARTIAL">{sw ? 'Malipo ya sehemu' : 'Partial payment'}</option>
+              <option value="FAILED">{sw ? 'Jaribio lililoshindikana' : 'Failed attempt'}</option>
             </select>
           </Field>
-          <Field label="Payment reference">
+          <Field label={sw ? 'Kumbukumbu ya malipo' : 'Payment reference'}>
             <input required minLength={2} maxLength={255} value={reference} onChange={(e) => setReference(e.target.value)} />
           </Field>
-          <Field label="Payment date">
+          <Field label={sw ? 'Tarehe ya malipo' : 'Payment date'}>
             <input type="date" required max={todayLocal()} value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
           </Field>
-          <Field label="Payment method (optional)" hint="HCP salaries must be paid into a bank account">
+          <Field label={sw ? 'Njia ya malipo (si lazima)' : 'Payment method (optional)'} hint={sw ? 'Mishahara ya HCP lazima ilipwe kwenye akaunti ya benki' : 'HCP salaries must be paid into a bank account'}>
             <select value={method} onChange={(e) => setMethod(e.target.value)}>
-              <option value="">Not specified</option>
-              <option value="BANK">Bank account</option>
-              <option value="MOBILE_WALLET">Mobile wallet</option>
+              <option value="">{sw ? 'Haijabainishwa' : 'Not specified'}</option>
+              <option value="BANK">{sw ? 'Akaunti ya benki' : 'Bank account'}</option>
+              <option value="MOBILE_WALLET">{sw ? 'Pesa kwa simu' : 'Mobile wallet'}</option>
             </select>
           </Field>
         </div>
-        {tooMuch && <Alert kind="warn">The amount is more than the outstanding balance.</Alert>}
+        {tooMuch && <Alert kind="warn">{sw ? 'Kiasi ni kikubwa kuliko salio lililobaki.' : 'The amount is more than the outstanding balance.'}</Alert>}
         <Alert>{error}</Alert>
         <div className="row">
           <button className="btn btn-primary" disabled={busy || tooMuch || !(value > 0) || reference.trim().length < 2}>
-            {busy ? 'Saving…' : 'Record payment'}
+            {busy ? (sw ? 'Inahifadhi…' : 'Saving…') : (sw ? 'Rekodi malipo' : 'Record payment')}
           </button>
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
-            Cancel
+            {sw ? 'Ghairi' : 'Cancel'}
           </button>
         </div>
       </form>
@@ -159,13 +167,15 @@ function RecordPaymentDialog({ claim, onDone, onClose }: { claim: ClaimDetail; o
 }
 
 function UploadProofDialog({ claim, onDone, onClose }: { claim: ClaimDetail; onDone: (c: ClaimDetail) => void; onClose: () => void }) {
+  const { lang } = useAuth();
+  const sw = lang === 'sw';
   const [file, setFile] = useState<File | null>(null);
   const [recordId, setRecordId] = useState('');
   const { busy, error, setError, run } = useAction();
   const choose = (f: File | null) => {
     setError(null);
-    if (f && !PROOF_TYPES.includes(f.type)) setError('Proof must be a PDF, PNG or JPEG file.');
-    else if (f && f.size > MAX_PROOF_BYTES) setError('The file is larger than 10 MB.');
+    if (f && !PROOF_TYPES.includes(f.type)) setError(sw ? 'Uthibitisho lazima uwe faili la PDF, PNG au JPEG.' : 'Proof must be a PDF, PNG or JPEG file.');
+    else if (f && f.size > MAX_PROOF_BYTES) setError(sw ? 'Faili ni kubwa kuliko MB 10.' : 'The file is larger than 10 MB.');
     setFile(f);
   };
   const valid = !!file && PROOF_TYPES.includes(file.type) && file.size <= MAX_PROOF_BYTES;
@@ -179,22 +189,31 @@ function UploadProofDialog({ claim, onDone, onClose }: { claim: ClaimDetail; onD
     if (result) onDone(result);
   };
   return (
-    <Modal title={`Upload proof – claim #${claim.id}`} onClose={onClose}>
+    <Modal title={sw ? `Pakia uthibitisho – dai #${claim.id}` : `Upload proof – claim #${claim.id}`} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
         <p className="notice">
-          Uploading proof does <strong>not</strong> mark the claim as paid. A payment must be recorded for the full amount, and if proof is added
-          afterwards someone must use “Confirm paid”.
+          {sw ? (
+            <>
+              Kupakia uthibitisho <strong>hakuweki</strong> dai kuwa limelipwa. Malipo lazima yarekodiwe kwa kiasi chote, na uthibitisho ukiongezwa
+              baadaye mtu lazima atumie “Thibitisha yamelipwa”.
+            </>
+          ) : (
+            <>
+              Uploading proof does <strong>not</strong> mark the claim as paid. A payment must be recorded for the full amount, and if proof is added
+              afterwards someone must use “Confirm paid”.
+            </>
+          )}
         </p>
-        <Field label="Proof file (PDF, PNG or JPEG, up to 10 MB)">
+        <Field label={sw ? 'Faili la uthibitisho (PDF, PNG au JPEG, hadi MB 10)' : 'Proof file (PDF, PNG or JPEG, up to 10 MB)'}>
           <input type="file" accept="application/pdf,image/png,image/jpeg" required onChange={(e) => choose(e.target.files?.[0] || null)} />
         </Field>
         {claim.payments.length > 0 && (
-          <Field label="Link to payment record (optional)">
+          <Field label={sw ? 'Unganisha na rekodi ya malipo (si lazima)' : 'Link to payment record (optional)'}>
             <select value={recordId} onChange={(e) => setRecordId(e.target.value)}>
-              <option value="">Not linked</option>
+              <option value="">{sw ? 'Haijaunganishwa' : 'Not linked'}</option>
               {claim.payments.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.payment_reference} · {money(p.amount, claim.currency)} · {humanize(p.status)}
+                  {p.payment_reference} · {money(p.amount, claim.currency)} · {(sw && PAYMENT_STATUS_LABELS_SW[p.status]) || humanize(p.status)}
                 </option>
               ))}
             </select>
@@ -203,10 +222,10 @@ function UploadProofDialog({ claim, onDone, onClose }: { claim: ClaimDetail; onD
         <Alert>{error}</Alert>
         <div className="row">
           <button className="btn btn-primary" disabled={busy || !valid}>
-            {busy ? 'Uploading…' : 'Upload proof'}
+            {busy ? (sw ? 'Inapakia…' : 'Uploading…') : (sw ? 'Pakia uthibitisho' : 'Upload proof')}
           </button>
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
-            Cancel
+            {sw ? 'Ghairi' : 'Cancel'}
           </button>
         </div>
       </form>
@@ -223,7 +242,9 @@ type Dialog =
 
 /** Claim detail drawer: components, budget line, exceptions, audit, workflow and payment actions (server-provided only). */
 export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; onClose: () => void; onChanged?: () => void }) {
-  const { hasRole } = useAuth();
+  const { hasRole, lang } = useAuth();
+  const sw = lang === 'sw';
+  const actionLabel = (a: string) => (sw && CLAIM_ACTION_LABELS_SW[a]) || CLAIM_ACTION_LABELS[a] || humanize(a);
   const isRpmWithoutFinanceRole = hasRole('RPM') && !hasRole('REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE');
   const { data: claim, error, loading, setData, reload } = useApi<ClaimDetail>(`/claims/${claimId}`);
   const canSeeBudgetDetails = hasRole('FHI360_FINANCE', 'CSO_FINANCE', 'RPM', 'OVERSIGHT');
@@ -248,7 +269,7 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
 
   const runAction = async (action: string, comment: string) => {
     const result = await api.post<ClaimDetail>(`/claims/${claimId}/actions/${action}`, { comment: comment || null });
-    updated(result, `${CLAIM_ACTION_LABELS[action] || humanize(action)}: done.`);
+    updated(result, `${actionLabel(action)}: ${sw ? 'imekamilika' : 'done'}.`);
   };
 
   const fetchProof = (proof: PaymentProof, open: boolean) =>
@@ -270,9 +291,9 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
   const estimateReached = !!budget && budget.estimated_amount != null && exposure > 0 && exposure >= budget.estimated_amount;
 
   return (
-    <Drawer title={`Claim #${claimId}`} onClose={onClose} wide>
+    <Drawer title={`${sw ? 'Dai' : 'Claim'} #${claimId}`} onClose={onClose} wide>
       {error && <Alert>{error}</Alert>}
-      {!claim && loading && <p className="muted">Loading…</p>}
+      {!claim && loading && <p className="muted">{sw ? 'Inapakia…' : 'Loading…'}</p>}
       {claim && (
         <div className="stack-lg">
           <div className="stack">
@@ -283,53 +304,53 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
             </div>
             <div className="stats">
               <div className="stat card">
-                <div className="stat-label">Claim amount</div>
+                <div className="stat-label">{sw ? 'Kiasi cha dai' : 'Claim amount'}</div>
                 <div className="stat-value">{money(claim.amount, claim.currency)}</div>
               </div>
               <div className="stat card">
-                <div className="stat-label">Payments recorded</div>
+                <div className="stat-label">{sw ? 'Malipo yaliyorekodiwa' : 'Payments recorded'}</div>
                 <div className="stat-value">{money(claim.amount_paid, claim.currency)}</div>
-                <div className="stat-hint">{paid ? label(PAYMENT_STATUS_LABELS, claim.payment_status) : 'Not marked paid'}</div>
+                <div className="stat-hint">{paid ? (sw && PAYMENT_STATUS_LABELS_SW[claim.payment_status]) || label(PAYMENT_STATUS_LABELS, claim.payment_status) : (sw ? 'Bado hayajawekwa kuwa yamelipwa' : 'Not marked paid')}</div>
               </div>
               <div className="stat card">
-                <div className="stat-label">Outstanding</div>
+                <div className="stat-label">{sw ? 'Kilichobaki' : 'Outstanding'}</div>
                 <div className="stat-value">{money(outstanding, claim.currency)}</div>
               </div>
             </div>
           </div>
           <Tabs
-            label="Claim view"
+            label={sw ? 'Mwonekano wa dai' : 'Claim view'}
             value={tab}
             onChange={setTab}
             tabs={[
-              { key: 'overview', label: 'Overview & actions' },
-              { key: 'trace', label: 'Trace to daily work' },
+              { key: 'overview', label: sw ? 'Muhtasari na hatua' : 'Overview & actions' },
+              { key: 'trace', label: sw ? 'Fuatilia hadi kazi ya kila siku' : 'Trace to daily work' },
             ]}
           />
           {claim.central_reviewer_id && (
-            <Section title="Central Finance Services review">
+            <Section title={sw ? 'Mapitio ya Huduma ya Fedha Kuu' : 'Central Finance Services review'}>
               <Facts items={[
-                ['Assigned reviewer', claim.central_reviewer_name],
-                ['Central approval', claim.central_reviewed_at ? dateTime(claim.central_reviewed_at) : 'Pending selected reviewer'],
+                [sw ? 'Mkaguzi aliyepangiwa' : 'Assigned reviewer', claim.central_reviewer_name],
+                [sw ? 'Idhini ya Fedha Kuu' : 'Central approval', claim.central_reviewed_at ? dateTime(claim.central_reviewed_at) : (sw ? 'Inasubiri mkaguzi aliyechaguliwa' : 'Pending selected reviewer')],
               ]} />
-              {claim.status === 'PENDING_CENTRAL_REVIEW' && <p className="notice notice-info">Payment recording is blocked until the selected Central Finance reviewer approves. Other Finance users cannot approve this assignment.</p>}
+              {claim.status === 'PENDING_CENTRAL_REVIEW' && <p className="notice notice-info">{sw ? 'Kurekodi malipo kumezuiwa hadi mkaguzi wa Fedha Kuu aliyechaguliwa aidhinishe. Watumiaji wengine wa Fedha hawawezi kuidhinisha kazi hii.' : 'Payment recording is blocked until the selected Central Finance reviewer approves. Other Finance users cannot approve this assignment.'}</p>}
               {claim.available_actions.includes('central_approve') && claim.work_log_id && <>
-                <h3>Approval print preview</h3>
+                <h3>{sw ? 'Muonekano wa kuchapisha kwa idhini' : 'Approval print preview'}</h3>
                 <p>{claim.staff_name} · {claim.period_label} · {money(claim.amount, claim.currency)}</p>
                 <ComponentsTable components={claim.components} currency={claim.currency} />
                 <PrintWorkLog logId={claim.work_log_id} embedded onReady={markPreviewReady} />
-                <button className="btn btn-secondary" onClick={() => navigate('print', claim.work_log_id!)}>Open printable report</button>
+                <button className="btn btn-secondary" onClick={() => navigate('print', claim.work_log_id!)}>{sw ? 'Fungua ripoti ya kuchapisha' : 'Open printable report'}</button>
                 <label className="row">
                   <input type="checkbox" checked={centralConfirmed} disabled={!previewReady} onChange={event => setCentralConfirmed(event.target.checked)} />
-                  I have reviewed the full Services report, provider and payment amount.
+                  {sw ? 'Nimekagua ripoti kamili ya Huduma, mtoa huduma na kiasi cha malipo.' : 'I have reviewed the full Services report, provider and payment amount.'}
                 </label>
                 <Alert>{centralAction.error}</Alert>
                 <button className="btn btn-primary" disabled={!previewReady || !centralConfirmed || centralAction.busy} onClick={async () => {
                   const result = await centralAction.run(() => api.post<ClaimDetail>(`/claims/${claim.id}/actions/central_approve`, {
                     review_confirmed: centralConfirmed, expected_amount: claim.amount,
                   }));
-                  if (result) updated(result, 'Central Finance approved. Services are ready for payment recording.');
-                }}>{centralAction.busy ? 'Approving…' : 'Approve Services for payment'}</button>
+                  if (result) updated(result, sw ? 'Fedha Kuu imeidhinisha. Huduma ziko tayari kwa kurekodi malipo.' : 'Central Finance approved. Services are ready for payment recording.');
+                }}>{centralAction.busy ? (sw ? 'Inaidhinisha…' : 'Approving…') : (sw ? 'Idhinisha Huduma kwa malipo' : 'Approve Services for payment')}</button>
               </>}
             </Section>
           )}
@@ -339,34 +360,38 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
             <>
           {claim.exception_reason && (
             <div className="alert alert-warn" role="status">
-              <strong>Exception – needs attention:</strong> {claim.exception_reason}
+              <strong>{sw ? 'Dosari – inahitaji kushughulikiwa:' : 'Exception – needs attention:'}</strong> {claim.exception_reason}
             </div>
           )}
           <Alert kind="success">{notice}</Alert>
           {estimateReached && budget && (
             <Alert kind="warn">
-              Soft estimate reached for {budget.code}: {money(exposure, claim.currency)} exposure of {money(budget.estimated_amount!, claim.currency)} estimated. This is a planning warning only; it does not change claim actions or the hard-cap approval rule.
+              {sw
+                ? `Makadirio yamefikiwa kwa ${budget.code}: ${money(exposure, claim.currency)} zimetengwa kati ya ${money(budget.estimated_amount!, claim.currency)} zilizokadiriwa. Hili ni onyo la mipango tu; halibadilishi hatua za dai wala kanuni ya kikomo cha idhini.`
+                : `Soft estimate reached for ${budget.code}: ${money(exposure, claim.currency)} exposure of ${money(budget.estimated_amount!, claim.currency)} estimated. This is a planning warning only; it does not change claim actions or the hard-cap approval rule.`}
             </Alert>
           )}
           {financeReviewPending && (
             <p className="notice notice-info">
-              This claim was created from RM-approved work and is awaiting Regional Finance review of its funding source and amount. It is not routed or payable yet; finance will review it before routing.
+              {sw
+                ? 'Dai hili limeundwa kutoka kazi iliyoidhinishwa na RM na linasubiri Fedha ya Mkoa ikague chanzo chake cha fedha na kiasi. Bado halijatumwa kwa mlipaji wala haliwezi kulipwa; Fedha italikagua kabla ya kutumwa.'
+                : 'This claim was created from RM-approved work and is awaiting Regional Finance review of its funding source and amount. It is not routed or payable yet; finance will review it before routing.'}
             </p>
           )}
           {claim.payment_recipient && (
-            <Section title="Payment recipient · CSO verification">
+            <Section title={sw ? 'Mpokea malipo · uhakiki wa CSO' : 'Payment recipient · CSO verification'}>
               <Facts items={[
-                ['Recipient', claim.payment_recipient.name],
-                ['Payment method', claim.payment_recipient.payment_method],
-                ['Provider', claim.payment_recipient.payment_provider],
-                ['Account', claim.payment_recipient.payment_account],
-                ...(claim.payment_recipient.bank_branch ? [['Bank branch', claim.payment_recipient.bank_branch] as [string, React.ReactNode]] : []),
+                [sw ? 'Mpokeaji' : 'Recipient', claim.payment_recipient.name],
+                [sw ? 'Njia ya malipo' : 'Payment method', claim.payment_recipient.payment_method],
+                [sw ? 'Mtoa huduma ya malipo' : 'Provider', claim.payment_recipient.payment_provider],
+                [sw ? 'Akaunti' : 'Account', claim.payment_recipient.payment_account],
+                ...(claim.payment_recipient.bank_branch ? [[sw ? 'Tawi la benki' : 'Bank branch', claim.payment_recipient.bank_branch] as [string, React.ReactNode]] : []),
               ]} />
             </Section>
           )}
 
           {claim.available_actions.length > 0 && (
-            <Section title="Claim actions">
+            <Section title={sw ? 'Hatua za dai' : 'Claim actions'}>
               <div className="row">
                 {claim.available_actions.filter((a) => a !== 'central_approve' && (!financeReviewPending || !['mark_ready', 'export'].includes(a))).map((a) => (
                   <button
@@ -374,42 +399,42 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
                     className={`btn ${DESTRUCTIVE_ACTIONS.has(a) ? 'btn-secondary' : 'btn-primary'}`}
                     onClick={() => setDialog({ kind: 'action', action: a })}
                   >
-                    {CLAIM_ACTION_LABELS[a] || humanize(a)}
+                    {actionLabel(a)}
                   </button>
                 ))}
               </div>
-              <p className="muted small">Each claim is decided individually. Approval must be by a different person from the preparer.</p>
+              <p className="muted small">{sw ? 'Kila dai linaamuliwa peke yake. Idhini lazima itolewe na mtu tofauti na aliyeandaa.' : 'Each claim is decided individually. Approval must be by a different person from the preparer.'}</p>
             </Section>
           )}
 
-          <Section title="Details">
+          <Section title={sw ? 'Taarifa' : 'Details'}>
             <Facts
               items={[
-                ['Staff', claim.staff_name],
-                ['Category', claim.category_name || (claim.category_id == null ? 'Not selected yet' : `Category #${claim.category_id}`)],
-                ['Period', claim.period_label],
-                ['Payor', claim.payor_name],
-                ['Executor (pays)', claim.executor_name],
+                [sw ? 'Mtumishi' : 'Staff', claim.staff_name],
+                [sw ? 'Kategoria' : 'Category', claim.category_name || (claim.category_id == null ? (sw ? 'Bado haijachaguliwa' : 'Not selected yet') : `${sw ? 'Kategoria' : 'Category'} #${claim.category_id}`)],
+                [sw ? 'Kipindi' : 'Period', claim.period_label],
+                [sw ? 'Mlipaji' : 'Payor', claim.payor_name],
+                [sw ? 'Mtekelezaji (analipa)' : 'Executor (pays)', claim.executor_name],
                 ...(!noBudgetPolicy && claim.budget_line_id != null
-                  ? [['Budget line', claim.budget_line ? `${claim.budget_line.code} – ${claim.budget_line.name}` : 'Not resolved'] as [string, React.ReactNode]]
+                  ? [[sw ? 'Kifungu cha bajeti' : 'Budget line', claim.budget_line ? `${claim.budget_line.code} – ${claim.budget_line.name}` : (sw ? 'Hakijabainishwa' : 'Not resolved')] as [string, React.ReactNode]]
                   : []),
-                ['Origin', humanize(claim.origin_channel)],
-                ['Work log', claim.work_log_id ? `#${claim.work_log_id}` : 'None (community claim)'],
-                ['Batch', claim.batch_reference],
-                ['Created', dateTime(claim.created_at)],
-                ['Community verified', claim.verified_at ? dateTime(claim.verified_at) : null],
-                ['Approved', claim.approved_at ? dateTime(claim.approved_at) : null],
+                [sw ? 'Chanzo' : 'Origin', (sw && claim.origin_channel && ORIGIN_LABELS_SW[claim.origin_channel]) || humanize(claim.origin_channel)],
+                [sw ? 'Kumbukumbu ya kazi' : 'Work log', claim.work_log_id ? `#${claim.work_log_id}` : (sw ? 'Hakuna (dai la jamii)' : 'None (community claim)')],
+                [sw ? 'Kundi la malipo' : 'Batch', claim.batch_reference],
+                [sw ? 'Imeundwa' : 'Created', dateTime(claim.created_at)],
+                [sw ? 'Uhakiki wa jamii' : 'Community verified', claim.verified_at ? dateTime(claim.verified_at) : null],
+                [sw ? 'Imeidhinishwa' : 'Approved', claim.approved_at ? dateTime(claim.approved_at) : null],
               ]}
             />
             {(claim.description || claim.evidence_text) && (
               <div>
-                <div className="field-label">{claim.work_type === 'COMMUNITY' ? 'Description' : 'Evidence'}</div>
+                <div className="field-label">{claim.work_type === 'COMMUNITY' ? (sw ? 'Maelezo' : 'Description') : (sw ? 'Ushahidi' : 'Evidence')}</div>
                 <p className="timeline-comment">{claim.description || claim.evidence_text}</p>
               </div>
             )}
             {claim.declared_units && Object.keys(claim.declared_units).length > 0 && (
               <div>
-                <div className="field-label">Declared units</div>
+                <div className="field-label">{sw ? 'Vipimo vilivyotangazwa' : 'Declared units'}</div>
                 <p className="timeline-comment">
                   {Object.entries(claim.declared_units)
                     .map(([k, v]) => `${humanize(k)}: ${num(v)}`)
@@ -419,21 +444,27 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
             )}
           </Section>
 
-          <Section title="Calculation">
+          <Section title={sw ? 'Ukokotoaji' : 'Calculation'}>
             <ComponentsTable components={claim.components} currency={claim.currency} />
             {claim.calculation_snapshot ? (
               <p className="muted small">
-                Authorized calculation frozen at approval ({dateTime(claim.calculation_snapshot.authorized_at)}): route {claim.calculation_snapshot.route},{' '}
-                {money(claim.calculation_snapshot.amount, claim.currency)}. Later rate changes do not alter it.
+                {sw ? (
+                  `Ukokotoaji ulioidhinishwa ulifungwa wakati wa idhini (${dateTime(claim.calculation_snapshot.authorized_at)}): njia ${claim.calculation_snapshot.route}, ${money(claim.calculation_snapshot.amount, claim.currency)}. Mabadiliko ya viwango baadaye hayaubadilishi.`
+                ) : (
+                  <>
+                    Authorized calculation frozen at approval ({dateTime(claim.calculation_snapshot.authorized_at)}): route {claim.calculation_snapshot.route},{' '}
+                    {money(claim.calculation_snapshot.amount, claim.currency)}. Later rate changes do not alter it.
+                  </>
+                )}
               </p>
             ) : (
-              <p className="muted small">Not yet approved: the amount is recalculated from active rate rules until approval.</p>
+              <p className="muted small">{sw ? 'Bado halijaidhinishwa: kiasi kinakokotolewa upya kutoka kanuni za viwango zinazotumika hadi idhini itolewe.' : 'Not yet approved: the amount is recalculated from active rate rules until approval.'}</p>
             )}
           </Section>
 
           {(claim.payments.length > 0 || claim.proofs.length > 0 || paymentActions.length > 0 || (hasRole('FHI360_FINANCE') && claim.payment_manifest?.can_record_with_proof)) && (
             <Section
-              title="Payment"
+              title={sw ? 'Malipo' : 'Payment'}
               actions={
                 <>
                   {paymentActions.map((a) => (
@@ -442,31 +473,37 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
                       className={`btn btn-sm ${a === 'record_payment' ? 'btn-primary' : 'btn-secondary'}`}
                       onClick={() => setDialog(a === 'record_payment' || a === 'upload_proof' ? { kind: a } : { kind: 'action', action: a })}
                     >
-                      {CLAIM_ACTION_LABELS[a] || humanize(a)}
+                      {actionLabel(a)}
                     </button>
                   ))}
                   {hasRole('FHI360_FINANCE') && claim.payment_manifest?.can_record_with_proof && (
                     <button className="btn btn-primary btn-sm" onClick={() => setDialog({ kind: 'services_proof_payment' })}>
-                      Services proof + payment
+                      {sw ? 'Uthibitisho + malipo ya Huduma' : 'Services proof + payment'}
                     </button>
                   )}
                 </>
               }
             >
               <p className="notice notice-info small">
-                Payments are made outside this system and recorded here. Uploading proof alone does not mark a payment as paid; a claim is “Paid” only
-                when payments for the full amount are recorded with the required proof.
+                {sw ? (
+                  'Malipo hufanyika nje ya mfumo huu na hurekodiwa hapa. Kupakia uthibitisho pekee hakuweki malipo kuwa yamelipwa; dai linakuwa “Imelipwa” tu malipo ya kiasi chote yakirekodiwa pamoja na uthibitisho unaohitajika.'
+                ) : (
+                  <>
+                    Payments are made outside this system and recorded here. Uploading proof alone does not mark a payment as paid; a claim is “Paid” only
+                    when payments for the full amount are recorded with the required proof.
+                  </>
+                )}
               </p>
               {claim.payments.length > 0 ? (
                 <div className="table-wrap">
                   <table>
                     <thead>
                       <tr>
-                        <th>Reference</th>
-                        <th>Date</th>
-                        <th>Method</th>
-                        <th>Result</th>
-                        <th className="num">Amount</th>
+                        <th>{sw ? 'Kumbukumbu' : 'Reference'}</th>
+                        <th>{sw ? 'Tarehe' : 'Date'}</th>
+                        <th>{sw ? 'Njia' : 'Method'}</th>
+                        <th>{sw ? 'Matokeo' : 'Result'}</th>
+                        <th className="num">{sw ? 'Kiasi' : 'Amount'}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -476,7 +513,7 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
                           <td>{dateOnly(p.payment_date)}</td>
                           <td>{p.payment_method || '—'}</td>
                           <td>
-                            <StatusBadge status={p.status} />
+                            <StatusBadge status={p.status} label={sw ? PAYMENT_STATUS_LABELS_SW[p.status] : undefined} />
                           </td>
                           <td className="num">{money(p.amount, claim.currency)}</td>
                         </tr>
@@ -485,9 +522,9 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
                   </table>
                 </div>
               ) : (
-                <p className="muted">No payments recorded.</p>
+                <p className="muted">{sw ? 'Hakuna malipo yaliyorekodiwa.' : 'No payments recorded.'}</p>
               )}
-              <h3>Proof of payment</h3>
+              <h3>{sw ? 'Uthibitisho wa malipo' : 'Proof of payment'}</h3>
               {claim.proofs.length ? (
                 <ul className="stack" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                   {claim.proofs.map((p) => (
@@ -498,42 +535,42 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
                           <span className="proof-beneficiary-meta">
                             <strong>{p.beneficiary_snapshot.provider_name}</strong>
                             {p.beneficiary_snapshot.services?.length ? ` · ${p.beneficiary_snapshot.services.join(', ')}` : ''}
-                            {p.beneficiary_snapshot.provider_id != null && ` · Provider #${p.beneficiary_snapshot.provider_id}`}
+                            {p.beneficiary_snapshot.provider_id != null && ` · ${sw ? 'Mtoa huduma' : 'Provider'} #${p.beneficiary_snapshot.provider_id}`}
                             {(p.beneficiary_snapshot.claim_amount ?? p.beneficiary_snapshot.amount) != null &&
-                              ` · Claim ${money(p.beneficiary_snapshot.claim_amount ?? p.beneficiary_snapshot.amount, p.beneficiary_snapshot.currency)}`}
+                              ` · ${sw ? 'Dai' : 'Claim'} ${money(p.beneficiary_snapshot.claim_amount ?? p.beneficiary_snapshot.amount, p.beneficiary_snapshot.currency)}`}
                             {p.beneficiary_snapshot.payment_amount != null &&
-                              ` · Payment ${money(p.beneficiary_snapshot.payment_amount, p.beneficiary_snapshot.currency)}`}
+                              ` · ${sw ? 'Malipo' : 'Payment'} ${money(p.beneficiary_snapshot.payment_amount, p.beneficiary_snapshot.currency)}`}
                             {p.beneficiary_snapshot.amount_before_payment != null &&
-                              ` · Previously recorded ${money(p.beneficiary_snapshot.amount_before_payment, p.beneficiary_snapshot.currency)}`}
-                            {p.beneficiary_snapshot.payment_reference ? ` · Ref ${p.beneficiary_snapshot.payment_reference}` : ''}
+                              ` · ${sw ? 'Yaliyorekodiwa awali' : 'Previously recorded'} ${money(p.beneficiary_snapshot.amount_before_payment, p.beneficiary_snapshot.currency)}`}
+                            {p.beneficiary_snapshot.payment_reference ? ` · ${sw ? 'Kumb.' : 'Ref'} ${p.beneficiary_snapshot.payment_reference}` : ''}
                             {p.beneficiary_snapshot.payment_date ? ` · ${dateOnly(p.beneficiary_snapshot.payment_date)}` : ''}
-                            {p.beneficiary_snapshot.beneficiaries_confirmed && ' · Beneficiaries manually confirmed'}
+                            {p.beneficiary_snapshot.beneficiaries_confirmed && (sw ? ' · Wanufaika wamethibitishwa kwa mkono' : ' · Beneficiaries manually confirmed')}
                           </span>
                         )}
                       </span>
                       <span className="row">
                         <button className="btn btn-secondary btn-sm" disabled={proofAction.busy} onClick={() => fetchProof(p, true)}>
-                          Open
+                          {sw ? 'Fungua' : 'Open'}
                         </button>
                         <button className="btn btn-ghost btn-sm" disabled={proofAction.busy} onClick={() => fetchProof(p, false)}>
-                          Download
+                          {sw ? 'Pakua' : 'Download'}
                         </button>
                       </span>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="muted">No proof uploaded.</p>
+                <p className="muted">{sw ? 'Hakuna uthibitisho uliopakiwa.' : 'No proof uploaded.'}</p>
               )}
               <Alert>{proofAction.error}</Alert>
             </Section>
           )}
 
-          {!!claim.review_feedback?.length && <Section title="Current review feedback">
+          {!!claim.review_feedback?.length && <Section title={sw ? 'Maoni ya sasa ya mapitio' : 'Current review feedback'}>
             {claim.review_feedback.map((feedback, index) => feedback.comment ? <p key={index}>{feedback.comment}</p> : null)}
           </Section>}
-          <AdminAudit><Section title="History">
-            <AuditTimeline rows={auditRows(claim.audit)} actionLabels={CLAIM_ACTION_LABELS} statusKind="claim" />
+          <AdminAudit><Section title={sw ? 'Historia' : 'History'}>
+            <AuditTimeline rows={auditRows(claim.audit)} actionLabels={sw ? { ...CLAIM_ACTION_LABELS, ...CLAIM_ACTION_LABELS_SW } : CLAIM_ACTION_LABELS} statusKind="claim" />
           </Section></AdminAudit>
             </>
           )}
@@ -542,20 +579,20 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
 
       {claim && dialog?.kind === 'action' && (
         <ReasonDialog
-          title={CLAIM_ACTION_LABELS[dialog.action] || humanize(dialog.action)}
+          title={actionLabel(dialog.action)}
           required={CLAIM_REASON_REQUIRED.has(dialog.action)}
           danger={DESTRUCTIVE_ACTIONS.has(dialog.action)}
-          confirmLabel={CLAIM_ACTION_LABELS[dialog.action] || humanize(dialog.action)}
-          description={actionHelp(dialog.action, claim)}
+          confirmLabel={actionLabel(dialog.action)}
+          description={actionHelp(dialog.action, claim, sw)}
           onConfirm={(comment) => runAction(dialog.action, comment)}
           onClose={() => setDialog(null)}
         />
       )}
       {claim && dialog?.kind === 'record_payment' && (
-        <RecordPaymentDialog claim={claim} onClose={() => setDialog(null)} onDone={(c) => updated(c, 'Payment recorded.')} />
+        <RecordPaymentDialog claim={claim} onClose={() => setDialog(null)} onDone={(c) => updated(c, sw ? 'Malipo yamerekodiwa.' : 'Payment recorded.')} />
       )}
       {claim && dialog?.kind === 'upload_proof' && (
-        <UploadProofDialog claim={claim} onClose={() => setDialog(null)} onDone={(c) => updated(c, 'Proof uploaded. This does not by itself mark the claim paid.')} />
+        <UploadProofDialog claim={claim} onClose={() => setDialog(null)} onDone={(c) => updated(c, sw ? 'Uthibitisho umepakiwa. Hii pekee haiweki dai kuwa limelipwa.' : 'Proof uploaded. This does not by itself mark the claim paid.')} />
       )}
       {claim && dialog?.kind === 'services_proof_payment' && claim.payment_manifest && (
         <ServicesProofPaymentDialog
@@ -563,7 +600,7 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
           onClose={() => setDialog(null)}
           onDone={(result) => {
             setDialog(null);
-            setNotice(`${result.paid_count} Services claim saved with proof.`);
+            setNotice(sw ? `Dai ${result.paid_count} la Huduma limehifadhiwa na uthibitisho.` : `${result.paid_count} Services claim saved with proof.`);
             reload();
             onChanged?.();
           }}
@@ -573,35 +610,47 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
   );
 }
 
-function actionHelp(action: string, claim: ClaimDetail): string {
+function actionHelp(action: string, claim: ClaimDetail, sw: boolean): string {
   switch (action) {
     case 'approve':
       if (noBudgetPolicyForClaim(claim)) {
+        if (sw) {
+          return claim.work_type === 'COMMUNITY'
+            ? 'Idhinisha dai la jamii lililohakikiwa kwa kiasi chake cha viwango vilivyoidhinishwa. Mgao wa bajeti ya mkoa hauhitajiki; malipo yanarekodiwa kando pamoja na uthibitisho.'
+            : 'Idhinisha kiasi cha Huduma kilichokaguliwa. Makato yoyote ya kila mwezi yanayohitajika hufanyika Fedha ya Mkoa inapowasilisha; malipo, uthibitisho na upatanisho hurekodiwa kando.';
+        }
         return claim.work_type === 'COMMUNITY'
           ? 'Approve the verified community claim using its captured approved-rate amount. No regional budget allocation is required; payment is recorded separately with proof.'
           : 'Approve the reviewed Services amount. Any required monthly deduction occurs at Regional Finance submission; payment, proof and reconciliation are recorded separately.';
       }
-      return `Approving commits ${money(claim.amount, claim.currency)} against the budget line. If the line is short the claim is held.`;
+      return sw
+        ? `Kuidhinisha kunatenga ${money(claim.amount, claim.currency)} kutoka kifungu cha bajeti. Kifungu kikipungukiwa, dai linazuiliwa.`
+        : `Approving commits ${money(claim.amount, claim.currency)} against the budget line. If the line is short the claim is held.`;
     case 'send_back':
-      return 'The claim returns to “Validation needed” with your reason shown as its exception.';
+      return sw ? 'Dai linarudi kwenye “Inahitaji uhakiki” na sababu yako itaonyeshwa kama dosari yake.' : 'The claim returns to “Validation needed” with your reason shown as its exception.';
     case 'cancel':
-      if (noBudgetPolicyForClaim(claim)) return 'Cancel this unpaid claim. Any monthly Services budget deduction is restored; external payments and proof remain separate records.';
-      return 'Cancelling releases any committed budget. This cannot be undone.';
+      if (noBudgetPolicyForClaim(claim)) return sw ? 'Ghairi dai hili ambalo halijalipwa. Makato yoyote ya bajeti ya Huduma ya mwezi yanarejeshwa; malipo ya nje na uthibitisho vinabaki kuwa rekodi tofauti.' : 'Cancel this unpaid claim. Any monthly Services budget deduction is restored; external payments and proof remain separate records.';
+      return sw ? 'Kughairi kunaachilia bajeti yoyote iliyotengwa. Hatua hii haiwezi kutenduliwa.' : 'Cancelling releases any committed budget. This cannot be undone.';
     case 'confirm_paid':
-      return 'Confirm that the recorded payments and uploaded proof cover the full amount.';
+      return sw ? 'Thibitisha kuwa malipo yaliyorekodiwa na uthibitisho uliopakiwa vinafikia kiasi chote.' : 'Confirm that the recorded payments and uploaded proof cover the full amount.';
     case 'reconcile':
-      return 'Reconciliation must be done by someone other than the person who recorded the payment.';
+      return sw ? 'Upatanisho lazima ufanywe na mtu tofauti na aliyerekodi malipo.' : 'Reconciliation must be done by someone other than the person who recorded the payment.';
     case 'verify_community':
-      return 'Confirm that the community service described in the evidence took place.';
+      return sw ? 'Thibitisha kuwa huduma ya jamii iliyoelezwa kwenye ushahidi ilifanyika.' : 'Confirm that the community service described in the evidence took place.';
     case 'mark_ready':
-      return 'The claim will be included in the next payment batch for its route.';
+      return sw ? 'Dai litajumuishwa kwenye kundi la malipo linalofuata la njia yake.' : 'The claim will be included in the next payment batch for its route.';
     case 'revalidate':
       if (noBudgetPolicyForClaim(claim)) {
+        if (sw) {
+          return claim.work_type === 'COMMUNITY'
+            ? 'Kokotoa upya kiasi cha kiwango cha jamii kilichoidhinishwa kutoka mipangilio ya sasa. Kifungu cha bajeti ya mkoa hakihitajiki.'
+            : 'Kokotoa upya kiasi cha kila siku cha Huduma kutoka viwango vilivyoidhinishwa. Kifungu cha bajeti hakihitajiki.';
+        }
         return claim.work_type === 'COMMUNITY'
           ? 'Recalculate the approved community-rate amount from the current configuration. No regional budget line is required.'
           : 'Recalculate the fixed daily Services amount from approved rates. No budget line is required.';
       }
-      return 'Recalculate the route, budget line and amount from the current configuration.';
+      return sw ? 'Kokotoa upya njia, kifungu cha bajeti na kiasi kutoka mipangilio ya sasa.' : 'Recalculate the route, budget line and amount from the current configuration.';
     default:
       return '';
   }

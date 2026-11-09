@@ -82,3 +82,8 @@ test('existing regional work continues without reopening unrelated global work',
   const existing = { id: 9, period_id: 7, work_type: 'PAYROLL' };
   expect(resolveWorkLogStart([period, regional], [existing], 'PAYROLL', day)).toEqual({ period: regional, existing });
 });
+
+test('a cancelled record does not block its month: starting again brings it back', () => {
+  const cancelled = { id: 40, period_id: 1, work_type: 'PAYROLL', status: 'CANCELLED' };
+  expect(resolveWorkLogMonth([period], [cancelled], 'PAYROLL', '2026-10', '2026-10-20')).toEqual({ period });
+});

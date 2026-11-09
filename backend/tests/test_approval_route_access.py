@@ -167,6 +167,11 @@ def test_finance_cannot_open_work_before_rm_approves_it(api, route, status, kind
         assert actions(api, user, log) is None, user
 
 
+def test_rm_gets_back_routed_work_whose_claim_was_cancelled(api, route):
+    log = route["log"]("chw1", "SERVICES", "ROUTED_FHI360")
+    assert in_queue(api, "rpm1", log) and "reopen" in actions(api, "rpm1", log)
+
+
 def test_regional_finance_opens_work_once_rm_has_approved_it(api, route):
     assert actions(api, route["finance"], route["log"]("chw1", "PAYROLL", "APPROVED")) is not None
 

@@ -46,7 +46,11 @@ def test_chw_tb_contact_tracing_counts_and_daily_rate_template(api, db, period, 
         "effective_start_date": period["start_date"],
     })
     assert [field["key"] for field in rate["field_definitions"]] == keys
+    offered = lambda: [item["key"] for item in api.get(f"/worklogs/{log['id']}", "chw1")["cadre"]["activities"]  # noqa: E731
+                       if item.get("label_en") == "TB Contact tracing"]
+    assert sorted(offered()) == sorted([service["key"], rate["key"]])  # the day already recorded keeps its service
     updated = api.put(path, "chw1", {**payload, "activity_key": rate["key"]})
+    assert offered() == [rate["key"]]  # once priced, the service is offered once: the priced copy
     rated = next(row for row in updated["entries"] if row["entry_date"] == str(day))
     assert float(rated["activity_snapshot"]["rate_value"]) == 100
     assert rated["activity_snapshot"]["unit_type"] == "PER_DAY"

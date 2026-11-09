@@ -40,7 +40,7 @@ def test_routed_services_csv_pdf_fields_and_scope(api, db, empty_period, v22):
     rows = list(csv.DictReader(StringIO(response.content.decode("utf-8-sig"))))
     assert rows[0]["Region"] and rows[0]["Facility"] and rows[0]["Services name"]
     assert rows[0]["Provider name"].startswith("'=")
-    assert rows[0]["Mobile number"] == "'+255700000001"
+    assert rows[0]["Mobile number"] == "+255700000001"  # usable in a bulk-pay upload; it is a number, not a formula
     assert rows[0]["Days worked"] == "1" and rows[0]["Payable days"] == "1"
     assert Decimal(rows[0]["Service amount"]) == 40000
     assert rows[-1]["Region"] == "TOTAL ALL SERVICES"
@@ -82,6 +82,14 @@ def test_multiple_services_count_worked_days_but_pay_only_one(api, db, empty_per
     assert (missing["Days worked"], missing["Service amount"], missing["Minimum days"], missing["Days short"]) == ("0", "0", "3", "3")
     assert Decimal(rows[-1]["Service amount"]) == claim.amount
     assert fetch(api, empty_period["start_date"][:7], "pdf").status_code == 200
+
+    # A claim Finance has not routed yet is not in the report or its total.
+    routed_status = claim.status
+    claim.status = "PENDING_ROUTING"
+    db.commit()
+    assert fetch(api, empty_period["start_date"][:7]).status_code == 404
+    claim.status = routed_status
+    db.commit()
 
     # The report follows the pay month: the 26th already belongs to the next month. Same test, as past months are limited.
     original = entry.entry_date

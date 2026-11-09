@@ -126,7 +126,7 @@ def edit(claim_id: int, body: EditIn, db: Session = Depends(get_db), current: Cu
         raise HTTPException(404, "Community claim not found")
     if claim.status not in {cl.DRAFT, cl.VALIDATION_NEEDED}:
         raise HTTPException(409, "Submitted community claims are locked; a reviewer must return the claim before it can be edited")
-    cc.context(db, current, claim.period_id, claim.category_id)
+    cc.context(db, current, claim.period_id, claim.category_id, existing=True)
     cc.check_authority(db, claim)
     snapshot = claim.calculation_snapshot
     components, amount, currency = cc.calculate(snapshot["components"], body.declared_units)

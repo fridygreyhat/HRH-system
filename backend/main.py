@@ -3,6 +3,7 @@ import logging
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import DataError, IntegrityError
@@ -38,8 +39,11 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["Content-Disposition"],
+    expose_headers=["Content-Disposition", "X-Download-Id"],
 )
+# Large lists only (a batch print of 200 timesheets is megabytes of JSON). Small responses such as sign-in stay
+# uncompressed, so a secret is never compressed alongside text an attacker could choose.
+app.add_middleware(GZipMiddleware, minimum_size=64 * 1024)
 
 
 # Input the database refuses is the caller's mistake, not a server error. The request's session rolls back on close.

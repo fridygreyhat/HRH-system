@@ -3,7 +3,8 @@ from datetime import date
 
 import pytest
 
-from backend.models import CSORegionAssignment, FinanceMonthlyReport, PaymentClaim, WorkLogMeasure, utcnow
+from backend.models import CadreFormField, CSORegionAssignment, FinanceMonthlyReport, PaymentClaim, WorkLogMeasure, utcnow
+from backend.services import monthly_report_approval
 from .test_finance_monthly_reports import all_cadres
 from .test_finance_missing_rates import unpriced_log
 from .test_v22_finance import v22
@@ -41,6 +42,8 @@ def test_monthly_signoff_exports_and_revisions(api, db, period, v22, work_type):
 
     review = api.get(path, rf)
     assert review["can_approve"] and review["report"]["totals"]["providers"] == 2
+    # Swahili indicator names travel beside the report: the signed digest covers the report alone.
+    assert isinstance(review["labels_sw"], dict) and review["digest"] == monthly_report_approval.digest(review["report"])
     assert review["report"]["totals"]["hours"] != "0"
     assert {p["cadre_code"] for p in review["report"]["providers"]} == {"CHW", "HCP"}
     payload = {"month": month, "region_id": region, "work_type": work_type,
@@ -128,3 +131,14 @@ def test_whole_region_report_includes_authorized_work_by_a_linked_finance_user(a
     report = monthly_summary(db, actor, str(entry.entry_date)[:7], v22["region_id"], "PAYROLL")
     assert report["totals"]["providers"] == 1
     assert report["providers"][0]["staff_id"] == log.staff_id
+
+
+def test_report_indicators_have_swahili_names_beside_the_report(db):
+    field = db.query(CadreFormField).filter(CadreFormField.label_sw.isnot(None), CadreFormField.label_sw != "").first()
+    report = {"cadres": [{"indicators": [{"key": field.key, "label": field.label_en, "total": "3"},
+                                         {"key": "no_such_field", "label": "Custom count", "total": "1"}]}],
+              "providers": []}
+    names = monthly_report_approval.labels_sw(db, report)
+    assert names[field.key] == field.label_sw
+    assert "no_such_field" not in names  # unknown indicators keep their recorded name
+    assert monthly_report_approval.labels_sw(db, {"cadres": [], "providers": []}) == {}

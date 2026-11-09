@@ -239,7 +239,7 @@ def test_approved_exported_handed_off_paid_are_distinct(api, period, db):
     _batch_for(api, "fhifin1", "A", claim["id"])
     claim = api.get(f"/claims/{claim['id']}", "fhifin1")
     assert (claim["status"], claim["payment_status"]) == ("EXPORTED", "PENDING")
-    api.call("POST", f"/claims/{claim['id']}/proofs", "fhifin1", files={"file": ("p.png", b"\x89PNG fake", "image/png")})
+    api.call("POST", f"/claims/{claim['id']}/proofs", "fhifin1", files={"file": ("p.png", b"\x89PNG\r\n\x1a\n fake", "image/png")})
     assert api.get(f"/claims/{claim['id']}", "fhifin1")["payment_status"] == "PENDING"  # proof alone ≠ paid
     claim = api.post(f"/claims/{claim['id']}/payments", "fhifin1", {"amount": claim["amount"], "payment_reference": "FHI-77", "payment_date": "2023-03-01"})
     assert claim["payment_status"] == "PAID"  # payment action + proof

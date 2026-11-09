@@ -60,6 +60,19 @@ EVENTS: dict[str, dict] = {
         "en": "HRH: The {period} work log for {provider} was returned to you for re-review: {comment}",
         "sw": "HRH: Kumbukumbu ya kazi ya {provider} ya {period} imerudishwa kwako kwa mapitio upya: {comment}",
     },
+    "PAYMENT_DETAILS_CODE": {
+        "recipient": "Provider, on their registered phone",
+        "variables": ["code", "minutes"],
+        "protected": True,  # transactional code: not editable, body never stored or logged
+        "en": "HRH: Code {code} confirms a change to your payment details. It expires in {minutes} minutes. Do not share it. If you did not ask for this, tell your supervisor now.",
+        "sw": "HRH: Namba {code} inathibitisha kubadilisha taarifa zako za malipo. Itaisha baada ya dakika {minutes}. Usimpe mtu yeyote. Kama hukuomba, mjulishe msimamizi wako sasa.",
+    },
+    "PAYMENT_DETAILS_CHANGED": {
+        "recipient": "Provider, on their registered phone",
+        "variables": [],
+        "en": "HRH: Your payment details were changed. If this was not you, contact your administrator now.",
+        "sw": "HRH: Taarifa zako za malipo zimebadilishwa. Kama si wewe, wasiliana na msimamizi wako sasa.",
+    },
     "WORKLOG_REMINDER": {
         "recipient": "Currently assigned reviewer",
         "variables": ["provider", "period", "hours"],

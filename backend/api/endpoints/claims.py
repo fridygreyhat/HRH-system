@@ -59,7 +59,7 @@ class ActionIn(BaseModel):
 
 
 class PaymentIn(BaseModel):
-    amount: Decimal = Field(gt=0)
+    amount: Decimal = Field(gt=0, max_digits=15, decimal_places=2)
     payment_reference: str = Field(min_length=2, max_length=255)
     payment_date: date
     status: str = "PAID"
@@ -147,7 +147,7 @@ def services_proof_payment_eligible(
 
 
 @router.post("/services/proof-payment", status_code=201)
-async def services_proof_payment(
+def services_proof_payment(
     file: UploadFile = File(...),
     beneficiaries: str = Form(..., max_length=50_000),
     payment_reference: str = Form(..., max_length=200),
@@ -157,7 +157,7 @@ async def services_proof_payment(
     db: Session = Depends(get_db),
     current: CurrentUser = Depends(require_roles(FHI360_FINANCE)),
 ):
-    claim_ids = await service_proofs.record_with_proof(
+    claim_ids = service_proofs.record_with_proof(
         db, current, file, beneficiaries, payment_reference, payment_date,
         beneficiaries_confirmed, payment_method,
     )
@@ -285,7 +285,11 @@ def create_claim(body: ClaimCreate, db: Session = Depends(get_db), current: Curr
 
 @router.get("/{claim_id}")
 def get_claim(claim_id: int, db: Session = Depends(get_db), current: CurrentUser = Depends(get_current_user)):
-    return _detail(db, current, _get(db, current, claim_id))
+    detail = _detail(db, current, _get(db, current, claim_id))
+    if detail["payment_recipient"]:
+        system_audit.record(db, current, "claim", claim_id, "view_payment_recipient")
+        db.commit()
+    return detail
 
 
 @router.get("/{claim_id}/trace")
@@ -319,7 +323,7 @@ def record_payment(claim_id: int, body: PaymentIn, db: Session = Depends(get_db)
 
 
 @router.post("/{claim_id}/proofs", status_code=201)
-async def upload_proof(
+def upload_proof(
     claim_id: int,
     file: UploadFile = File(...),
     payment_record_id: Optional[int] = Form(default=None),
@@ -327,7 +331,9 @@ async def upload_proof(
     current: CurrentUser = Depends(get_current_user),
 ):
     claim = _get(db, current, claim_id, lock=True)
-    await pay.store_proof(db, current, claim, file, payment_record_id)
+    if pay.services_claim(claim):
+        raise HTTPException(409, "Services are paid through Services proof + payment, which matches the proof to each provider and amount.")
+    pay.store_proof(db, current, claim, file, payment_record_id)
     db.commit()
     return _detail(db, current, claim)
 

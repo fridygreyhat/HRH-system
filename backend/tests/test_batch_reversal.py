@@ -1,7 +1,7 @@
 """Central Finance can undo an unpaid Route A export without losing its record."""
 import pytest
 
-from backend.models import ClaimAudit, MonthlyServiceBudget, PaymentClaim, PayrollBatch
+from backend.models import ClaimAudit, MonthlyServiceBudget, PaymentClaim, PayrollBatch, PaymentProof, User
 from .test_claims import _batch_for
 from .test_finance_monthly_reports import all_cadres
 from .test_named_central_review import reviewed
@@ -69,18 +69,32 @@ def test_reversed_claim_can_join_a_new_batch(api, db, empty_period, v22):
     assert api.get(f"/batches/{batch['id']}", "fhifin1")["status"] == "REVERSED"
 
 
-@pytest.mark.parametrize("evidence", ["payment", "failed_payment", "proof"])
+def test_a_failed_payment_does_not_freeze_the_batch(api, db, empty_period, v22):
+    claim_id, batch = exported(api, db, empty_period, v22)
+    api.put("/provider-details/me", "chw1", {"mobile_money_number": "+255700000001"})
+    api.post(f"/claims/{claim_id}/payments", "fhifin1", {
+        "amount": 40000, "payment_reference": "REVERSAL-failed", "payment_date": empty_period["start_date"], "status": "FAILED"})
+    url = f"/batches/{batch['id']}"
+    assert api.get(url, "fhifin1")["can_reverse"] is True
+    api.post(f"{url}/reverse", "fhifin1", REASON)
+    db.expire_all()
+    assert db.get(PayrollBatch, batch["id"]).status == "REVERSED"
+
+
+@pytest.mark.parametrize("evidence", ["payment", "proof"])
 def test_payment_or_proof_blocks_reversal(api, db, empty_period, v22, evidence):
     claim_id, batch = exported(api, db, empty_period, v22)
     api.put("/provider-details/me", "chw1", {"mobile_money_number": "+255700000001"})
     if evidence == "proof":
-        api.call("POST", f"/claims/{claim_id}/proofs", "fhifin1",
-                 files={"file": ("proof.pdf", b"%PDF-1.4 test", "application/pdf")})
+        db.add(PaymentProof(claim_id=claim_id, storage_key="test-proof.pdf", original_filename="proof.pdf", content_type="application/pdf",
+                            size_bytes=4, sha256="0" * 64, uploaded_by=db.query(User).filter_by(username="fhifin1").one().id))
+        db.commit()
     else:
         api.post(f"/claims/{claim_id}/payments", "fhifin1", {
-            "amount": 40000, "payment_reference": f"REVERSAL-{evidence}", "payment_date": empty_period["start_date"],
-            "status": "FAILED" if evidence == "failed_payment" else "PAID",
-        })
+            "amount": 40000, "payment_reference": f"REVERSAL-{evidence}", "payment_date": empty_period["start_date"], "status": "PAID"})
+    if evidence == "payment":  # a retry with the same reference must not count twice
+        api.post(f"/claims/{claim_id}/payments", "fhifin1", {
+            "amount": 1, "payment_reference": "REVERSAL-payment", "payment_date": empty_period["start_date"], "status": "PARTIAL"}, expect=409)
     url = f"/batches/{batch['id']}"
     assert api.get(url, "fhifin1")["can_reverse"] is False
     api.post(f"{url}/reverse", "fhifin1", REASON, expect=409)

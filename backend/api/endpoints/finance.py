@@ -1,18 +1,20 @@
 """Assignment-aware Regional Finance routing, using the existing approval and budget gate."""
+from datetime import date
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from ...core import audit
 from ...core.roles import REGIONAL_FINANCE, FHI360_FINANCE, CSO_FINANCE
 from ...core.security import require_roles
 from ...core.serialize import to_dict
+from ...core.timeutil import local_today
 from ...db.session import get_db
 from ...models import Cadre, ClaimCategory, Facility, FundingSource, PaymentClaim, PayPeriod, Region, Staff, StaffAssignment, WorkLog
-from ...services import finance_gate, worklog_workflow as wf
+from ...services import finance_gate, payment_requests, worklog_workflow as wf
 from ...services.v22_scope import record_condition, regions_for
 from ...services import monthly_report_approval as monthly_reports
 from ...services.monthly_report_exports import csv_file, pdf_file
@@ -33,15 +35,76 @@ def export_services_payment_report(
     month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
     region_id: Optional[int] = Query(default=None, gt=0),
     format: Literal["csv", "pdf"] = "csv",
+    include_prf: bool = False,
     db: Session = Depends(get_db),
     current=Depends(require_roles(FHI360_FINANCE)),
 ):
     from ...services import services_finance_exports as exports
-    rows = exports.rows(db, current, month, region_id)
+    rows = exports.rows(db, current, month, region_id, include_prf)
     payload = exports.csv_file(rows) if format == "csv" else exports.pdf_file(rows, month)
+    download = exports.record_download(db, current, month, region_id, format, rows)
+    audit.record(db, current, "services_payment_report", month, "download",
+                 after={"format": format, "region_id": region_id, "rows": len(rows), "include_prf": include_prf, "download_id": download.id})
+    db.commit()
     return Response(payload, media_type="text/csv; charset=utf-8" if format == "csv" else "application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="services-payment-{month}.{format}"',
+                             "X-Download-Id": str(download.id),
                              "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+
+class PrfIn(BaseModel):
+    download_id: int = Field(gt=0)
+    prf_number: str = Field(min_length=1, max_length=50, pattern=r"^[A-Za-z0-9][A-Za-z0-9 /._-]*$")
+    prf_date: date
+    note: Optional[str] = Field(default=None, max_length=1000)
+
+    @field_validator("prf_number", "note", mode="before")
+    @classmethod
+    def trim(cls, value):
+        return value.strip() or None if isinstance(value, str) else value
+
+
+@router.get("/services-payment-report/downloads/{download_id}")
+def services_report_download(download_id: int, db: Session = Depends(get_db), current=Depends(require_roles(FHI360_FINANCE))):
+    return payment_requests.download_out(db, current, download_id)
+
+
+@router.post("/services-payment-report/prf", status_code=201)
+def record_prf(body: PrfIn, db: Session = Depends(get_db), current=Depends(require_roles(FHI360_FINANCE))):
+    """After downloading the Services report, Central Finance records the PRF raised for exactly those claims."""
+    return payment_requests.record(db, current, body.download_id, body.prf_number, body.prf_date, body.note)
+
+
+@router.get("/services-payment-report/prf/{prf_id}/claims")
+def prf_beneficiaries(prf_id: int, db: Session = Depends(get_db), current=Depends(require_roles(FHI360_FINANCE))):
+    from ...services import services_payment_proofs
+    return services_payment_proofs.prf_beneficiaries(db, current, prf_id)
+
+
+@router.post("/services-payment-report/prf/{prf_id}/proof", status_code=201)
+def prf_proof_payment(
+    prf_id: int,
+    file: UploadFile = File(...),
+    payment_reference: str = Form(..., max_length=200),
+    payment_date: date = Form(...),
+    beneficiaries_confirmed: bool = Form(default=False),
+    payment_method: Optional[str] = Form(default=None),
+    db: Session = Depends(get_db),
+    current=Depends(require_roles(FHI360_FINANCE)),
+):
+    """After paying a PRF, Central Finance uploads one proof for all its unpaid claims; each gets its payment record."""
+    from ...services import services_payment_proofs
+    if payment_date > local_today():
+        raise HTTPException(422, "The payment date cannot be in the future.")
+    paid = services_payment_proofs.record_prf_proof(db, current, prf_id, file, payment_reference, payment_date,
+                                                    beneficiaries_confirmed, payment_method)
+    return {"paid_claim_ids": paid, "paid_count": len(paid)}
+
+
+@router.get("/services-payment-report/prfs")
+def list_prfs(month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"), db: Session = Depends(get_db),
+              current=Depends(require_roles(FHI360_FINANCE))):
+    return payment_requests.for_month(db, current, month)
 
 
 @router.get("/monthly-report")

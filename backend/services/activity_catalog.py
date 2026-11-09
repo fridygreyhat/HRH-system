@@ -135,12 +135,19 @@ def catalog_for_log(db, log) -> list[dict]:
         ActivityRate.item_type == log.work_type,
     ).order_by(ActivityRate.label_en).all()
     period = db.get(PayPeriod, log.period_id)
+    priced = []
     for row in rows:
         successor = db.query(ActivityRate).filter(ActivityRate.supersedes_id == row.id).first()
         if row.effective_start_date <= period.end_date and (not successor or successor.effective_start_date > period.start_date):
             item = definition_out(row)
             item["effective_end_date"] = str(successor.effective_start_date) if successor else None
-            result.append(item)
+            priced.append(item)
+    # A built-in Service priced from its template is offered once, as the priced copy. Days already recorded under the
+    # built-in still appear below (from their snapshot) and are still paid through the copy's amount.
+    if log.work_type == "SERVICES":
+        sources = {item["source_key"] for item in priced if item.get("source_key") and item.get("is_active")}
+        result = [item for item in result if item["key"] not in sources]
+    result.extend(priced)
     keys = {item["key"] for item in result}
     for entry in db.query(WorkLogEntry).filter(WorkLogEntry.work_log_id == log.id):
         if entry.activity_snapshot and entry.activity_key not in keys:

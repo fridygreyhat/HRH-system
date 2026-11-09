@@ -28,13 +28,13 @@ from . import claims as cl
 from .worklog_workflow import period_label
 
 ALLOWED_PROOF_TYPES = {"application/pdf": ".pdf", "image/png": ".png", "image/jpeg": ".jpg"}
+PROOF_SIGNATURES = {".pdf": b"%PDF-", ".png": b"\x89PNG\r\n\x1a\n", ".jpg": b"\xff\xd8\xff"}
 RECONCILER_ROLE = {"A": FHI360_FINANCE, "B": FHI360_FINANCE, "C": CSO_FINANCE}
 
 
 def executor_check(current: CurrentUser, claim: PaymentClaim) -> Optional[str]:
-    from .community_claims import is_direct
-    if is_direct(claim) and current.staff_id == claim.staff_id:
-        return "You cannot record payment for your own community claim"
+    if current.staff_id == claim.staff_id:
+        return "You cannot record payment for your own claim"
     role = cl.ROUTE_EXECUTOR_ROLE.get(claim.route_code or "")
     if not role or role not in current.roles:
         return f"Payments on Route {claim.route_code} are recorded by {role}"
@@ -75,7 +75,7 @@ def has_proof(db: Session, claim_id: int) -> bool:
     return db.query(PaymentProof).filter(PaymentProof.claim_id == claim_id).count() > 0
 
 
-def _services_claim(claim: PaymentClaim) -> bool:
+def services_claim(claim: PaymentClaim) -> bool:
     """Central Finance confirms Services payment with proof, whatever the general setting says."""
     return claim.workflow_version >= 2 and claim.work_type == "SERVICES"
 
@@ -86,7 +86,8 @@ def payment_actions(db: Session, current: CurrentUser, claim: PaymentClaim) -> l
     if can_execute and payable_check(db, claim) is None:
         if paid_total(db, claim.id) < claim.amount:
             actions.append("record_payment")
-        actions.append("upload_proof")
+        if not services_claim(claim):
+            actions.append("upload_proof")
     if can_execute and claim.payment_status == "PROOF_REQUIRED":
         actions.append("confirm_paid")
     if claim.payment_status == "PAID" and reconcile_check(db, current, claim) is None:
@@ -111,6 +112,9 @@ def record_payment(db: Session, current: CurrentUser, claim: PaymentClaim, amoun
     if staff:
         check_payment_method(db, staff.cadre_id, method)
     counted = status != "FAILED"
+    if counted and db.query(PaymentRecord.id).filter(PaymentRecord.claim_id == claim.id, PaymentRecord.payment_reference == reference,
+                                                     PaymentRecord.status.in_(("PAID", "PARTIAL"))).first():
+        raise HTTPException(status_code=409, detail="This payment reference is already recorded on this claim. A retry would count it twice.")
     already = paid_total(db, claim.id)
     if counted and already + amount > claim.amount:
         raise HTTPException(status_code=422, detail=f"Payment exceeds the outstanding balance of {claim.amount - already}")
@@ -136,7 +140,7 @@ def record_payment(db: Session, current: CurrentUser, claim: PaymentClaim, amoun
         claim.payment_status = "FAILED" if status == "FAILED" else "PENDING"
     elif total < claim.amount:
         claim.payment_status = "PARTIALLY_RECORDED"
-    elif (is_direct(claim) or _services_claim(claim) or get_setting(db, "payment_requires_proof")) and not has_proof(db, claim.id):
+    elif (is_direct(claim) or services_claim(claim) or get_setting(db, "payment_requires_proof")) and not has_proof(db, claim.id):
         claim.payment_status = "PROOF_REQUIRED"
     else:
         claim.payment_status = "PAID"
@@ -166,9 +170,8 @@ def confirm_paid(db: Session, current: CurrentUser, claim: PaymentClaim) -> None
 
 
 def reconcile_check(db: Session, current: CurrentUser, claim: PaymentClaim) -> Optional[str]:
-    from .community_claims import is_direct
-    if is_direct(claim) and current.staff_id == claim.staff_id:
-        return "You cannot reconcile your own community claim"
+    if current.staff_id == claim.staff_id:
+        return "You cannot reconcile your own claim"
     role = cl.finance_role(claim) if claim.workflow_version >= 2 else RECONCILER_ROLE.get(claim.route_code or "")
     if not role or role not in current.roles:
         return f"Reconciliation on Route {claim.route_code} is done by {role}"
@@ -204,44 +207,51 @@ def _mark_worklog_paid(db, current, claim):
                           details={"claim_id": claim.id, "payment_status": claim.payment_status})
 
 
-async def store_proof(db: Session, current: CurrentUser, claim: PaymentClaim, upload: UploadFile, payment_record_id: Optional[int]) -> PaymentProof:
+def _check_proof_target(db: Session, current: CurrentUser, claim: PaymentClaim, payment_record_id: Optional[int]) -> None:
     reason = executor_check(current, claim)
     if reason:
         raise HTTPException(status_code=403, detail=reason)
     allowed = {cl.READY, cl.EXPORTED} if claim.workflow_version >= 2 else {cl.EXPORTED, cl.HANDED_OFF}
     if claim.status not in allowed:
         raise HTTPException(status_code=409, detail="Proof can be attached only after approval and payment routing")
+    if payment_record_id and not db.query(PaymentRecord).filter(PaymentRecord.id == payment_record_id, PaymentRecord.claim_id == claim.id).count():
+        raise HTTPException(status_code=404, detail="Payment record not found on this claim")
+
+
+def save_proof_file(upload: UploadFile) -> dict:
+    """Check and store one proof document. Several claims may share it: one bank schedule can pay a whole PRF."""
     extension = ALLOWED_PROOF_TYPES.get(upload.content_type or "")
     if not extension:
         raise HTTPException(status_code=415, detail="Proof must be a PDF, PNG or JPEG file")
-    data = await upload.read(config.MAX_UPLOAD_BYTES + 1)
+    data = upload.file.read(config.MAX_UPLOAD_BYTES + 1)
     if len(data) > config.MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail=f"File is larger than {config.MAX_UPLOAD_BYTES // (1024 * 1024)} MB")
     if not data:
         raise HTTPException(status_code=422, detail="The file is empty")
-    if payment_record_id and not db.query(PaymentRecord).filter(PaymentRecord.id == payment_record_id, PaymentRecord.claim_id == claim.id).count():
-        raise HTTPException(status_code=404, detail="Payment record not found on this claim")
-
+    if not data.startswith(PROOF_SIGNATURES[extension]):
+        raise HTTPException(status_code=415, detail="The file's contents do not match its type. Upload a real PDF, PNG or JPEG.")
     key = f"{uuid.uuid4().hex}{extension}"
     os.makedirs(config.UPLOAD_DIR, exist_ok=True)
     with open(os.path.join(config.UPLOAD_DIR, key), "wb") as f:
         f.write(data)
-    proof = PaymentProof(
-        claim_id=claim.id,
-        payment_record_id=payment_record_id,
-        storage_key=key,
-        original_filename=os.path.basename(upload.filename or "proof")[:255],
-        content_type=upload.content_type,
-        size_bytes=len(data),
-        sha256=hashlib.sha256(data).hexdigest(),
-        uploaded_by=current.id,
-    )
+    return {"storage_key": key, "original_filename": os.path.basename(upload.filename or "proof")[:255],
+            "content_type": upload.content_type, "size_bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+
+
+def attach_proof(db: Session, current: CurrentUser, claim: PaymentClaim, stored: dict, payment_record_id: Optional[int]) -> PaymentProof:
+    _check_proof_target(db, current, claim, payment_record_id)
+    proof = PaymentProof(claim_id=claim.id, payment_record_id=payment_record_id, uploaded_by=current.id, **stored)
     db.add(proof)
     db.flush()
     cl.audit(db, current, claim, "upload_proof", cl.ROUTE_EXECUTOR_ROLE[claim.route_code], claim.status, claim.payment_status,
              details={"proof_id": proof.id, "sha256": proof.sha256, "filename": proof.original_filename})
     system_audit.record(db, current, "payment_proof", proof.id, "upload", after={"claim_id": claim.id, "sha256": proof.sha256})
     return proof
+
+
+def store_proof(db: Session, current: CurrentUser, claim: PaymentClaim, upload: UploadFile, payment_record_id: Optional[int]) -> PaymentProof:
+    _check_proof_target(db, current, claim, payment_record_id)
+    return attach_proof(db, current, claim, save_proof_file(upload), payment_record_id)
 
 
 def proof_path(proof: PaymentProof) -> str:

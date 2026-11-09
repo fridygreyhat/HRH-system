@@ -148,6 +148,12 @@ export const WORKLOG_STATUS_LABELS: Record<string, string> = {
   CANCELLED: 'Cancelled',
 };
 export const WORKLOG_STATUSES = Object.keys(WORKLOG_STATUS_LABELS);
+export const WORKLOG_STATUS_LABELS_SW: Record<string, string> = {
+  DRAFT: 'Rasimu', PENDING_CTC_VERIFICATION: 'Inasubiri CTC / CSO', PENDING_TECHNICAL_REVIEW: 'Inasubiri kitaalamu', PENDING_RPM_AUTHORIZATION: 'Inasubiri RM',
+  APPROVED: 'Imeidhinishwa', PENDING_FINANCE_REVIEW: 'Inasubiri Fedha', FINANCE_REVIEWED: 'Imekaguliwa na Fedha', ROUTED_FHI360: 'Imetumwa FHI360', ROUTED_CSO: 'Imetumwa CSO',
+  PAID: 'Imelipwa', RETURNED_TO_PROVIDER: 'Imerudishwa kwako', REJECTED: 'Imekataliwa', CANCELLED: 'Imefutwa',
+  PENDING_PROVIDER_OTP_CONFIRMATION: 'Inasubiri uthibitisho wa mtoa huduma', PENDING_ROUTING: 'Inasubiri kupangiwa mlipaji', BUDGET_HOLD: 'Zuio la kihistoria',
+};
 
 export const CLAIM_STATUS_LABELS: Record<string, string> = {
   PENDING_CENTRAL_REVIEW: 'Awaiting assigned Central Finance review',
@@ -166,6 +172,11 @@ export const CLAIM_STATUS_LABELS: Record<string, string> = {
   CANCELLED: 'Cancelled',
 };
 export const CLAIM_STATUSES = Object.keys(CLAIM_STATUS_LABELS);
+export const CLAIM_STATUS_LABELS_SW: Record<string, string> = {
+  PENDING_CENTRAL_REVIEW: 'Inasubiri mapitio ya Fedha Kuu', DRAFT: 'Rasimu', VALIDATION_NEEDED: 'Inahitaji uhakiki', PENDING_COMMUNITY_VERIFICATION: 'Inasubiri uhakiki wa jamii',
+  AWAITING_APPROVAL: 'Inasubiri idhini', PENDING_FINANCE_REVIEW: 'Inasubiri Fedha', APPROVED: 'Imeidhinishwa', HELD: 'Zuio la kihistoria', BUDGET_HOLD: 'Zuio la kihistoria',
+  PENDING_ROUTING: 'Inasubiri kupangiwa mlipaji', READY: 'Tayari kwa malipo', EXPORTED: 'Imewekwa kwenye kundi la malipo', HANDED_OFF: 'Imekabidhiwa CSO', CANCELLED: 'Imefutwa',
+};
 
 export const PAYMENT_STATUS_LABELS: Record<string, string> = {
   NOT_STARTED: 'Not started',
@@ -177,6 +188,10 @@ export const PAYMENT_STATUS_LABELS: Record<string, string> = {
   RECONCILED: 'Reconciled',
 };
 export const PAYMENT_STATUSES = Object.keys(PAYMENT_STATUS_LABELS);
+export const PAYMENT_STATUS_LABELS_SW: Record<string, string> = {
+  NOT_STARTED: 'Haijaanza', PENDING: 'Inasubiri malipo', PARTIALLY_RECORDED: 'Imerekodiwa kwa sehemu', PROOF_REQUIRED: 'Inahitaji uthibitisho', PAID: 'Imelipwa',
+  PARTIAL: 'Malipo ya sehemu', FAILED: 'Imeshindikana', RECONCILED: 'Imepatanishwa',
+};
 
 export const LOCATION_LABELS: Record<string, string> = {
   WITHIN_GEOFENCE: 'Within facility area',
@@ -238,6 +253,27 @@ export const CLAIM_ACTION_LABELS: Record<string, string> = {
   reconcile: 'Reconcile',
 };
 
+export const CLAIM_ACTION_LABELS_SW: Record<string, string> = {
+  central_approve: 'Idhinisha Huduma kwa malipo',
+  create: 'Imeundwa',
+  verify_community: 'Hakiki huduma ya jamii',
+  revalidate: 'Hakiki upya',
+  submit: 'Wasilisha kwa idhini',
+  approve: 'Idhinisha',
+  send_back: 'Rudisha kwa uhakiki',
+  release: 'Achilia zuio la bajeti',
+  mark_ready: 'Weka tayari kwa malipo',
+  cancel: 'Ghairi dai',
+  export: 'Imewekwa kwenye kundi la malipo',
+  batch_reversed: 'Kundi la malipo limebatilishwa',
+  hand_off: 'Imekabidhiwa CSO',
+  cso_receive: 'CSO imethibitisha kupokea',
+  record_payment: 'Malipo yamerekodiwa',
+  upload_proof: 'Uthibitisho umepakiwa',
+  confirm_paid: 'Thibitisha yamelipwa',
+  reconcile: 'Patanisha',
+};
+
 export const WORKLOG_REASON_REQUIRED = new Set(['return', 'return_to_reviewer', 'reject', 'hold', 'release', 'reopen', 'decline']);
 export const CLAIM_REASON_REQUIRED = new Set(['send_back', 'cancel']);
 export const DESTRUCTIVE_ACTIONS = new Set(['return', 'return_to_reviewer', 'reject', 'hold', 'reopen', 'decline', 'cancel', 'send_back']);
@@ -266,7 +302,16 @@ export const ROUTE_LABELS: Record<string, string> = {
   B: 'CSO Payment · Facility payroll',
   C: 'CSO Payment · Community',
 };
-export const routeLabel = (r: string | null | undefined): string => (r ? ROUTE_LABELS[r] || r : 'No payment route');
+export const ROUTE_LABELS_SW: Record<string, string> = {
+  A: 'Malipo ya FHI360',
+  B: 'Malipo ya CSO · Payroll ya kituo',
+  C: 'Malipo ya CSO · Jamii',
+};
+export const routeLabel = (r: string | null | undefined, lang?: string): string => {
+  const sw = lang === 'sw';
+  if (!r) return sw ? 'Hakuna njia ya malipo' : 'No payment route';
+  return (sw && ROUTE_LABELS_SW[r]) || ROUTE_LABELS[r] || r;
+};
 
 export const roleLabel = (r: string | null | undefined): string => (r ? ROLE_LABELS[r] || humanize(r) : '—');
 export const label = (map: Record<string, string>, key: string | null | undefined): string => (key ? map[key] || humanize(key) : '—');

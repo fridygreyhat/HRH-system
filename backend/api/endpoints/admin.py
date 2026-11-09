@@ -477,16 +477,29 @@ def login_failures(username: Optional[str] = None, limit: int = Query(100, ge=1,
     } for row in rows]
 
 
-def _user_out(db: Session, user: User) -> dict:
-    cu = load_current_user(db, user)
-    return {
+def _users_out(db: Session, users: list[User]) -> list[dict]:
+    """Four queries for the whole list, however many users there are."""
+    ids = [user.id for user in users]
+    roles, scopes, cadres = {}, {}, {}
+    for user_id, role in db.query(UserRole.user_id, Role.name).join(Role, Role.id == UserRole.role_id).filter(UserRole.user_id.in_(ids)):
+        roles.setdefault(user_id, []).append(role)
+    for scope in db.query(UserScope).filter(UserScope.user_id.in_(ids)):
+        scopes.setdefault(scope.user_id, []).append(to_dict(scope))
+    for user_id, cadre_id in db.query(UserReviewCadre.user_id, UserReviewCadre.cadre_id).filter(UserReviewCadre.user_id.in_(ids)):
+        cadres.setdefault(user_id, []).append(cadre_id)
+    staff = dict(db.query(Staff.user_id, Staff.id).filter(Staff.user_id.in_(ids)).all())
+    return [{
         **to_dict(user, exclude=("hashed_password", "session_version")),
         "is_locked": bool(user.locked_until and user.locked_until > utcnow()),
-        "roles": sorted(get_user_roles(db, user.id)),  # as granted; a super admin's other roles are implied
-        "scopes": [to_dict(s) for s in cu.scopes],
-        "review_cadre_ids": sorted(cu.review_cadres),
-        "staff_id": cu.staff.id if cu.staff else None,
-    }
+        "roles": sorted(roles.get(user.id, [])),  # as granted; a super admin's other roles are implied
+        "scopes": scopes.get(user.id, []),
+        "review_cadre_ids": sorted(cadres.get(user.id, [])),
+        "staff_id": staff.get(user.id),
+    } for user in users]
+
+
+def _user_out(db: Session, user: User) -> dict:
+    return _users_out(db, [user])[0]
 
 
 def _guard_super_admin(db: Session, current: CurrentUser, user: User) -> None:
@@ -551,7 +564,7 @@ def unlinked_staff(db: Session = Depends(get_db), _: CurrentUser = Depends(requi
 
 @router.get("/users")
 def list_users(db: Session = Depends(get_db), _: CurrentUser = Depends(require_roles(SYSTEM_ADMIN))):
-    return [_user_out(db, u) for u in db.query(User).order_by(User.username)]
+    return _users_out(db, db.query(User).order_by(User.username).all())
 
 
 @router.post("/users", status_code=201)
@@ -582,6 +595,9 @@ def link_staff(user_id: int, body: StaffLinkIn, db: Session = Depends(get_db), c
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    _guard_super_admin(db, current, user)
+    if user.id == current.id:
+        raise HTTPException(status_code=403, detail="You cannot link your own account to a staff record; ask another administrator.")
     staff = _link_staff(db, current, user, body.staff_id, body.staff)
     system_audit.record(db, current, "user", user.id, "link_staff", after={"staff_id": staff.id})
     _commit(db)
@@ -700,6 +716,7 @@ def unlock(user_id: int, db: Session = Depends(get_db), current: CurrentUser = D
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    _guard_super_admin(db, current, user)
     user.failed_login_count, user.locked_until = 0, None
     system_audit.record(db, current, "user", user.id, "unlock")
     _commit(db)
@@ -719,10 +736,18 @@ class SettingIn(BaseModel):
     reason: str = Field(min_length=3)
 
 
+SETTING_LIMITS = {"login_max_failures": (1, 100), "login_lockout_minutes": (1, 1440), "reminder_after_hours": (1, 720),
+                  "reminder_repeat_hours": (1, 720), "sms_max_attempts": (1, 20)}
+
+
 @router.put("/settings/{key}")
 def put_setting(key: str, body: SettingIn, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(SYSTEM_ADMIN))):
     if key not in DEFAULTS:
         raise HTTPException(status_code=404, detail="Unknown setting")
+    if key in SETTING_LIMITS:
+        low, high = SETTING_LIMITS[key]
+        if isinstance(body.value, bool) or not isinstance(body.value, int) or not low <= body.value <= high:
+            raise HTTPException(status_code=422, detail=f"{key} must be a whole number from {low} to {high}")
     if key in {"max_daily_hours", "max_weekly_hours", "saturday_min_hours", "saturday_max_hours"}:
         if isinstance(body.value, bool) or not isinstance(body.value, (int, float)) or not 0 < body.value <= (120 if key == "max_weekly_hours" else 24):
             raise HTTPException(status_code=422, detail=f"{key} must be a number within its valid range")
@@ -747,7 +772,7 @@ def put_setting(key: str, body: SettingIn, db: Session = Depends(get_db), curren
 
 # --- SMS templates and outbox -------------------------------------------------------------
 
-TEMPLATE_EDITORS = (RPM, OVERSIGHT)
+TEMPLATE_EDITORS = (RPM,)  # Oversight is read-only; it can still read the templates
 
 
 @router.get("/sms-templates")

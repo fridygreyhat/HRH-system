@@ -84,7 +84,7 @@ export function Batches() {
                     key={b.id}
                     tabIndex={0}
                     onClick={() => setOpenId(b.id)}
-                    onKeyDown={(e) => e.key === 'Enter' && setOpenId(b.id)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenId(b.id); } }}
                     aria-label={`Open batch ${b.reference}`}
                   >
                     <td className="nowrap">

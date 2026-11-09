@@ -21,7 +21,7 @@ export function resolveWorkLogMonth(
   const overlapping = periods.filter(p => p.status !== 'ARCHIVED' && p.start_date <= last && p.end_date >= first);
   // A rejected/returned record must reopen even if its schedule is now closed,
   // partial-month, or predates a subsequently configured regional schedule.
-  const existing = logs.filter(log =>
+  const existing = logs.filter(log => log.status !== 'CANCELLED' &&
     (log.work_type === workType || log.work_type === 'LEGACY') &&
     overlapping.some(p => p.id === log.period_id));
   if (existing.length === 1) return {

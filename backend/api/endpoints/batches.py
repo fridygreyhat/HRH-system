@@ -69,7 +69,10 @@ def create_batches(body: BatchCreate, db: Session = Depends(get_db), current: Cu
 
 @router.get("/{batch_id}")
 def get_batch(batch_id: int, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(FHI360_FINANCE, CSO_FINANCE, OVERSIGHT))):
-    return _out(db, _get(db, current, batch_id), current, lines=True)
+    result = _out(db, _get(db, current, batch_id), current, lines=True)
+    system_audit.record(db, current, "batch", batch_id, "view_payment_lines")
+    db.commit()
+    return result
 
 
 @router.get("/{batch_id}/export.{fmt}")

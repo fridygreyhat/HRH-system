@@ -59,7 +59,7 @@ class WorkLog(Base):
     staff_id = Column(Integer, ForeignKey("staff.id"), nullable=False, index=True)
     period_id = Column(Integer, ForeignKey("pay_periods.id"), nullable=False, index=True)
     # The assignment in force for this period, captured at creation so rotations don't rewrite history.
-    assignment_id = Column(Integer, ForeignKey("staff_assignments.id"), nullable=False)
+    assignment_id = Column(Integer, ForeignKey("staff_assignments.id"), nullable=False, index=True)
     cadre_id = Column(Integer, ForeignKey("cadres.id"), nullable=False)
     workflow_version = Column(Integer, nullable=False, default=1, server_default="1")
     work_type = Column(String(20), nullable=False, default="LEGACY", server_default="LEGACY")

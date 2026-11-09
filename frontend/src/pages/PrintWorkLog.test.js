@@ -119,8 +119,26 @@ test('additional services are on the form, so its totals match the server totals
   const september8 = 14; // Row label first, then 26 Aug onward, so the 8th of September sits at index 14.
   expect(row('Clients').children[september8].textContent).toBe('9');
   expect(row('Clients').lastElementChild.textContent).toBe('9');
-  expect(row('Activity').children[september8].textContent).toBe('Main service + TB contact tracing');
+  // One activity all month is stated once in the header instead of in every date column.
+  expect(row('Activity')).toBeUndefined();
+  expect(container.querySelector('.paper-header').textContent).toContain('Activity: Main service + TB contact tracing');
   expect(row('Secondary facility').children[september8].textContent).toBe('Outreach post');
+});
+
+test('a month with different activities keeps the activity row, and empty rows are left off', async () => {
+  const log = record('HCP');
+  log.work_type = 'SERVICES';
+  log.cadre.activities = [{ key: 'main', label_en: 'Main service', label_sw: 'Huduma kuu' }, { key: 'other', label_en: 'Other service', label_sw: 'Nyingine' }];
+  log.entries = [
+    { ...log.entries[0], activity_key: 'main', activity_snapshot: {} },
+    { ...log.entries[0], id: 99, entry_date: '2026-09-09', activity_key: 'other', activity_snapshot: {} },
+  ];
+  await act(async () => root.render(<PrintWorkLog logId={19} reviewLog={log} embedded />));
+  const row = text => [...container.querySelectorAll('tbody tr')].find(item => item.textContent.includes(text));
+  expect(row('Activity').children[14].textContent).toBe('Main service');
+  expect(row('Activity').children[15].textContent).toBe('Other service');
+  expect(row('Secondary facility')).toBeUndefined();
+  expect(container.querySelector('.paper-header').textContent).not.toContain('Activity:');
 });
 
 test('the form opens on the first month that has work', async () => {

@@ -12,9 +12,11 @@ from sqlalchemy.exc import DataError
 from sqlalchemy.orm import Session
 
 from ..core import audit as system_audit
+from ..core.roles import PROVIDER
 from ..core.security import CurrentUser
 from ..core.serialize import mask_payment_fields, to_dict
 from ..core.settings import get_setting
+from ..core.timeutil import local_today
 from ..models import (
     Cadre,
     CommunityArea,
@@ -29,6 +31,9 @@ from ..models import (
     Ward,
     District,
     utcnow,
+    Role,
+    User,
+    UserRole,
 )
 
 # Changing these affects who pays, how much, or where; everyone requests them and a different HRH admin decides.
@@ -66,11 +71,23 @@ def check_payment_method(db: Session, cadre_id: Optional[int], method: Optional[
 EDITABLE_FIELDS = {"first_name", "middle_name", "last_name", "occupation", "occupation_other"} | PAYMENT_CRITICAL_FIELDS
 
 
+def apply_payment_correction(staff: Staff, changes: dict) -> None:
+    """Once a provider has saved details, payments read those fields, so an approved correction must land there too."""
+    if staff.payment_details_updated_at is None or not {"payment_account", "payment_provider", "payment_method"} & set(changes):
+        return
+    if staff.payment_method == "BANK":
+        staff.bank_name = staff.payment_provider or staff.bank_name
+        staff.bank_account_number = staff.payment_account or staff.bank_account_number
+    elif staff.payment_method == "MOBILE_WALLET":
+        staff.mobile_money_number = staff.payment_account or staff.mobile_money_number
+
+
 def update_staff(db: Session, current: CurrentUser, staff: Staff, changes: dict, reason: Optional[str]) -> Staff:
     validate_changes(db, staff, changes)
     before = {k: getattr(staff, k) for k in changes}
     for key, value in changes.items():
         setattr(staff, key, value)
+    apply_payment_correction(staff, changes)
     system_audit.record(db, current, "staff", staff.id, "update", before=mask_payment_fields(before), after=mask_payment_fields(changes), reason=reason)
     return staff
 
@@ -112,6 +129,10 @@ def rotate(db: Session, current: CurrentUser, staff: Staff, new: dict, effective
 
 def exit_staff(db: Session, current: CurrentUser, staff: Staff, end_date: date, reason: str) -> None:
     staff.status, staff.employment_end_date = "EXITED", end_date
+    # A provider-only login goes with the job. Anyone with another role keeps that role's access.
+    user = db.get(User, staff.user_id) if staff.user_id else None
+    if user and end_date <= local_today() and {name for name, in db.query(Role.name).join(UserRole, UserRole.role_id == Role.id).filter(UserRole.user_id == user.id)} <= {PROVIDER}:
+        user.is_active = False
     for row in db.query(StaffAssignment).filter(StaffAssignment.staff_id == staff.id, StaffAssignment.end_date.is_(None)):
         row.end_date = max(end_date, row.start_date)
         row.end_reason = f"Exit: {reason}"

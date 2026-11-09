@@ -395,6 +395,10 @@ keeping rates editable and deletable, without rewriting financial history.
   must block pricing, not silently discard a service. Guard overlapping/imported
   logs against a second live claim for the same provider-date.
   **Why:** the user confirmed the highest-amount daily rule.
+  Once a built-in Service is priced from its template (and that priced copy is
+  active), providers are offered only the priced copy, not the unpriced built-in
+  as well; days already recorded under the built-in keep showing it and are
+  still paid through the copy's amount.
   Payroll hourly-rate creation/revision is disabled; old rate definitions and
   existing financial snapshots stay read-only rather than being deleted.
 - Only Super Admin may delete a pay period, and only if no work logs, claims
@@ -448,7 +452,8 @@ keeping rates editable and deletable, without rewriting financial history.
 
 ### Publishing precautions
 
-- Publishing uses a Reserved VM with the existing API and notification worker.
+- Publishing uses a Reserved VM (`deploymentTarget = "gce"` in `.replit`) with the existing API and notification worker.
+  Confirm the Publishing screen shows Reserved VM, because it can overwrite this value.
   This keeps the hourly reminders running even when nobody visits the website;
   it incurs always-running compute rather than request-based autoscaling.
 - The publishing build runs `npm ci && npm run build`, and startup uses
@@ -531,6 +536,20 @@ keeping rates editable and deletable, without rewriting financial history.
 - Tanzania's fixed public holidays, Good Friday and Easter Monday are built in. Administrators add Eid al-Fitr, Eid al-Adha, Maulid and one-off days on **Public holidays** once announced, because they cannot be worked out in advance. Holidays show on provider calendars, printed and review timesheets, and salary files. They change no hours, pay or who can record work.
 - **Why:** the user asked that providers submit on the 25th, that the next month start on the 26th, and that holidays be seen on the timesheet.
 
+### Rules from the whole-system review
+- Services are paid only through **Services proof + payment**. The plain proof upload refuses them, so a claim cannot reach PAID without the matched provider, service and amount.
+- Proof files must really be PDF, PNG or JPEG by their contents. One payment reference counts once per claim.
+- Archived periods and cancelled logs no longer count towards hour limits or service minimums. Cancelling is not final: starting that month again restores the record as a draft.
+- Returned and rejected work can add missing days after the period closes. New drafts cannot.
+- A failed payment moves no money, so it does not block batch reversal. Routed work whose claim was cancelled comes back to RM to reopen.
+- A provider's payment details change only with a 6-digit SMS code sent to the registered phone, which only a second admin can change. The code covers those exact details and works once. An admin who resets a provider's password therefore still cannot redirect their pay. The limits are fixed in `backend/services/payment_detail_codes.py` and there is deliberately no setting to turn this off. A provider who gets no SMS asks for a payment correction, which needs a second admin.
+- Every saved change also sends an alert to the registered phone. An approved admin correction also updates the fields actually paid. Admins cannot link their own account to a staff record.
+- On phones, tables with three or more columns become cards (`frontend/src/stackTables.ts`). The official timesheet form keeps one column per day and scrolls inside its own box.
+- An exited provider-only login is disabled, and nobody who has left can edit work or payment details.
+- The seed no longer rewrites cadre form fields on start, so admin changes survive a restart.
+- A provider on two CSOs' signed reports in one month is flagged in each salary file.
+- **Why:** the user asked for every confirmed bug from the system review to be fixed.
+
 ### Home and navigation
 - Every login lands on **Home**: a greeting, the pay month with days left, and cards for that role's work with live counts, each opening the exact list in one click. Add a role's new main task to `TASKS` in `frontend/src/pages/Home.tsx`.
 - Menus offer only pages a role can use, in Kiswahili or English. Phones get a bottom bar with the role's main pages. The review list opens on the work type that has records waiting.
@@ -542,6 +561,29 @@ keeping rates editable and deletable, without rewriting financial history.
 - Providers see a progress card on their Services timesheet. Reviewers see the same card, and each shortfall is a review flag once submitted.
 - A provider below a minimum **is still paid in full**, with the shortfall shown: the user confirmed this. It never blocks submission or changes pay. The shortfall stays visible to the end: on the submitted timesheet that Central Finance approves from, and as Minimum days and Days short in the Services payment report, including a zero-day row for a service never worked.
 - **Why:** the user set monthly minimums per service per provider and asked to state the days when adding a service.
+
+### Printing a whole review list
+
+- **Print all** on Timesheet reviews prints every timesheet in the list being shown (same filters, same scope), for one pay
+  month, in one request: a register of every provider first, then each provider's paper form on its own A4 landscape page.
+- The register ends with the printer's name and space for a signature and date. Signer names on each form follow the single
+  print view's rule: only roles that may read the audit trail see who signed.
+- Up to 500 timesheets at once, the review list's own limit. Each batch print is audited with the work-log IDs it contained.
+
+### Central Finance PRF (Payment Request Form)
+
+- Every Services report download is recorded with the claims and totals it contained, and returns its download number.
+- After downloading, Central Finance records the PRF number, date and an optional note against that download. Each claim
+  can be on one PRF only (enforced by the database), so the next report leaves out claims that already have a PRF.
+- A PRF is refused if the download already has one, the number is taken, a claim was cancelled since, or the file included
+  claims already on a PRF ("include claims already on a PRF" is for reference only). Recording a PRF is audited.
+- A PRF records the request for payment. It does not mark anything paid: payment still needs matched proof.
+- After paying, Central Finance clicks **Upload proof of payment** on the PRF (Payment claims → Services payment report,
+  PRF and proof of payment). One document covers every unpaid claim on the PRF: each claim gets its payment record for its
+  outstanding amount and a proof row pointing at that one stored file. The upload is all-or-nothing; a claim not yet past
+  Central Finance review, or a payment method a cadre may not use (HCP is bank-only), refuses the whole upload.
+- Proof files are stored once and may be shared by many claims (`payment_proofs.storage_key` is no longer unique). The
+  older **Services proof + payment** button still pays up to 25 hand-picked claims without a PRF.
 
 ### CSO salary timesheets
 - CSO Finance downloads timesheets for salary payment from **CSO payments → Salary timesheets**, as PDF (summary plus one paper-style page per provider, for filing) or CSV (one row per provider, one column per day, for spreadsheets). The screen says which regions are signed; an unsigned region is never silently missing.

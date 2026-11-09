@@ -88,13 +88,33 @@ async function send(method: string, path: string, body?: Payload, options?: { si
   }
   if (!res.ok) {
     const parsed = await res.json().catch(() => null);
-    throw new ApiError(res.status, errorMessage(parsed, `${res.status} ${res.statusText}`));
+    const gateway = GATEWAY_STATUSES.includes(res.status) && !parsed;
+    throw new ApiError(res.status, gateway
+      ? 'The server did not answer in time. Check your connection and try again.'
+      : errorMessage(parsed, `${res.status} ${res.statusText}`));
   }
   return res;
 }
 
+/** Statuses a proxy or tunnel returns when it loses the app for a moment, before the app has seen the request. */
+const GATEWAY_STATUSES = [502, 503, 504];
+export const RETRY_DELAY_MS = { value: 1500 };
+
+/** A read that hits a dropped connection or a gateway timeout is tried once more; saves never are. */
+async function sendRetrying(method: string, path: string, body?: Payload, options?: { signal?: AbortSignal }): Promise<Response> {
+  try {
+    return await send(method, path, body, options);
+  } catch (e) {
+    const retryable = method === 'GET' && e instanceof ApiError && (e.status === 0 || GATEWAY_STATUSES.includes(e.status));
+    if (!retryable || options?.signal?.aborted) throw e;
+    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS.value));
+    if (options?.signal?.aborted) throw e;
+    return send(method, path, body, options);
+  }
+}
+
 async function json<T>(method: string, path: string, body?: Payload, options?: { signal?: AbortSignal }): Promise<T> {
-  const res = await send(method, path, body, options);
+  const res = await sendRetrying(method, path, body, options);
   if (res.status === 204) return undefined as unknown as T;
   const type = res.headers.get('content-type') || '';
   return (type.includes('application/json') ? res.json() : res.text()) as Promise<T>;
@@ -103,6 +123,8 @@ async function json<T>(method: string, path: string, body?: Payload, options?: {
 export interface BlobResult {
   blob: Blob;
   filename: string;
+  /** Response headers, for downloads the server records (X-Download-Id). */
+  headers?: Headers;
 }
 
 function filenameFrom(res: Response, fallback: string): string {
@@ -141,7 +163,7 @@ export const api = {
   /** Authenticated file download (never a public link). */
   blob: async (path: string, method: 'GET' | 'POST' = 'GET', fallbackName = 'download'): Promise<BlobResult> => {
     const res = await send(method, path, method === 'POST' ? {} : undefined);
-    return { blob: await res.blob(), filename: filenameFrom(res, fallbackName) };
+    return { blob: await res.blob(), filename: filenameFrom(res, fallbackName), headers: res.headers };
   },
   login: (username: string, password: string) =>
     json<{ access_token: string }>('POST', '/auth/login', new URLSearchParams({ username, password })),

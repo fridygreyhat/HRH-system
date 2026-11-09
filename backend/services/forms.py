@@ -185,7 +185,8 @@ def review_summary(db: Session, log: WorkLog, current=None) -> dict:
     history = (
         db.query(WorkLogEntry.entry_date, WorkLogEntry.hours_worked)
         .join(WorkLog, WorkLog.id == WorkLogEntry.work_log_id)
-        .filter(WorkLog.staff_id == log.staff_id, WorkLog.work_type == log.work_type,
+        .join(PayPeriod, PayPeriod.id == WorkLog.period_id)
+        .filter(WorkLog.staff_id == log.staff_id, WorkLog.work_type == log.work_type, WorkLog.status != "CANCELLED", PayPeriod.status != "ARCHIVED",
                 WorkLogEntry.entry_date >= week_start, WorkLogEntry.entry_date <= week_end)
         .all()
     )

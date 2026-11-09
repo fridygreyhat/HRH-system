@@ -212,3 +212,35 @@ test('providers are grouped by cadre, searchable and paginated independently; fi
     summary.cadres[1].provider_count = 1;
   }
 });
+
+test('the report opens on the last finished pay month, the one Regional Finance signs', () => {
+  jest.useFakeTimers().setSystemTime(new Date('2026-11-09T09:00:00+03:00'));
+  const { container, unmount } = mountReport();
+  try {
+    expect(container.querySelector('input[aria-label="Pay month"]').value).toBe('2026-10');
+    expect(requestedPath).toContain('month=2026-10');
+  } finally {
+    unmount();
+    jest.useRealTimers();
+  }
+});
+
+test('a Swahili reader gets the page, cadre names and known indicator names in Swahili', () => {
+  useAuth.mockImplementation(() => ({ lang: 'sw', hasRole: (...roles) => roleNames.some(role => roles.includes(role)) }));
+  envelopeOverrides = { labels_sw: { visits: 'Ziara za nyumbani' } };
+  const { container, unmount } = mountReport();
+  try {
+    const text = container.textContent;
+    expect(text).toContain('Ripoti ya kazi ya mwezi');
+    expect(text).toContain('Mhudumu wa Afya Ngazi ya Jamii');
+    expect(text).toContain('Ziara za nyumbani');
+    expect(text).toContain('Consultations'); // no Swahili name known: stays as recorded
+    expect(text).not.toContain('Monthly work report');
+    expect(text).not.toContain('Home visits');
+    act(() => [...container.querySelectorAll('button')].find(button => button.textContent === 'Pitia nakala ya kuchapisha ya idhini').click());
+    expect(container.querySelector('[role="dialog"]').textContent).toContain('Mtoa Huduma za Afya');
+  } finally {
+    unmount();
+    envelopeOverrides = {};
+  }
+});

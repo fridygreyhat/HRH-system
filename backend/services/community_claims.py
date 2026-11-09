@@ -27,10 +27,11 @@ def provider(current):
     return current.staff
 
 
-def context(db, current, period_id, category_id=None):
+def context(db, current, period_id, category_id=None, existing=False):
     staff = provider(current)
     period = db.query(PayPeriod).filter_by(id=period_id).with_for_update().populate_existing().first()
-    if not period or period.status != "OPEN":
+    # Only new claims need an open period. A claim already started must stay correctable after it closes.
+    if not period or (period.status != "OPEN" and not (existing and period.status == "CLOSED")):
         raise HTTPException(422, "Choose an open pay period")
     assignment = assignment_for_period(db, staff.id, period)
     if not assignment:
@@ -196,7 +197,7 @@ def perform(db, current, claim, action, comment):
     old, old_pay = claim.status, claim.payment_status
     role, details = CSO_FINANCE, None
     if action == "submit":
-        context(db, current, claim.period_id, claim.category_id)
+        context(db, current, claim.period_id, claim.category_id, existing=True)
         check_authority(db, claim)
         claim.status, claim.exception_reason = cl.PENDING_COMMUNITY, None
         role = PROVIDER

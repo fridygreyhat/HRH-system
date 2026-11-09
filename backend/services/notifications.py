@@ -30,6 +30,10 @@ def validate_template(event_name: str, text: str) -> None:
         raise HTTPException(status_code=422, detail=f"Unknown variables {sorted(unknown)}; allowed: {EVENTS[event_name]['variables']}")
     if len(text) > 320:
         raise HTTPException(status_code=422, detail="Keep SMS templates under 320 characters (2 SMS segments)")
+    try:
+        render(text, {name: "x" for name in EVENTS[event_name]["variables"]})
+    except (ValueError, IndexError, KeyError, AttributeError) as e:
+        raise HTTPException(status_code=422, detail=f"This template cannot be sent. Use only plain {{variable}} names: {e}")
 
 
 def active_template(db: Session, event_name: str, language: str) -> tuple[Optional[SMSTemplate], str]:
@@ -73,13 +77,19 @@ def enqueue(
         return None
     language = user.preferred_language if user else "sw"
     template, text = active_template(db, event_name, language)
+    try:
+        body = render(text, context)
+    except (ValueError, IndexError, KeyError, AttributeError):
+        # A bad template must never stop the approval or payment that triggered it.
+        logger.error("SMS template for %s could not be rendered; using the standard text", event_name)
+        template, body = None, render(EVENTS[event_name].get(language if language in LANGUAGES else "en") or EVENTS[event_name]["en"], context)
     row = SMSOutbox(
         event_name=event_name,
         user_id=user.id if user else None,
         destination_phone=phone,
         language=template.language if template else language,
         template_id=template.id if template else None,
-        message_body=render(text, context),
+        message_body=body,
         status="PENDING",
         next_attempt_at=utcnow(),
         related_type=related[0] if related else None,

@@ -129,7 +129,7 @@ class PaymentClaim(Base):
     work_type = Column(String(20), nullable=False, default="LEGACY", server_default="LEGACY")
     staff_id = Column(Integer, ForeignKey("staff.id"), nullable=False, index=True)
     category_id = Column(Integer, ForeignKey("claim_categories.id"))
-    period_id = Column(Integer, ForeignKey("pay_periods.id"), nullable=False)
+    period_id = Column(Integer, ForeignKey("pay_periods.id"), nullable=False, index=True)
     assignment_id = Column(Integer, ForeignKey("staff_assignments.id"), index=True)
     community_area_id = Column(Integer, ForeignKey("community_areas.id"))
     route_code = Column(String(5))
@@ -238,7 +238,7 @@ class PaymentProof(Base):
     id = Column(Integer, primary_key=True)
     claim_id = Column(Integer, ForeignKey("payment_claims.id"), nullable=False, index=True)
     payment_record_id = Column(Integer, ForeignKey("payment_records.id"))
-    storage_key = Column(String(255), nullable=False, unique=True)
+    storage_key = Column(String(255), nullable=False, index=True)  # one bank schedule can prove many claims
     original_filename = Column(String(255), nullable=False)
     content_type = Column(String(100), nullable=False)
     size_bytes = Column(Integer, nullable=False)

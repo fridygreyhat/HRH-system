@@ -27,7 +27,7 @@ function dayValues(entry?: WorkLogEntry): Record<string, number> {
 }
 
 /** Latest occurrence of `action` since the most recent submission (earlier sign-offs were superseded). */
-function signOff(log: WorkLogDetail, action: string): WorkLogAudit | null {
+function signOff(log: Pick<WorkLogDetail, 'audit'>, action: string): WorkLogAudit | null {
   let lastSubmit = -1;
   log.audit.forEach((a, i) => {
     if (a.action === 'submit') lastSubmit = i;
@@ -61,7 +61,6 @@ function SignBox({ titleSw, titleEn, row, name, at, done = false }: { titleSw: s
 
 /** Print-optimised mirror of the paper work-log form: dates as columns, rows for hours and each form field. */
 export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { logId: number; reviewLog?: WorkLogDetail; embedded?: boolean; onReady?: () => void }) {
-  const { me } = useAuth();
   const validId = Number.isSafeInteger(logId) && logId > 0;
   const { data, error, loading, reload } = useApi<WorkLogDetail>(validId && !reviewLog ? `/worklogs/${logId}` : null, { timeoutMs: 20000 });
   const log = reviewLog || data;
@@ -74,10 +73,6 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
   const months = Array.from(new Set(allDates.map(payMonth)));
   const firstWorkedMonth = months.find(value => log?.entries.some(entry => payMonth(entry.entry_date) === value));
   const month = months.includes(selectedMonth) ? selectedMonth : firstWorkedMonth || months[0];
-  const monthLabel = (value: string) => new Intl.DateTimeFormat('en-GB', {
-    month: 'long', year: 'numeric', timeZone: 'UTC',
-  }).format(new Date(`${value}-01T00:00:00Z`));
-
   const monthLabelText = embedded ? 'Month' : 'Print month';
   const toolbar = !embedded || months.length > 1 || error ? (
     <div className="print-toolbar no-print">
@@ -112,6 +107,26 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
 
   if (dateError) return <div>{toolbar}<Alert>{dateError} Contact an administrator to correct the pay period before printing.</Alert></div>;
 
+  return (
+    <div>
+      {toolbar}
+      <TimesheetPaper log={log} month={month} embedded={embedded} />
+    </div>
+  );
+}
+
+/** The fields one paper form needs; a batch print sends only these. */
+export type PrintableLog = Pick<WorkLogDetail, 'id' | 'version' | 'status' | 'period' | 'entries' | 'cadre' | 'assignment' | 'staff'
+  | 'occupation' | 'occupation_other' | 'section' | 'period_comment' | 'service_targets' | 'audit' | 'attested_at'>;
+
+export const monthLabel = (value: string) => new Intl.DateTimeFormat('en-GB', {
+  month: 'long', year: 'numeric', timeZone: 'UTC',
+}).format(new Date(`${value}-01T00:00:00Z`));
+
+/** One provider's month on the paper form: dates as columns, rows for hours and each form field. */
+export function TimesheetPaper({ log, month, embedded = false }: { log: PrintableLog; month: string; embedded?: boolean }) {
+  const { me } = useAuth();
+  const allDates = datesBetween(log.period.start_date, log.period.end_date);
   const dates = allDates.filter(date => payMonth(date) === month);
   const holidays = (log.period.holidays || []).filter(day => dates.includes(day.date));
   const holidayDates = new Set(holidays.map(day => day.date));
@@ -129,23 +144,16 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
     rows.push({ key: 'start', sw: 'Muda wa kuanza', en: 'Start time', cell: (d) => (byDate.get(d)?.start_time ? timeShort(byDate.get(d)?.start_time) : ''), total: '' });
     rows.push({ key: 'end', sw: 'Muda wa kumaliza', en: 'End time', cell: (d) => (byDate.get(d)?.end_time ? timeShort(byDate.get(d)?.end_time) : ''), total: '' });
   }
-  rows.push({
-    key: 'activity',
-    sw: 'Aina ya shughuli',
-    en: 'Activity',
-    cell: (d) => [
-      log.cadre.activities?.find((activity) => activity.key === byDate.get(d)?.activity_key)?.label_en,
-      ...additional(d).map((service) => service.activity.label_en),
-    ].filter(Boolean).join(' + '),
-    total: '',
-  });
-  rows.push({
-    key: 'location',
-    sw: 'Kituo kingine',
-    en: 'Secondary facility',
-    cell: (d) => Array.from(new Set([byDate.get(d)?.activity_location, ...additional(d).map((service) => service.activity_location)].filter(Boolean))).join(' + '),
-    total: '',
-  });
+  const activityOf = (d: string) => [
+    log.cadre.activities?.find((activity) => activity.key === byDate.get(d)?.activity_key)?.label_en,
+    ...additional(d).map((service) => service.activity.label_en),
+  ].filter(Boolean).join(' + ');
+  const locationOf = (d: string) => Array.from(new Set([byDate.get(d)?.activity_location, ...additional(d).map((service) => service.activity_location)].filter(Boolean))).join(' + ');
+  // The same activity every day is said once in the header rather than in every date column, so the month fits one page.
+  const activities = Array.from(new Set(dates.map(activityOf).filter(Boolean)));
+  const oneActivity = activities.length <= 1;
+  if (!oneActivity) rows.push({ key: 'activity', sw: 'Aina ya shughuli', en: 'Activity', cell: activityOf, total: '' });
+  if (dates.some((d) => locationOf(d))) rows.push({ key: 'location', sw: 'Kituo kingine', en: 'Secondary facility', cell: locationOf, total: '' });
   rows.push({
     key: 'hours',
     sw: 'Masaa uliyofanya kazi',
@@ -180,12 +188,11 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
     ['Ngazi ya mshahara', 'Salary scale', log.staff.salary_scale],
     ['Mwanzo wa kipindi', 'Period start', dateOnly(log.period.start_date)],
     ['Mwisho wa kipindi', 'Period end', dateOnly(log.period.end_date)],
+    ...(oneActivity ? [['Aina ya shughuli', 'Activity', activities[0]] as [string, string, React.ReactNode]] : []),
   ];
 
   return (
-    <div>
-      {toolbar}
-      <article className="paper" aria-label={embedded ? 'Timesheet' : 'Printable work log'}>
+    <article className="paper" aria-label={embedded ? 'Timesheet' : 'Printable work log'}>
         <h1>{log.cadre.form_title || log.cadre.name}</h1>
         <h2>{monthLabel(month)} · {payMonthDates(month)}</h2>
         <div className="paper-header">
@@ -254,14 +261,14 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
           {log.service_targets.filter(row => row.left).map(row => `${row.service}: ${num(row.days)} of ${num(row.min_days)} days, ${num(row.left)} short`).join(' · ')}.
           {' '}Payment is not affected.
         </div>}
-        <div className="paper-comments">
+        {(log.period_comment || comments.length > 0 || !['CHW', 'HCP', 'DATA_CLERK'].includes(log.cadre.code)) && <div className="paper-comments">
           {(log.period_comment || !['CHW', 'HCP', 'DATA_CLERK'].includes(log.cadre.code)) && <><b>MAONI / Comments:</b> {log.period_comment || ''}</>}
           {comments.map((e) => (
             <div key={e.id}>
               {dateOnly(e.entry_date)}: {e.comment}
             </div>
           ))}
-        </div>
+        </div>}
         <div className="signoff">
           <SignBox titleSw="Imeandaliwa na kuthibitishwa na" titleEn="Prepared and attested by provider" name={log.staff.name} at={log.attested_at} />
           <SignBox titleSw={a && !a.facility ? 'Idhini ya kitaalamu ya CSO' : 'Uhakiki wa CTC'} titleEn={a && !a.facility ? 'CSO Technical approval' : 'CTC verification'} row={signOff(log, 'verify')} done={AFTER_CTC.includes(log.status)} />
@@ -282,7 +289,6 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
         <p style={{ marginTop: '0.5rem' }}>
           Work log #{log.id} · version {log.version} · status {log.status} · printed {dateTime(new Date().toISOString())}. Approval is not payment.
         </p>
-      </article>
-    </div>
+    </article>
   );
 }

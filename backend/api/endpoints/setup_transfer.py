@@ -5,6 +5,7 @@ from fastapi.responses import Response
 from pydantic import Field
 from sqlalchemy.orm import Session
 
+from ...core import audit
 from ...core.security import CurrentUser, require_roles
 from ...core.roles import SUPER_ADMIN
 from ...db.session import get_db
@@ -44,7 +45,10 @@ class Apply(Review):
 
 @router.get("/export")
 def export(db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(SUPER_ADMIN))):
-    return Response(service.export_document(db).model_dump_json(), media_type="application/json",
+    document = service.export_document(db).model_dump_json()
+    audit.record(db, current, "setup_transfer", "export", "download")
+    db.commit()
+    return Response(document, media_type="application/json",
                     headers={"Content-Disposition": 'attachment; filename="hrh-setup-transfer.json"'})
 
 

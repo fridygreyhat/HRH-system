@@ -27,6 +27,7 @@ BANK_MISSING = "Bank details missing"
 SALARY_MISSING = "Salary amount missing"
 NOT_SIGNED = "Provider has not signed this timesheet"
 OTHER_ROW = "Salary is on this provider's other row"
+OTHER_CSO = "Also on another CSO's file this month: check before paying"
 FACILITY, COMMUNITY, NOT_ASSIGNED = "Facility", "Community", "Not assigned"
 # The CSO's on-screen list. Bank details and daily times stay in the downloaded, audited file.
 SCREEN_FIELDS = ("staff_id", "provider_name", "cadre_name", "facility_name", "community_area_name", "work_setting",
@@ -89,6 +90,8 @@ def with_payment(rows, people, amounts):
             paid.add(row["staff_id"])
         if not all(bank[key] for key in ("bank_name", "bank_account_number", "bank_branch")):
             checks.append(BANK_MISSING)
+        if row.get("other_cso"):
+            checks.append(OTHER_CSO)
         setting = work_setting(row)
         row.update(work_setting=setting, community_area_name=row.get("community_area_name"),
                    facility_name="—" if setting == COMMUNITY and row["facility_name"] == NOT_ASSIGNED else row["facility_name"],
@@ -113,6 +116,7 @@ def signed(db, current, organization, month, region_id=None, setting=None):
         if approved:
             published = approved.snapshot["organizations"].get(str(organization.id)) or {"providers": []}
             matching = [p for p in published["providers"] if p["cadre_code"] in cadres]
+            others = {p["staff_id"] for org, report in approved.snapshot["organizations"].items() if org != str(organization.id) for p in report["providers"]}
             signature = {"approved_by_name": approved.snapshot["approved_by_name"],
                          "approved_at": approved.approved_at.date().isoformat()}
             # A placement with no CSO is in no CSO's copy, so say so rather than leave the person silently unpaid.
@@ -120,7 +124,7 @@ def signed(db, current, organization, month, region_id=None, setting=None):
             without_cso = {p["staff_id"] for p in approved.snapshot["regional"]["providers"]
                            if p["cadre_code"] in cadres and p["staff_id"] not in placed}
             row.update(signed=True, providers=len(matching), providers_without_cso=len(without_cso), **signature)
-            rows.extend({**p, **signature, "included": row["included"]} for p in matching)
+            rows.extend({**p, **signature, "included": row["included"], "other_cso": p["staff_id"] in others} for p in matching)
         regions.append(row)
     rows.sort(key=lambda p: (p["region_name"], p["cadre_code"], p["provider_name"]))
     # Every row counts here, so choosing a region or setting cannot show a salary already on another row.

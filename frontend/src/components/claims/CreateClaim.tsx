@@ -10,6 +10,8 @@ import { RegionalFinanceNextSteps } from './RegionalFinanceNextSteps';
 
 type Mode = 'worklog' | 'community';
 
+const PERIOD_STATUS_LABELS_SW: Record<string, string> = { OPEN: 'Wazi', CLOSED: 'Kimefungwa', ARCHIVED: 'Kimehifadhiwa' };
+
 interface PaymentRouteRow {
   id: number;
   code: string;
@@ -17,13 +19,13 @@ interface PaymentRouteRow {
 }
 
 /** The units a claim without a work log must declare, derived from the category's ACTIVE rate rules. */
-function declaredKeys(rules: RateRule[], categoryId: number): { key: string; label: string }[] {
+function declaredKeys(rules: RateRule[], categoryId: number, sw: boolean): { key: string; label: string }[] {
   const keys = new Map<string, string>();
   rules
     .filter((r) => r.category_id === categoryId && r.status === 'ACTIVE')
     .forEach((r) => {
-      if (r.unit_type === 'PER_DAY') keys.set('days', 'Days of service');
-      else if (r.unit_type === 'PER_HOUR') keys.set('hours', 'Hours of service');
+      if (r.unit_type === 'PER_DAY') keys.set('days', sw ? 'Siku za huduma' : 'Days of service');
+      else if (r.unit_type === 'PER_HOUR') keys.set('hours', sw ? 'Masaa ya huduma' : 'Hours of service');
       else if (r.unit_type === 'PER_UNIT' && r.measure_key) keys.set(r.measure_key, `${r.component_name} (${humanize(r.measure_key)})`);
     });
   return Array.from(keys, ([key, text]) => ({ key, label: text }));
@@ -34,10 +36,10 @@ function declaredKeys(rules: RateRule[], categoryId: number): { key: string; lab
  * before the claim is created.
  */
 export function CreateClaim(props: { onClose: () => void; onCreated: (claim: ClaimDetail) => void }) {
-  const { hasRole } = useAuth();
+  const { hasRole, lang } = useAuth();
   if (hasRole('REGIONAL_FINANCE') && !hasRole('SUPER_ADMIN')) {
     return (
-      <Drawer title="Regional Finance" onClose={props.onClose}>
+      <Drawer title={lang === 'sw' ? 'Fedha ya Mkoa' : 'Regional Finance'} onClose={props.onClose}>
         <RegionalFinanceNextSteps />
       </Drawer>
     );
@@ -46,7 +48,8 @@ export function CreateClaim(props: { onClose: () => void; onCreated: (claim: Cla
 }
 
 function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCreated: (claim: ClaimDetail) => void }) {
-  const { hasRole } = useAuth();
+  const { hasRole, lang } = useAuth();
+  const sw = lang === 'sw';
   const [mode, setMode] = useState<Mode>('worklog');
   const categories = useApi<ClaimCategory[]>('/admin/claim-categories');
   const routes = useApi<PaymentRouteRow[]>('/admin/payment-routes');
@@ -70,7 +73,7 @@ function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCrea
   const log = eligible.data?.find((l) => String(l.id) === workLogId);
   const categoryOptions =
     mode === 'worklog' ? active.filter((c) => !log || !log.claimed_category_ids.includes(c.id)) : active.filter((c) => !c.requires_work_log);
-  const unitFields = useMemo(() => (categoryId && rules.data ? declaredKeys(rules.data, Number(categoryId)) : []), [categoryId, rules.data]);
+  const unitFields = useMemo(() => (categoryId && rules.data ? declaredKeys(rules.data, Number(categoryId), sw) : []), [categoryId, rules.data, sw]);
 
   const reset = () => setPreview(null);
   const body = () =>
@@ -111,22 +114,22 @@ function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCrea
   const loadError = categories.error || routes.error || eligible.error || staff.error || periods.error || rules.error;
 
   return (
-    <Drawer title="Prepare a claim" onClose={onClose} wide>
+    <Drawer title={sw ? 'Andaa dai' : 'Prepare a claim'} onClose={onClose} wide>
       <div className="stack-lg">
         <Tabs
-          label="Claim source"
+          label={sw ? 'Chanzo cha dai' : 'Claim source'}
           value={mode}
           onChange={switchMode}
           tabs={[
-            { key: 'worklog', label: 'From an approved work log' },
-            { key: 'community', label: 'Community claim (no work log)' },
+            { key: 'worklog', label: sw ? 'Kutoka kumbukumbu ya kazi iliyoidhinishwa' : 'From an approved work log' },
+            { key: 'community', label: sw ? 'Dai la jamii (bila kumbukumbu ya kazi)' : 'Community claim (no work log)' },
           ]}
         />
         <Alert>{loadError}</Alert>
         <form className="stack" onSubmit={runPreview}>
           {mode === 'worklog' ? (
             <div className="grid-2">
-              <Field label="Approved work log" hint="Only APPROVED work logs you can see are listed.">
+              <Field label={sw ? 'Kumbukumbu ya kazi iliyoidhinishwa' : 'Approved work log'} hint={sw ? 'Kumbukumbu za kazi ZILIZOIDHINISHWA unazoweza kuona ndizo pekee zinazoorodheshwa.' : 'Only APPROVED work logs you can see are listed.'}>
                 <select
                   required
                   value={workLogId}
@@ -136,16 +139,16 @@ function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCrea
                     reset();
                   }}
                 >
-                  <option value="">{eligible.loading ? 'Loading…' : 'Choose a work log'}</option>
+                  <option value="">{eligible.loading ? (sw ? 'Inapakia…' : 'Loading…') : (sw ? 'Chagua kumbukumbu ya kazi' : 'Choose a work log')}</option>
                   {(eligible.data || []).map((l) => (
                     <option key={l.id} value={l.id}>
                       #{l.id} · {l.staff_name} · {l.period_label}
-                      {l.claimed_category_ids.length ? ` (${l.claimed_category_ids.length} claim(s) already)` : ''}
+                      {l.claimed_category_ids.length ? (sw ? ` (tayari kuna madai ${l.claimed_category_ids.length})` : ` (${l.claimed_category_ids.length} claim(s) already)`) : ''}
                     </option>
                   ))}
                 </select>
               </Field>
-              <Field label="Claim category" hint="Categories already claimed for this work log are hidden.">
+              <Field label={sw ? 'Kategoria ya dai' : 'Claim category'} hint={sw ? 'Kategoria ambazo tayari zimedaiwa kwa kumbukumbu hii zimefichwa.' : 'Categories already claimed for this work log are hidden.'}>
                 <select
                   required
                   value={categoryId}
@@ -155,10 +158,10 @@ function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCrea
                     reset();
                   }}
                 >
-                  <option value="">Choose a category</option>
+                  <option value="">{sw ? 'Chagua kategoria' : 'Choose a category'}</option>
                   {categoryOptions.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name} {routeCode(c) ? `(${routeLabel(routeCode(c))})` : '(no payment route configured)'}
+                      {c.name} {routeCode(c) ? `(${routeLabel(routeCode(c), lang)})` : (sw ? '(hakuna njia ya malipo iliyowekwa)' : '(no payment route configured)')}
                     </option>
                   ))}
                 </select>
@@ -167,7 +170,7 @@ function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCrea
           ) : (
             <>
               <div className="grid-2">
-                <Field label="Claim category" hint="Only categories that do not require an HRH work log.">
+                <Field label={sw ? 'Kategoria ya dai' : 'Claim category'} hint={sw ? 'Kategoria zisizohitaji kumbukumbu ya kazi ya HRH pekee.' : 'Only categories that do not require an HRH work log.'}>
                   <select
                     required
                     value={categoryId}
@@ -177,15 +180,15 @@ function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCrea
                       reset();
                     }}
                   >
-                    <option value="">Choose a category</option>
+                    <option value="">{sw ? 'Chagua kategoria' : 'Choose a category'}</option>
                     {categoryOptions.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.name} {routeCode(c) ? `(${routeLabel(routeCode(c))})` : '(no payment route configured)'}
+                        {c.name} {routeCode(c) ? `(${routeLabel(routeCode(c), lang)})` : (sw ? '(hakuna njia ya malipo iliyowekwa)' : '(no payment route configured)')}
                       </option>
                     ))}
                   </select>
                 </Field>
-                <Field label="Staff member">
+                <Field label={sw ? 'Mtumishi' : 'Staff member'}>
                   <select
                     required
                     value={staffId}
@@ -194,7 +197,7 @@ function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCrea
                       reset();
                     }}
                   >
-                    <option value="">{staff.loading ? 'Loading…' : 'Choose a staff member'}</option>
+                    <option value="">{staff.loading ? (sw ? 'Inapakia…' : 'Loading…') : (sw ? 'Chagua mtumishi' : 'Choose a staff member')}</option>
                     {(staff.data || []).map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.legal_name} · {s.cadre}
@@ -203,7 +206,7 @@ function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCrea
                     ))}
                   </select>
                 </Field>
-                <Field label="Period">
+                <Field label={sw ? 'Kipindi' : 'Period'}>
                   <select
                     required
                     value={periodId}
@@ -212,16 +215,16 @@ function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCrea
                       reset();
                     }}
                   >
-                    <option value="">Choose a period</option>
+                    <option value="">{sw ? 'Chagua kipindi' : 'Choose a period'}</option>
                     {(periods.data || []).map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.period_label || `${p.start_date} – ${p.end_date}`} ({humanize(p.status)})
+                        {p.period_label || `${p.start_date} – ${p.end_date}`} ({(sw && PERIOD_STATUS_LABELS_SW[p.status]) || humanize(p.status)})
                       </option>
                     ))}
                   </select>
                 </Field>
               </div>
-              <Field label="Evidence of the service (required)">
+              <Field label={sw ? 'Ushahidi wa huduma (lazima)' : 'Evidence of the service (required)'}>
                 <textarea
                   rows={3}
                   required
@@ -234,13 +237,13 @@ function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCrea
                   }}
                 />
               </Field>
-              <p className="notice small">Do not enter patient names, ID numbers, phone numbers or identifiable case details.</p>
+              <p className="notice small">{sw ? 'Usiandike majina ya wagonjwa, namba za utambulisho, namba za simu au taarifa zinazomtambulisha mteja.' : 'Do not enter patient names, ID numbers, phone numbers or identifiable case details.'}</p>
               {categoryId && (
                 <fieldset>
-                  <legend>Declared units</legend>
-                  {rules.loading && <p className="muted">Loading rate rules…</p>}
+                  <legend>{sw ? 'Vipimo vilivyotangazwa' : 'Declared units'}</legend>
+                  {rules.loading && <p className="muted">{sw ? 'Inapakia kanuni za viwango…' : 'Loading rate rules…'}</p>}
                   {!rules.loading && unitFields.length === 0 && (
-                    <p className="muted small">This category's active rate rules need no declared units (fixed amounts only), or no rule is active.</p>
+                    <p className="muted small">{sw ? 'Kanuni za viwango zinazotumika za kategoria hii hazihitaji vipimo vilivyotangazwa (viasi maalum tu), au hakuna kanuni inayotumika.' : "This category's active rate rules need no declared units (fixed amounts only), or no rule is active."}</p>
                   )}
                   <div className="grid-3">
                     {unitFields.map((f) => (
@@ -266,39 +269,39 @@ function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCrea
           <Alert>{previewAction.error}</Alert>
           <div className="row">
             <button className="btn btn-secondary" disabled={!ready || previewAction.busy}>
-              {previewAction.busy ? 'Calculating…' : 'Preview calculation'}
+              {previewAction.busy ? (sw ? 'Inakokotoa…' : 'Calculating…') : (sw ? 'Angalia ukokotoaji' : 'Preview calculation')}
             </button>
           </div>
         </form>
 
         {preview && (
           <section className="card stack" aria-live="polite">
-            <h3>Preview – nothing has been created yet</h3>
+            <h3>{sw ? 'Muhtasari – bado hakuna kilichoundwa' : 'Preview – nothing has been created yet'}</h3>
             <div className="badges">
               <RouteBadge route={preview.route_code} />
             </div>
             <dl className="facts">
               <div>
-                <dt>Payor</dt>
+                <dt>{sw ? 'Mlipaji' : 'Payor'}</dt>
                 <dd>{preview.payor_name || '—'}</dd>
               </div>
               <div>
-                <dt>Executor (pays)</dt>
+                <dt>{sw ? 'Mtekelezaji (analipa)' : 'Executor (pays)'}</dt>
                 <dd>{preview.executor_name || '—'}</dd>
               </div>
               <div>
-                <dt>Budget line</dt>
-                <dd>{preview.budget_line_id ? `#${preview.budget_line_id}` : 'Not found'}</dd>
+                <dt>{sw ? 'Kifungu cha bajeti' : 'Budget line'}</dt>
+                <dd>{preview.budget_line_id ? `#${preview.budget_line_id}` : (sw ? 'Hakijapatikana' : 'Not found')}</dd>
               </div>
               <div>
-                <dt>Total</dt>
+                <dt>{sw ? 'Jumla' : 'Total'}</dt>
                 <dd>{money(preview.amount, currency)}</dd>
               </div>
             </dl>
             <ComponentsTable components={preview.components} currency={currency} />
             {preview.exceptions.length > 0 && (
               <div className="alert alert-warn" role="status">
-                <strong>Exceptions:</strong> the claim can be created but will need validation before it can be submitted.
+                <strong>{sw ? 'Dosari:' : 'Exceptions:'}</strong> {sw ? 'dai linaweza kuundwa lakini litahitaji uhakiki kabla ya kuwasilishwa.' : 'the claim can be created but will need validation before it can be submitted.'}
                 <ul>
                   {preview.exceptions.map((x) => (
                     <li key={x}>{x}</li>
@@ -307,18 +310,18 @@ function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCrea
               </div>
             )}
             {preview.route_code === 'C' && hasRole('FHI360_FINANCE') && !hasRole('CSO_FINANCE') && (
-              <Alert kind="info">CSO community payments are prepared by the assigned CSO's finance staff.</Alert>
+              <Alert kind="info">{sw ? 'Malipo ya jamii ya CSO yanaandaliwa na watumishi wa fedha wa CSO husika.' : "CSO community payments are prepared by the assigned CSO's finance staff."}</Alert>
             )}
             {preview.route_code && preview.route_code !== 'C' && !hasRole('FHI360_FINANCE') && (
-              <Alert kind="info">{routeLabel(preview.route_code)} claims are prepared by FHI360 Finance.</Alert>
+              <Alert kind="info">{sw ? `Madai ya ${routeLabel(preview.route_code, lang)} yanaandaliwa na Fedha ya FHI360.` : `${routeLabel(preview.route_code)} claims are prepared by FHI360 Finance.`}</Alert>
             )}
             <Alert>{createAction.error}</Alert>
             <div className="row">
               <button className="btn btn-primary" disabled={createAction.busy} onClick={create}>
-                {createAction.busy ? 'Creating…' : 'Create claim'}
+                {createAction.busy ? (sw ? 'Inaunda…' : 'Creating…') : (sw ? 'Unda dai' : 'Create claim')}
               </button>
               <button className="btn btn-ghost" onClick={onClose} disabled={createAction.busy}>
-                Cancel
+                {sw ? 'Ghairi' : 'Cancel'}
               </button>
             </div>
           </section>

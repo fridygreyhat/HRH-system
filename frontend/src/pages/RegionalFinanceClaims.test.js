@@ -13,7 +13,7 @@ jest.mock('../AuthContext', () => ({
 }));
 jest.mock('../hooks', () => ({
   useApi: jest.fn(() => ({ data: [], error: null, loading: false, reload: jest.fn() })),
-  useAction: jest.fn(() => ({ error: null, busy: false, run: jest.fn() })),
+  useAction: jest.fn(() => ({ error: null, busy: false, run: jest.fn(), setError: jest.fn() })),
 }));
 jest.mock('../components/claims/ClaimDrawer', () => ({
   ClaimDrawer: () => null, ComponentsTable: () => null,

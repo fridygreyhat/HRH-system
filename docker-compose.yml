@@ -1,5 +1,6 @@
 services:
   db:
+    restart: unless-stopped
     image: postgres:15
     environment:
       POSTGRES_USER: hrh_user
@@ -16,6 +17,7 @@ services:
       retries: 10
 
   backend:
+    restart: unless-stopped
     build:
       context: ./backend
       args:
@@ -55,6 +57,7 @@ services:
         condition: service_healthy
 
   worker:
+    restart: unless-stopped
     build:
       context: ./backend
     command: ["python", "-m", "backend.worker"]
@@ -67,6 +70,7 @@ services:
 
   # One URL for the whole system: http://localhost:3000 serves the app and proxies /api to the backend.
   frontend:
+    restart: unless-stopped
     build: ./frontend
     ports:
       - "3000:80"

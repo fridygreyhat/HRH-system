@@ -245,10 +245,10 @@ def reallocate(body: ReallocateIn, db: Session = Depends(get_db), current: Curre
 
 
 @router.post("/tracker/import")
-async def tracker_import(file: UploadFile = File(...), db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(FHI360_FINANCE))):
+def tracker_import(file: UploadFile = File(...), db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(FHI360_FINANCE))):
     """Import FHI360 activity-budget allocations from a tracker CSV export (columns: code,name,category,period_start,region,allocated_amount,external_ref)."""
     org = _fhi360_org(db)
-    content = await read_csv_upload(file)
+    content = read_csv_upload(file)
     reader = csv.DictReader(io.StringIO(content))
     missing = {"code", "name", "category", "period_start", "allocated_amount"} - set(reader.fieldnames or [])
     if missing:

@@ -66,6 +66,11 @@ const TASKS: Task[] = [
     hint: { en: 'Sign the Payroll report so the CSO can pay salaries', sw: 'Saini ripoti ya Payroll ili CSO walipe mishahara' },
   },
   {
+    key: 'central-prf', page: 'claims', icon: 'wallet', roles: ['FHI360_FINANCE'],
+    title: { en: 'PRF and proof of payment', sw: 'PRF na uthibitisho wa malipo' },
+    hint: { en: 'Download Services, record the PRF, then upload proof after paying', sw: 'Pakua Huduma, rekodi PRF, kisha pakia uthibitisho baada ya kulipa' },
+  },
+  {
     key: 'central-claims', page: 'claims', icon: 'receipt', roles: ['FHI360_FINANCE'],
     title: { en: 'Services for your approval', sw: 'Huduma za idhini yako' },
     hint: { en: 'Assigned to you by Regional Finance', sw: 'Umepewa na Fedha ya Mkoa' },

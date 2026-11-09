@@ -10,7 +10,8 @@ import { PayPeriod, WorkLogDetail, WorkLogSummary } from '../types';
 import { resolveWorkLogMonth, workMonthLabel } from './workLogStart';
 
 export function MyWorkLogs() {
-  const { me, t } = useAuth();
+  const { me, t, lang } = useAuth();
+  const sw = lang === 'sw';
   const isHcp = me?.cadre?.code === 'HCP';
   const isChw = me?.cadre?.code === 'CHW';
   const logs = useApi<WorkLogSummary[]>('/worklogs?mine=true');
@@ -83,14 +84,14 @@ export function MyWorkLogs() {
         <div className="worklog-start-intro">
           <div>
             <span className="worklog-start-kicker">{t('startLog')}</span>
-            <h2>{isHcp ? 'Timesheet / activity type' : 'Choose a work log'}</h2>
-            <p>Choose Services or Payroll and the month. Rejected work reopens in the same record for correction.</p>
+            <h2>{sw ? 'Chagua kumbukumbu ya kazi' : isHcp ? 'Timesheet / activity type' : 'Choose a work log'}</h2>
+            <p>{sw ? 'Chagua Huduma au Payroll na mwezi. Kazi iliyorudishwa inafunguka kwenye rekodi hiyo hiyo kwa marekebisho.' : 'Choose Services or Payroll and the month. Rejected work reopens in the same record for correction.'}</p>
           </div>
           <span className="worklog-start-mark" aria-hidden="true">{workType === 'SERVICES' ? 'S' : 'P'}</span>
         </div>
 
         <div className="worklog-start-controls">
-          <Field label={isHcp ? 'Timesheet / activity type' : 'Work type'}>
+          <Field label={sw ? 'Aina ya kazi' : isHcp ? 'Timesheet / activity type' : 'Work type'}>
             <select
               value={workType}
               onChange={(e) => setWorkType(e.target.value as 'SERVICES' | 'PAYROLL')}
@@ -100,7 +101,7 @@ export function MyWorkLogs() {
               <option value="PAYROLL">Payroll</option>
             </select>
           </Field>
-          <Field label="Work month" hint={`${payMonthDates(workMonth)}. Submit on the 25th.`}>
+          <Field label={sw ? 'Mwezi wa kazi' : 'Work month'} hint={`${payMonthDates(workMonth)}. ${sw ? 'Wasilisha tarehe 25.' : 'Submit on the 25th.'}`}>
             <input
               type="month"
               required
@@ -139,7 +140,7 @@ export function MyWorkLogs() {
             )}
           </div>
           <div className="worklog-type-date">
-            <span className="worklog-date-label">Selected month</span>
+            <span className="worklog-date-label">{sw ? 'Mwezi uliochaguliwa' : 'Selected month'}</span>
             <strong>{workMonthLabel(workMonth)}</strong>
           </div>
         </section>
@@ -167,7 +168,7 @@ export function MyWorkLogs() {
                 ? `Your ${typeTitle.toLowerCase()} record for ${workMonthLabel(workMonth)} needs correction. Open it, fill or correct the eligible dates across the month, then submit again.`
                 : `A ${typeTitle.toLowerCase()} record already exists for ${workMonthLabel(workMonth)}. Open it to continue or review your work.`
               : resolution.period
-                ? `Ready to fill ${workMonthLabel(workMonth)}. Select the actual workdays in the calendar.`
+                ? (sw ? `Tayari kujaza ${workMonthLabel(workMonth)}. Chagua siku ulizofanya kazi kwenye kalenda.` : `Ready to fill ${workMonthLabel(workMonth)}. Select the actual workdays in the calendar.`)
                 : 'Your regional Technical Officer can open the monthly schedule for new work.'}
           </p>
           <button className="btn btn-primary btn-lg" disabled={disableStart}>

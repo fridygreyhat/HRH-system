@@ -30,8 +30,8 @@ def monthly_minimums(db, end):
 
 
 def days_by_service(db, log, start, end):
-    entries = (db.query(WorkLogEntry).join(WorkLog, WorkLog.id == WorkLogEntry.work_log_id)
-               .filter(WorkLog.staff_id == log.staff_id, WorkLog.work_type == "SERVICES", WorkLog.status != "CANCELLED",
+    entries = (db.query(WorkLogEntry).join(WorkLog, WorkLog.id == WorkLogEntry.work_log_id).join(PayPeriod, PayPeriod.id == WorkLog.period_id)
+               .filter(WorkLog.staff_id == log.staff_id, WorkLog.work_type == "SERVICES", WorkLog.status != "CANCELLED", PayPeriod.status != "ARCHIVED",
                        WorkLogEntry.entry_date >= start, WorkLogEntry.entry_date <= end))
     days = defaultdict(set)
     for entry in entries:

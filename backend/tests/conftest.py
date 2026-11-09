@@ -79,6 +79,10 @@ def db(client):
     session.close()
 
 
+def pytest_configure(config):
+    config.addinivalue_line("markers", "real_payment_code: run the real SMS-code check on payment details")
+
+
 class Api:
     def __init__(self, client):
         self.client = client
@@ -132,6 +136,14 @@ class Api:
 @pytest.fixture()
 def api(client):
     return Api(client)
+
+
+@pytest.fixture(autouse=True)
+def payment_code_skipped(request, monkeypatch):
+    """Saving payment details is a setup step in many tests; test_payment_detail_codes.py is the one about the SMS code."""
+    if not request.node.get_closest_marker("real_payment_code"):
+        from backend.services import payment_detail_codes
+        monkeypatch.setattr(payment_detail_codes, "verify", lambda *args, **kwargs: None)
 
 
 _months = itertools.count()

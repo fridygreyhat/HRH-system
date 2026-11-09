@@ -1,4 +1,4 @@
-import { api, getToken, onUnauthorized, setToken } from './api';
+import { RETRY_DELAY_MS, api, getToken, onUnauthorized, setToken } from './api';
 
 afterEach(() => {
   jest.restoreAllMocks();
@@ -71,4 +71,28 @@ test('API reads, downloads and sign-in bypass the browser response cache', async
   for (const [, options] of fetch.mock.calls) {
     expect(options.cache).toBe('no-store');
   }
+});
+
+const gatewayTimeout = { ok: false, status: 504, statusText: 'Gateway Timeout', headers: { get: () => 'text/html' }, json: async () => { throw new Error('html'); } };
+const okJson = (body) => ({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => body });
+
+test('a read that hits a gateway timeout is tried once more and succeeds', async () => {
+  RETRY_DELAY_MS.value = 0;
+  global.fetch = jest.fn().mockResolvedValueOnce(gatewayTimeout).mockResolvedValueOnce(okJson([{ id: 1 }]));
+  await expect(api.get('/admin/cadres')).resolves.toEqual([{ id: 1 }]);
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+test('a read that keeps timing out explains it plainly after one retry', async () => {
+  RETRY_DELAY_MS.value = 0;
+  global.fetch = jest.fn().mockResolvedValue(gatewayTimeout);
+  await expect(api.get('/admin/cadres')).rejects.toThrow('The server did not answer in time');
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+test('a save is never retried, so it cannot be applied twice', async () => {
+  RETRY_DELAY_MS.value = 0;
+  global.fetch = jest.fn().mockResolvedValue(gatewayTimeout);
+  await expect(api.post('/worklogs', {})).rejects.toThrow('The server did not answer in time');
+  expect(fetch).toHaveBeenCalledTimes(1);
 });

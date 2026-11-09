@@ -257,11 +257,12 @@ def reverse_block(db: Session, batch: PayrollBatch, claims: list[PaymentClaim]) 
     if not claims:
         return "This batch has no claims to reverse"
     ids = [claim.id for claim in claims]
-    moved = (db.query(PaymentRecord.claim_id).filter(PaymentRecord.claim_id.in_(ids)).first()
+    # A failed attempt moved no money, so it must not freeze the whole batch.
+    moved = (db.query(PaymentRecord.claim_id).filter(PaymentRecord.claim_id.in_(ids), PaymentRecord.status != "FAILED").first()
              or db.query(PaymentProof.claim_id).filter(PaymentProof.claim_id.in_(ids)).first())
     if moved:
         return f"Claim #{moved[0]} has a payment or proof recorded, so this batch cannot be reversed"
-    stuck = next((claim for claim in claims if claim.status != cl.EXPORTED or claim.payment_status != "PENDING"), None)
+    stuck = next((claim for claim in claims if claim.status != cl.EXPORTED or claim.payment_status not in ("PENDING", "FAILED")), None)
     return f"Claim #{stuck.id} has moved on since export, so this batch cannot be reversed" if stuck else None
 
 

@@ -18,6 +18,7 @@ import { Login } from './pages/Login';
 import { MyWorkLogs } from './pages/MyWorkLogs';
 import { Organizations } from './pages/Organizations';
 import { PrintWorkLog } from './pages/PrintWorkLog';
+import { PrintBatch } from './pages/PrintBatch';
 import { ProviderPaymentDetails } from './pages/ProviderPaymentDetails';
 import { PayPeriods } from './pages/PayPeriods';
 import { SalaryAmounts } from './pages/SalaryAmounts';
@@ -31,6 +32,7 @@ import { Modal } from './components/ui';
 import { Home } from './pages/Home';
 import { useTheme } from './theme';
 import { WorkLogSummary } from './types';
+import { useStackedTables } from './stackTables';
 
 const REVIEWERS = ['SUPERVISOR', 'FACILITY_IN_CHARGE', 'CSO_TECHNICAL_OFFICER', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE'];
 
@@ -107,7 +109,7 @@ export const PAGES: Page[] = [
     description: 'Prepare, approve and track claims across routes A, B and C',
     icon: 'receipt',
     group: 'Finance',
-    roles: ['FHI360_FINANCE', 'CSO_FINANCE', 'RPM', 'OVERSIGHT', 'COMMUNITY_VERIFIER', 'PROVIDER'],
+    roles: ['FHI360_FINANCE', 'CSO_FINANCE', 'REGIONAL_FINANCE', 'RPM', 'OVERSIGHT', 'COMMUNITY_VERIFIER', 'PROVIDER'],
     render: () => <Claims />,
   },
   { key: 'batches', label: 'Payment batches', description: 'Payment exports, older FHI360 → CSO handoffs and receipts', icon: 'layers', group: 'Finance', roles: ['FHI360_FINANCE', 'CSO_FINANCE', 'OVERSIGHT'], render: () => <Batches /> },
@@ -192,6 +194,7 @@ function QueueCount() {
 }
 
 function App() {
+  useStackedTables();
   const { me, loading, logout, hasRole, lang } = useAuth();
   const route = useHashRoute();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -223,9 +226,7 @@ function App() {
     window.scrollTo?.(0, 0);
     mainRef.current?.focus({ preventScroll: true });
   }, [route.page, route.id]);
-  useEffect(() => {
-    document.documentElement.lang = lang === 'en' ? 'en' : 'sw';
-  }, [lang]);
+  document.documentElement.lang = lang === 'en' ? 'en' : 'sw'; // during render: shared components read it for their own text
   useEffect(() => {
     document.body.classList.toggle('no-scroll', menuOpen);
   }, [menuOpen]);
@@ -245,6 +246,12 @@ function App() {
     return (
       <main className="content content-print">
         <PrintWorkLog logId={Number(route.id)} />
+      </main>
+    );
+  if (route.page === 'print-batch')
+    return (
+      <main className="content content-print">
+        <PrintBatch target={route.id} />
       </main>
     );
 

@@ -1,11 +1,14 @@
 """Serve the existing API and compiled React app from one Replit preview URL."""
 
+import time
+from collections import defaultdict, deque
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from .core import config
 from .main import app as api
 
 BUILD_DIR = Path(__file__).resolve().parent.parent / "frontend" / "build"
@@ -20,9 +23,30 @@ app.mount("/api", api)
 app.mount("/static", StaticFiles(directory=BUILD_DIR / "static"), name="static")
 
 
+# nginx does these under Docker. This entry point has no nginx in front of it.
+LOGIN_PATH, LOGIN_LIMIT, LOGIN_WINDOW_SECONDS = "/api/auth/login", 20, 60
+MAX_BODY_BYTES = config.MAX_UPLOAD_BYTES + 1024 * 1024
+SECURITY_HEADERS = {"X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "same-origin"}
+_login_attempts = defaultdict(deque)
+
+
+def too_many_logins(client: str, now: float) -> bool:
+    attempts = _login_attempts[client]
+    while attempts and attempts[0] <= now - LOGIN_WINDOW_SECONDS:
+        attempts.popleft()
+    attempts.append(now)
+    return len(attempts) > LOGIN_LIMIT
+
+
 @app.middleware("http")
 async def prevent_entry_point_caching(request, call_next):
+    length = request.headers.get("content-length", "0")
+    if length.isdigit() and int(length) > MAX_BODY_BYTES:
+        return JSONResponse({"detail": "This upload is too large."}, status_code=413, headers=SECURITY_HEADERS)
+    if request.method == "POST" and request.url.path == LOGIN_PATH and too_many_logins(request.client.host if request.client else "", time.monotonic()):
+        return JSONResponse({"detail": "Too many sign-in attempts. Wait a minute and try again."}, status_code=429, headers=SECURITY_HEADERS)
     response = await call_next(request)
+    response.headers.update(SECURITY_HEADERS)
     # Content-hashed build assets can be reused; entry points and missing files
     # must be fetched again after publishing. API headers are set by the API.
     if not request.url.path.startswith(("/static/", "/api/")):

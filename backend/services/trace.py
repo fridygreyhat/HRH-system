@@ -149,7 +149,8 @@ def trace_claim(db: Session, current: CurrentUser, claim: PaymentClaim) -> dict:
             "status": claim.status,
             "payment_status": claim.payment_status,
             "route_code": claim.route_code,
-            "category": db.get(ClaimCategory, claim.category_id).name,
+            # A new-workflow claim awaiting finance review has no category yet; that must not break its trace.
+            "category": category.name if (category := db.get(ClaimCategory, claim.category_id) if claim.category_id else None) else None,
             "staff_name": staff.legal_name,
             "cadre": db.get(Cadre, staff.cadre_id).code,
             "period": period_label(db.get(PayPeriod, claim.period_id)),

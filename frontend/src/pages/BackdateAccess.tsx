@@ -118,7 +118,7 @@ export function BackdateAccess() {
               setEntryDate(event.target.value);
             }} />
           </Field>
-          <AsyncState data={data.data} error={data.error} loading={data.loading} empty="No eligible providers are assigned on this date.">
+          <AsyncState data={data.data} error={data.error} loading={data.loading} isEmpty={(value) => !value.providers?.length} empty="No eligible providers are assigned on this date.">
             {() => (
               <Field label="Provider">
                 <select
@@ -171,7 +171,7 @@ export function BackdateAccess() {
           </div>
           <span className="badge">{grants.length} {grants.length === 1 ? 'grant' : 'grants'}</span>
         </div>
-        <AsyncState data={data.data} error={data.error} loading={data.loading} empty="No backdated access grants yet.">
+        <AsyncState data={data.data} error={data.error} loading={data.loading} isEmpty={() => grants.length === 0} empty="No backdated access grants yet.">
           {() => grants.length ? (
             <div className="table-wrap">
               <table>

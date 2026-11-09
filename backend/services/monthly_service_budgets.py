@@ -46,7 +46,7 @@ def deductions(db, current, budget):
                         provider=staff.legal_name,
                         services=[{"date": line["date"], "activity": line["activity"], "amount": line["amount"]}
                                   for line in lines
-                                  if line["date"].startswith(budget.month) and Decimal(str(line["amount"])) > 0])
+                                  if pay_month_of(date.fromisoformat(line["date"])) == budget.month and Decimal(str(line["amount"])) > 0])
         result.append(item)
     return result
 

@@ -80,7 +80,8 @@ def run_reminders(db: Session) -> int:
     for log in logs:
         assignment = db.get(StaffAssignment, log.assignment_id)
         staff = db.get(Staff, log.staff_id)
-        for user in users_in_scope_for(db, stage_owner(db, log), assignment):
+        owner = stage_owner(db, log)
+        for user in users_in_scope_for(db, owner, assignment, cadre_id=log.cadre_id, strict_cadre=log.workflow_version >= 2 and owner != "SUPERVISOR"):
             if user.id == staff.user_id:
                 continue
             recent = (
@@ -123,9 +124,13 @@ def main() -> None:
         with SessionLocal() as db:
             try:
                 if time.monotonic() - last_reminder >= REMINDER_INTERVAL_SECONDS or args.once:
-                    queued = run_reminders(db)
                     last_reminder = time.monotonic()
+                    queued = run_reminders(db)
                     logger.info("Reminder check queued %s reminder(s)", queued)
+            except Exception:
+                db.rollback()
+                logger.exception("Reminder check failed")  # waiting messages must still go out
+            try:
                 processed = process_outbox(db)
                 if processed:
                     logger.info("Processed %s outbox message(s)", processed)

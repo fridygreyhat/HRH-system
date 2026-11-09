@@ -167,7 +167,7 @@ def list_imports(db: Session = Depends(get_db), current: CurrentUser = Depends(r
 
 
 @router.post("/import", status_code=201)
-async def import_roster(
+def import_roster(
     file: UploadFile = File(...),
     enrollment_source: str = Form("ROSTER_IMPORT"),
     db: Session = Depends(get_db),
@@ -175,7 +175,7 @@ async def import_roster(
 ):
     if enrollment_source not in ("ROSTER_IMPORT", "ENGAGEMENT_LIST"):
         raise HTTPException(status_code=422, detail="enrollment_source must be ROSTER_IMPORT or ENGAGEMENT_LIST")
-    content = await read_csv_upload(file)
+    content = read_csv_upload(file)
     allowed = None if CENTRAL_ADMIN in current.roles else current.scope_values("region_id")
     result = reg.import_roster(db, current, file.filename or "roster.csv", content, enrollment_source, allowed)
     db.commit()
@@ -248,7 +248,7 @@ def get_staff(staff_id: int, db: Session = Depends(get_db), current: CurrentUser
     staff = _get(db, current, staff_id)
     assignments = db.query(StaffAssignment).filter(StaffAssignment.staff_id == staff.id).order_by(StaffAssignment.start_date.desc()).all()
     admin_in_scope = CENTRAL_ADMIN in current.roles or (
-        REGIONAL_ADMIN in current.roles and any(a.region_id in current.scope_values("region_id") for a in assignments)
+        REGIONAL_ADMIN in current.roles and any(a.region_id in current.scope_values("region_id") and a.end_date is None for a in assignments)
     )
     visible = pd.visible_details(db, current, staff)
     sees_payment = len(visible) > 1 or admin_in_scope

@@ -13,7 +13,7 @@ from itertools import product
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import or_
+from sqlalchemy import exists, or_, select
 from sqlalchemy.orm import Session
 
 from ..core.roles import CSO_TECHNICAL, FACILITY_IN_CHARGE, PROVIDER, RPM, SUPERVISOR, TECHNICAL_OFFICER, REGIONAL_FINANCE
@@ -224,6 +224,10 @@ def queue_condition(current: CurrentUser):
                 if version >= 2 and role in {TECHNICAL_OFFICER, RPM, REGIONAL_FINANCE}:
                     condition &= record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id, role=role)
                 conditions.append(condition)
+    rm = assignments_in_role_scope(current, RPM)
+    if rm is not None:  # nothing else would bring this back: the claim is gone, so RM must reopen the work
+        live = select(PaymentClaim.id).where(PaymentClaim.work_log_id == WorkLog.id, PaymentClaim.status != "CANCELLED")
+        conditions.append(WorkLog.status.in_((ROUTED_FHI360, ROUTED_CSO)) & WorkLog.assignment_id.in_(rm) & ~exists(live))
     community = assignments_in_role_scope(current, CSO_TECHNICAL)
     if community is not None:
         conditions.append((WorkLog.status == PENDING_CTC) & WorkLog.assignment_id.in_(community)

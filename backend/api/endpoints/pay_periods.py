@@ -352,23 +352,28 @@ def period_regions(db: Session = Depends(get_db),
     return [{"id": row.id, "name": row.name} for row in query.order_by(Region.name)]
 
 
-def open_current_pay_month(db):
-    """The next pay month starts by itself on the 26th, unless a global schedule already covers those dates."""
-    month = pay_month_of(local_today())
+def open_current_pay_month(db, current):
+    """The next pay month starts by itself on the 26th. A month someone archived stays archived; a schedule covering today is left alone."""
+    today = local_today()
+    month = pay_month_of(today)
     start, end = pay_month_range(month)
-    if db.query(PayPeriod.id).filter(PayPeriod.region_id.is_(None), PayPeriod.status != "ARCHIVED",
-                                     PayPeriod.start_date <= end, PayPeriod.end_date >= start).first():
+    covered = db.query(PayPeriod.id).filter(PayPeriod.region_id.is_(None), PayPeriod.status != "ARCHIVED",
+                                            PayPeriod.start_date <= today, PayPeriod.end_date >= today).first()
+    already = db.query(PayPeriod.id).filter(PayPeriod.region_id.is_(None), PayPeriod.start_date == start, PayPeriod.end_date == end).first()
+    if covered or already:
         return
-    db.execute(insert(PayPeriod).values(start_date=start, end_date=end, status="OPEN",
-                                        period_label=f"{month_name[end.month]} {end.year}").on_conflict_do_nothing())
+    created = db.execute(insert(PayPeriod).values(start_date=start, end_date=end, status="OPEN", period_label=f"{month_name[end.month]} {end.year}")
+                         .on_conflict_do_nothing().returning(PayPeriod.id)).scalar()
+    if created:
+        audit.record(db, current, "pay-periods", created, "auto_open", after={"start_date": str(start), "end_date": str(end)})
     db.commit()
 
 
 @router.get("/pay-periods")
 def list_periods(include_archived: bool = False, db: Session = Depends(get_db), current: CurrentUser = Depends(get_current_user)):
-    open_current_pay_month(db)
     if include_archived and SUPER_ADMIN not in current.roles:
         raise HTTPException(403, "Only Super Admin may list archived periods")
+    open_current_pay_month(db, current)
     query = db.query(PayPeriod)
     if not include_archived:
         query = query.filter(PayPeriod.status != "ARCHIVED")

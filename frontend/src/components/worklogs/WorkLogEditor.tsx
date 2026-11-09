@@ -392,11 +392,11 @@ export function WorkLogEditor({ logId, initialDate, initialMonth, onBack }: { lo
         </div>
       )}
 
-      {me?.client_settings.provider_otp_required !== false && log.awaiting_my_otp && <OtpPanel log={log} onChanged={setData} />}
+      {log.awaiting_my_otp && <OtpPanel log={log} onChanged={setData} />}
 
       {log.work_type !== 'PAYROLL' && <PayoutEstimate logId={log.id} version={log.updated_at} />}
 
-      <HeaderForm key={`${log.id}-${log.updated_at}`} log={log} onSaved={setData} />
+      <HeaderForm key={log.id} log={log} onSaved={setData} />
 
       <DayCalendar log={log} selected={selected} initialMonth={initialMonth} flaggedDates={flaggedDates} onSelect={setSelected} />
 

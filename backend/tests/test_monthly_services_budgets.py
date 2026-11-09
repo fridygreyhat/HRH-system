@@ -9,6 +9,7 @@ from backend.models import MonthlyServiceBudget, MonthlyServiceBudgetCharge, Pay
 from backend.core.security import load_current_user
 from backend.services.monthly_service_budgets import deduct
 from .test_named_central_review import reviewed
+from .test_services_proof_payment import selection, upload as upload_proof
 from .test_services_without_budgets import empty_period
 from .test_v22_finance import v22
 from .test_ctc_facility_approval import no_provider_sms
@@ -74,9 +75,8 @@ def test_submission_deducts_once_blocks_missing_or_short_budget_and_does_not_dou
     url = f"/monthly-service-budgets/{budget.id}/deductions"
     row = next(item for item in api.get(url, v22["finance"]) if item["claim_id"] == cid)
     assert row["payment_status"] == "PROOF_REQUIRED" and row["proof_attached"] is False
-    api.call("POST", f"/claims/{cid}/proofs", "fhifin1",
-             files={"file": ("proof.pdf", b"%PDF-1.4 test", "application/pdf")})
-    api.post(f"/claims/{cid}/actions/confirm_paid", "fhifin1")
+    api.call("POST", f"/claims/{cid}/proofs", "fhifin1", files={"file": ("proof.pdf", b"%PDF-1.4 test", "application/pdf")}, expect=409)
+    assert upload_proof(api, [selection(api.get(f"/claims/{cid}", "fhifin1"))], empty_period).status_code == 201
     row = next(item for item in api.get(url, v22["finance"]) if item["claim_id"] == cid)
     assert row["payment_status"] == "PAID" and row["proof_attached"] is True
     db.refresh(budget)
@@ -191,3 +191,6 @@ def test_multi_month_claim_deducts_by_dates_and_rolls_back_all_months_on_shortfa
     db.commit()
     values = {b.month: b.deducted_amount for b in db.query(MonthlyServiceBudget).filter_by(region_id=v22["region_id"])}
     assert values[first_month] == values[later_month] == 20000
+    later = db.query(MonthlyServiceBudget).filter_by(month=later_month, region_id=v22["region_id"]).one()
+    rows = api.get(f"/monthly-service-budgets/{later.id}/deductions", v22["finance"])
+    assert [line["date"] for row in rows for line in row["services"]] == ["2098-12-26"]  # the 26th belongs to January's budget

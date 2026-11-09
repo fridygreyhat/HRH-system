@@ -85,13 +85,13 @@ class StaffAssignment(Base):
     __table_args__ = (CheckConstraint("end_date IS NULL OR end_date >= start_date", name="dates"),)
     id = Column(Integer, primary_key=True)
     staff_id = Column(Integer, ForeignKey("staff.id"), nullable=False, index=True)
-    region_id = Column(Integer, ForeignKey("regions.id"), nullable=False)
+    region_id = Column(Integer, ForeignKey("regions.id"), nullable=False, index=True)
     district_id = Column(Integer, ForeignKey("districts.id"))
     ward_id = Column(Integer, ForeignKey("wards.id"))
-    facility_id = Column(Integer, ForeignKey("facilities.id"))
+    facility_id = Column(Integer, ForeignKey("facilities.id"), index=True)
     community_area_id = Column(Integer, ForeignKey("community_areas.id"))
     section = Column(String(20), ForeignKey("sections.code"))
-    organization_id = Column(Integer, ForeignKey("organizations.id"))  # assigned payor / CSO
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)  # assigned payor / CSO
     start_date = Column(Date, nullable=False)
     end_date = Column(Date)
     is_primary = Column(Boolean, default=True, nullable=False)
@@ -127,4 +127,16 @@ class RosterImport(Base):
     updated_count = Column(Integer, default=0, nullable=False)
     error_count = Column(Integer, default=0, nullable=False)
     errors = Column(JSONB, default=list, nullable=False)
+    created_at = created_at()
+
+
+class PaymentDetailsCode(Base):
+    """An SMS code that unlocks one exact change to a provider's payment details."""
+    __tablename__ = "payment_details_codes"
+    id = Column(Integer, primary_key=True)
+    staff_id = Column(Integer, ForeignKey("staff.id"), nullable=False, index=True)
+    code_hash = Column(String(128), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    attempts = Column(Integer, default=0, nullable=False)
+    is_used = Column(Boolean, default=False, nullable=False)
     created_at = created_at()

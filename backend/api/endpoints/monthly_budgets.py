@@ -28,7 +28,7 @@ def list_budgets(month: Optional[str] = Query(default=None, pattern=r"^\d{4}-(0[
 
 
 @router.post("")
-async def upload_budget(region_id: int = Form(gt=0), month: str = Form(...),
+def upload_budget(region_id: int = Form(gt=0), month: str = Form(...),
                         allocated_amount: Decimal = Form(ge=0, max_digits=15, decimal_places=2),
                         currency: str = Form(default="TZS", pattern=r"^[A-Z]{3}$"),
                         file: UploadFile = File(...),
@@ -41,7 +41,7 @@ async def upload_budget(region_id: int = Form(gt=0), month: str = Form(...),
              ".csv": "text/csv"}
     if suffix not in types:
         raise HTTPException(422, "Upload a PDF, XLSX or CSV budget document.")
-    data = await file.read(2 * 1024 * 1024 + 1)
+    data = file.file.read(2 * 1024 * 1024 + 1)
     if len(data) > 2 * 1024 * 1024:
         raise HTTPException(413, "Budget documents must be no larger than 2 MB.")
     if not data or (suffix == ".pdf" and not data.startswith(b"%PDF")) or (suffix == ".xlsx" and not data.startswith(b"PK")):

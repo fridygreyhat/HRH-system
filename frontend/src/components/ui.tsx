@@ -2,9 +2,12 @@ import React, { useEffect, useId, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import {
   CLAIM_STATUS_LABELS,
+  CLAIM_STATUS_LABELS_SW,
   LOCATION_LABELS,
   PAYMENT_STATUS_LABELS,
+  PAYMENT_STATUS_LABELS_SW,
   WORKLOG_STATUS_LABELS,
+  WORKLOG_STATUS_LABELS_SW,
   dateTime,
   humanize,
   label,
@@ -73,26 +76,33 @@ const GENERIC_TONE: Record<string, Tone> = {
 
 type BadgeKind = 'log' | 'claim' | 'payment' | 'generic';
 const KIND_PREFIX: Record<BadgeKind, string> = { log: 'Work log', claim: 'Claim', payment: 'Payment', generic: '' };
+const KIND_PREFIX_SW: Partial<Record<BadgeKind, string>> = { log: 'Kumbukumbu ya kazi', claim: 'Dai', payment: 'Malipo' };
+
+export const pageLang = () => (typeof document === 'undefined' ? 'en' : document.documentElement.lang);
 
 /**
  * Status badge. Work-log, claim and payment statuses are different dimensions, so each badge carries
  * its dimension as a prefix ("Claim: Exported", "Payment: Pending payment").
  */
-export function StatusBadge({ status, kind = 'generic', bare = false }: { status: string | null | undefined; kind?: BadgeKind; bare?: boolean }) {
+export function StatusBadge({ status, kind = 'generic', bare = false, label: shown }: { status: string | null | undefined; kind?: BadgeKind; bare?: boolean; label?: string }) {
+  const lang = pageLang();
   if (!status) return <span className="muted">—</span>;
   const tone =
     kind === 'log' ? LOG_TONE[status] : kind === 'claim' ? CLAIM_TONE[status] : kind === 'payment' ? PAYMENT_TONE[status] : GENERIC_TONE[status];
   const text =
-    kind === 'log'
-      ? label(WORKLOG_STATUS_LABELS, status)
+    shown ||
+    (kind === 'log'
+      ? (lang === 'sw' && WORKLOG_STATUS_LABELS_SW[status]) || label(WORKLOG_STATUS_LABELS, status)
       : kind === 'claim'
-        ? label(CLAIM_STATUS_LABELS, status)
+        ? (lang === 'sw' && CLAIM_STATUS_LABELS_SW[status]) || label(CLAIM_STATUS_LABELS, status)
         : kind === 'payment'
-          ? label(PAYMENT_STATUS_LABELS, status)
-          : humanize(status);
-  const prefix = KIND_PREFIX[kind];
+          ? (lang === 'sw' && PAYMENT_STATUS_LABELS_SW[status]) || label(PAYMENT_STATUS_LABELS, status)
+          : humanize(status));
+  const prefixSw = lang === 'sw' ? KIND_PREFIX_SW[kind] : undefined;
+  const prefix = prefixSw || KIND_PREFIX[kind];
+  const title = prefixSw ? `Hali ya ${prefixSw.toLowerCase()}: ${text}` : prefix ? `${prefix} status: ${text}` : text;
   return (
-    <span className={`badge badge-${tone || 'info'}`} title={prefix ? `${prefix} status: ${text}` : text}>
+    <span className={`badge badge-${tone || 'info'}`} title={title}>
       {prefix && !bare && <span className="badge-prefix">{prefix}:</span>} {text}
     </span>
   );
@@ -104,7 +114,8 @@ export function LocationBadge({ status }: { status: string }) {
 }
 
 export function RouteBadge({ route }: { route: string | null | undefined }) {
-  return route ? <span className="badge badge-route" title={`Route ${route}`}>{routeLabel(route)}</span> : <span className="badge badge-warn">No payment route</span>;
+  const lang = pageLang();
+  return route ? <span className="badge badge-route" title={`${lang === 'sw' ? 'Njia' : 'Route'} ${route}`}>{routeLabel(route, lang)}</span> : <span className="badge badge-warn">{routeLabel(null, lang)}</span>;
 }
 
 export function Alert({ kind = 'error', children }: { kind?: 'error' | 'success' | 'info' | 'warn'; children: React.ReactNode }) {
@@ -125,7 +136,7 @@ export function Empty({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function Loading({ label: text = 'Loading…' }: { label?: string }) {
+export function Loading({ label: text = pageLang() === 'sw' ? 'Inapakia…' : 'Loading…' }: { label?: string }) {
   return (
     <p className="muted loading" role="status">
       {text}
@@ -186,6 +197,19 @@ function useDialogFocus(onClose: () => void) {
         e.preventDefault();
         close.current();
       }
+      if (e.key === 'Tab' && node && dialogStack[dialogStack.length - 1] === token) {
+        const stops = Array.from(node.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]'));
+        if (!stops.length) return;
+        const first = stops[0];
+        const last = stops[stops.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     document.addEventListener('keydown', onKey);
     document.body.classList.add('no-scroll');
@@ -208,7 +232,7 @@ export function Drawer({ title, onClose, children, wide = false }: { title: Reac
       <div ref={ref} tabIndex={-1} className={`drawer${wide ? ' drawer-wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby={id}>
         <header className="drawer-header">
           <h2 id={id}>{title}</h2>
-          <button className="btn btn-ghost" data-close onClick={onClose} aria-label="Close">
+          <button className="btn btn-ghost" data-close onClick={onClose} aria-label={pageLang() === 'sw' ? 'Funga' : 'Close'}>
             <Icon name="close" size={18} />
           </button>
         </header>
@@ -227,7 +251,7 @@ export function Modal({ title, onClose, children }: { title: React.ReactNode; on
       <div ref={ref} tabIndex={-1} className="modal card" role="dialog" aria-modal="true" aria-labelledby={id}>
         <header className="modal-header">
           <h2 id={id}>{title}</h2>
-          <button className="btn btn-ghost" data-close onClick={onClose} aria-label="Close">
+          <button className="btn btn-ghost" data-close onClick={onClose} aria-label={pageLang() === 'sw' ? 'Funga' : 'Close'}>
             <Icon name="close" size={18} />
           </button>
         </header>
@@ -263,6 +287,7 @@ export function ReasonDialog({
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const sw = pageLang() === 'sw';
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (required && !comment.trim()) return;
@@ -280,16 +305,16 @@ export function ReasonDialog({
       <form className="stack" onSubmit={submit}>
         {description && <div className="muted">{description}</div>}
         {children}
-        <Field label={required ? 'Reason (required)' : 'Comment (optional)'}>
+        <Field label={required ? (sw ? 'Sababu (lazima)' : 'Reason (required)') : (sw ? 'Maoni (si lazima)' : 'Comment (optional)')}>
           <textarea rows={3} value={comment} onChange={(e) => setComment(e.target.value)} required={required} maxLength={2000} />
         </Field>
         <Alert>{error}</Alert>
         <div className="row">
           <button className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} disabled={busy || (required && !comment.trim())}>
-            {busy ? 'Working…' : confirmLabel}
+            {busy ? (sw ? 'Inashughulikia…' : 'Working…') : confirmLabel}
           </button>
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
-            Cancel
+            {sw ? 'Ghairi' : 'Cancel'}
           </button>
         </div>
       </form>
@@ -308,10 +333,17 @@ export function Field({ label: text, children, hint, className }: { label: React
 }
 
 export function Tabs<K extends string>({ tabs, value, onChange, label: aria }: { tabs: { key: K; label: React.ReactNode }[]; value: K; onChange: (k: K) => void; label: string }) {
+  const move = (event: React.KeyboardEvent) => {
+    const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+    if (!step) return;
+    event.preventDefault();
+    const index = tabs.findIndex((t) => t.key === value);
+    onChange(tabs[(index + step + tabs.length) % tabs.length].key);
+  };
   return (
-    <div className="segmented" role="tablist" aria-label={aria}>
+    <div className="segmented" role="tablist" aria-label={aria} onKeyDown={move}>
       {tabs.map((t) => (
-        <button key={t.key} type="button" role="tab" aria-selected={t.key === value} onClick={() => onChange(t.key)}>
+        <button key={t.key} type="button" role="tab" aria-selected={t.key === value} tabIndex={t.key === value ? 0 : -1} onClick={() => onChange(t.key)}>
           {t.label}
         </button>
       ))}
@@ -356,7 +388,8 @@ export interface TimelineRow {
 
 /** Full audit trail: actor, role, action, old → new status, comment and time (EAT). */
 export function AuditTimeline({ rows, actionLabels, statusKind }: { rows: TimelineRow[]; actionLabels: Record<string, string>; statusKind: BadgeKind }) {
-  if (!rows.length) return <p className="muted">No history yet.</p>;
+  const sw = pageLang() === 'sw';
+  if (!rows.length) return <p className="muted">{sw ? 'Bado hakuna historia.' : 'No history yet.'}</p>;
   return (
     <ol className="timeline">
       {rows.map((a) => (
@@ -372,7 +405,7 @@ export function AuditTimeline({ rows, actionLabels, statusKind }: { rows: Timeli
             )}
           </div>
           <div className="muted small">
-            {a.actor_name || 'System'}
+            {a.actor_name || (sw ? 'Mfumo' : 'System')}
             {a.actor_role ? ` (${roleLabel(a.actor_role)})` : ''} · {dateTime(a.timestamp)}
           </div>
           {a.comment && <p className="timeline-comment">“{a.comment}”</p>}

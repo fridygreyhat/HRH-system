@@ -102,32 +102,15 @@ def _parse_manifest(db, current, items):
     return result
 
 
-async def record_with_proof(db: Session, current, upload: UploadFile, items_json: str,
-                            payment_reference: str, payment_date, beneficiaries_confirmed: bool,
-                            payment_method: str | None):
-    if not current.has_any(FHI360_FINANCE):
-        raise HTTPException(403, "Only FHI360 Finance can upload proof for centrally paid Services.")
-    if not beneficiaries_confirmed:
-        raise HTTPException(422, "Confirm that the proof lists every selected provider, service and the payment amount shown.")
-    reference = (payment_reference or "").strip()
-    if not 1 <= len(reference) <= 200:
-        raise HTTPException(422, "Enter the payment reference printed on the proof.")
-    if payment_method not in (None, "BANK", "MOBILE_WALLET"):
-        raise HTTPException(422, "Payment method must be BANK or MOBILE_WALLET.")
-    try:
-        raw_items = json.loads(items_json)
-    except (TypeError, ValueError):
-        raise HTTPException(422, "Refresh the beneficiary list and try again.")
-    if upload.content_type not in ALLOWED_PROOF_TYPES:
-        raise HTTPException(415, "Proof must be a PDF, PNG or JPEG file.")
-    rows = _parse_manifest(db, current, raw_items)
-    created_paths = []
+def _record(db: Session, current, upload: UploadFile, rows, reference: str, payment_date, payment_method: str | None,
+            extra: dict | None = None) -> list[int]:
+    """Store the document once, then record each claim's outstanding payment against it, all in one transaction."""
+    stored = payments.save_proof_file(upload)
+    path = os.path.join(payments.config.UPLOAD_DIR, stored["storage_key"])
     result_claims = []
     try:
         for claim, expected in rows:
-            await upload.seek(0)
-            proof = await payments.store_proof(db, current, claim, upload, None)
-            created_paths.append(payments.proof_path(proof))
+            proof = payments.attach_proof(db, current, claim, stored, None)
             proof.beneficiary_snapshot = {
                 "provider_id": expected["provider_id"], "provider_name": expected["provider_name"],
                 "services": expected["services"], "claim_amount": expected["amount"],
@@ -135,7 +118,7 @@ async def record_with_proof(db: Session, current, upload: UploadFile, items_json
                 "newly_recorded_amount": expected["outstanding_amount"],
                 "amount_before_payment": expected["amount_recorded"],
                 "currency": expected["currency"], "payment_reference": reference,
-                "payment_date": str(payment_date), "beneficiaries_confirmed": True,
+                "payment_date": str(payment_date), "beneficiaries_confirmed": True, **(extra or {}),
             }
             due = Decimal(expected["outstanding_amount"])
             already_recorded = Decimal(expected["amount_recorded"])
@@ -159,11 +142,91 @@ async def record_with_proof(db: Session, current, upload: UploadFile, items_json
         db.commit()
     except Exception:
         db.rollback()
-        for path in created_paths:
-            try:
-                if os.path.isfile(path):
-                    os.remove(path)
-            except OSError:
-                pass
+        try:
+            if os.path.isfile(path):
+                os.remove(path)
+        except OSError:
+            pass
         raise
     return result_claims
+
+
+def _check_payment_fields(current, beneficiaries_confirmed, payment_reference, payment_method, upload):
+    if not current.has_any(FHI360_FINANCE):
+        raise HTTPException(403, "Only FHI360 Finance can upload proof for centrally paid Services.")
+    if not beneficiaries_confirmed:
+        raise HTTPException(422, "Confirm that the proof lists every selected provider, service and the payment amount shown.")
+    reference = (payment_reference or "").strip()
+    if not 1 <= len(reference) <= 200:
+        raise HTTPException(422, "Enter the payment reference printed on the proof.")
+    if payment_method not in (None, "BANK", "MOBILE_WALLET"):
+        raise HTTPException(422, "Payment method must be BANK or MOBILE_WALLET.")
+    if upload.content_type not in ALLOWED_PROOF_TYPES:
+        raise HTTPException(415, "Proof must be a PDF, PNG or JPEG file.")
+    return reference
+
+
+def record_with_proof(db: Session, current, upload: UploadFile, items_json: str,
+                      payment_reference: str, payment_date, beneficiaries_confirmed: bool,
+                      payment_method: str | None):
+    reference = _check_payment_fields(current, beneficiaries_confirmed, payment_reference, payment_method, upload)
+    try:
+        raw_items = json.loads(items_json)
+    except (TypeError, ValueError):
+        raise HTTPException(422, "Refresh the beneficiary list and try again.")
+    rows = _parse_manifest(db, current, raw_items)
+    return _record(db, current, upload, rows, reference, payment_date, payment_method)
+
+
+def prf_claims(db: Session, current, prf_id: int) -> list[PaymentClaim]:
+    from ..models import PaymentRequestForm, PaymentRequestFormClaim
+    if db.get(PaymentRequestForm, prf_id) is None:
+        raise HTTPException(404, "PRF not found.")
+    ids = [claim_id for (claim_id,) in db.query(PaymentRequestFormClaim.claim_id).filter_by(prf_id=prf_id).order_by(PaymentRequestFormClaim.claim_id)]
+    claims = db.query(PaymentClaim).filter(PaymentClaim.id.in_(ids or [-1]), claim_visibility(current)).order_by(PaymentClaim.id).all()
+    if len(claims) != len(ids):
+        raise HTTPException(404, "PRF not found.")  # part of it is outside this user's finance scope
+    return claims
+
+
+def prf_beneficiaries(db: Session, current, prf_id: int) -> list[dict]:
+    """Every claim on the PRF: what a proof for it would pay now, or that it is already paid."""
+    result = []
+    for claim in prf_claims(db, current, prf_id):
+        row = manifest(db, current, claim)
+        staff = db.get(Staff, claim.staff_id)
+        result.append(row or {"claim_id": claim.id, "provider_id": claim.staff_id, "provider_name": staff.legal_name,
+                              "services": [], "amount": str(claim.amount), "amount_recorded": str(payments.paid_total(db, claim.id)),
+                              "outstanding_amount": "0.00", "currency": claim.currency, "can_record_with_proof": False})
+        result[-1]["payment_status"] = claim.payment_status
+    return result
+
+
+def record_prf_proof(db: Session, current, prf_id: int, upload: UploadFile, payment_reference: str, payment_date,
+                     beneficiaries_confirmed: bool, payment_method: str | None) -> list[int]:
+    """One proof for a whole PRF: the PRF already fixed which claims and amounts are being paid."""
+    from ..models import PaymentRequestForm
+    reference = _check_payment_fields(current, beneficiaries_confirmed, payment_reference, payment_method, upload)
+    prf = db.get(PaymentRequestForm, prf_id)
+    rows, currencies = [], set()
+    for claim in prf_claims(db, current, prf_id):  # stable id order, so overlapping uploads lock in the same order
+        claim = db.query(PaymentClaim).filter_by(id=claim.id).populate_existing().with_for_update().one()
+        if claim.payment_status in ("PAID", "RECONCILED"):
+            continue
+        reason = payments.executor_check(current, claim)
+        if reason:
+            raise HTTPException(403, reason)
+        expected = manifest(db, current, claim)
+        if expected is None or payments.payable_check(db, claim):
+            raise HTTPException(409, f"Claim #{claim.id} on this PRF cannot take a payment now ({claim.status}, {claim.payment_status}).")
+        currencies.add(claim.currency)
+        rows.append((claim, expected))
+    if not rows:
+        raise HTTPException(409, f"Every claim on PRF {prf.prf_number} is already paid.")
+    if len(currencies) > 1:
+        raise HTTPException(422, "This PRF mixes currencies. Upload proof through Services proof + payment, one currency at a time.")
+    paid = _record(db, current, upload, rows, reference, payment_date, payment_method, {"prf_number": prf.prf_number})
+    audit.record(db, current, "payment_request_form", prf.id, "prf_proof_payment",
+                 after={"prf_number": prf.prf_number, "claim_ids": paid, "payment_reference": reference, "payment_date": str(payment_date)})
+    db.commit()
+    return paid

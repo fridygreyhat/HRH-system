@@ -137,9 +137,9 @@ def test_services_finance_gate_routing_and_actual_payment(api, db, period, v22):
         assert paid["payment_status"] == "PROOF_REQUIRED"
         assert api.get(f"/worklogs/{log['id']}", "chw1")["status"] != "PAID"
         api.post(f"/claims/{claim['id']}/actions/confirm_paid", "fhifin1", expect=422)
-        api.call("POST", f"/claims/{claim['id']}/proofs", "fhifin1",
-                 files={"file": ("proof.pdf", b"%PDF-1.4 test", "application/pdf")})
-        paid = api.post(f"/claims/{claim['id']}/actions/confirm_paid", "fhifin1")
+        from .test_services_proof_payment import selection, upload as upload_proof
+        assert upload_proof(api, [selection(api.get(f"/claims/{claim['id']}", "fhifin1"))], period).status_code == 201
+        paid = api.get(f"/claims/{claim['id']}", "fhifin1")
         assert paid["payment_status"] == "PAID"
         assert api.get(f"/worklogs/{log['id']}", "chw1")["status"] == "PAID"
         api.post(f"/claims/{claim['id']}/actions/cancel", "fhifin1", {"comment": "Must not cancel paid claim"}, expect=403)

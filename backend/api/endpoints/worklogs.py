@@ -3,13 +3,13 @@ from datetime import date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional, Union
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ...core import config
+from ...core import audit as system_audit, config
 from ...core.roles import PROVIDER
 from ...core.security import CurrentUser, get_current_user, require_roles
 from ...core.serialize import to_dict
@@ -37,7 +37,7 @@ from ...models import (
 from ...services import claims as claims_service
 from ...core.audit_access import can_view_audit
 from ...services import notifications
-from ...services import public_holidays, service_targets
+from ...services import print_batch, public_holidays, service_targets
 from ...services import worklog_workflow as wf
 from ...services.forms import assignment_out, cadre_fields, cadre_out, entries_with_measures, review_summary, totals
 from ...services.activities import activity_fields, activity_for
@@ -130,6 +130,9 @@ def _editable_log(db: Session, current: CurrentUser, log_id: int) -> WorkLog:
     log = _get_log(db, current, log_id, lock=True)
     if current.staff_id != log.staff_id:
         raise HTTPException(status_code=403, detail="Only the provider who owns this work log can edit it")
+    staff = db.get(Staff, log.staff_id)
+    if staff.status != "ACTIVE" and staff.employment_end_date and staff.employment_end_date < local_today():
+        raise HTTPException(status_code=403, detail="This staff member has left, so this work log can no longer be edited.")
     if db.get(PayPeriod, log.period_id).status == "ARCHIVED":
         raise HTTPException(409, "Archived work is read-only. Start a work log in the replacement period.")
     if log.status not in wf.EDITABLE_STATUSES:
@@ -260,6 +263,31 @@ def worklog_cadres(db: Session = Depends(get_db), current: CurrentUser = Depends
     return [{"code": row.code, "name": row.name} for row in rows]
 
 
+def _list_query(db: Session, current: CurrentUser, queue: bool = False, mine: bool = False, status: Optional[str] = None,
+                period_id: Optional[int] = None, region_id: Optional[int] = None, cadre: Optional[str] = None,
+                work_type: Optional[str] = None):
+    """The review list's filters, shared with batch printing so a printout holds exactly what the list shows."""
+    query = db.query(WorkLog).filter(worklog_visibility(current))
+    if mine:
+        query = query.filter(WorkLog.staff_id == current.staff_id)
+    if queue:
+        condition = wf.queue_condition(current)
+        if condition is None:
+            return None
+        query = query.filter(condition)
+    if status:
+        query = query.filter(WorkLog.status == status)
+    if period_id:
+        query = query.filter(WorkLog.period_id == period_id)
+    if work_type:
+        query = query.filter(WorkLog.work_type == work_type)
+    if region_id:
+        query = query.filter(WorkLog.assignment_id.in_(select(StaffAssignment.id).where(StaffAssignment.region_id == region_id)))
+    if cadre:
+        query = query.join(Cadre, Cadre.id == WorkLog.cadre_id).filter(Cadre.code == cadre)
+    return query
+
+
 @router.get("")
 def list_worklogs(
     queue: bool = False,
@@ -273,26 +301,35 @@ def list_worklogs(
     current: CurrentUser = Depends(get_current_user),
 ):
     """`queue=true`: logs waiting on one of my reviewer roles within that role's scope (never my own)."""
-    query = db.query(WorkLog).filter(worklog_visibility(current))
-    if mine:
-        query = query.filter(WorkLog.staff_id == current.staff_id)
-    if queue:
-        condition = wf.queue_condition(current)
-        if condition is None:
-            return []
-        query = query.filter(condition)
-    if status:
-        query = query.filter(WorkLog.status == status)
-    if period_id:
-        query = query.filter(WorkLog.period_id == period_id)
-    if work_type:
-        query = query.filter(WorkLog.work_type == work_type)
-    if region_id:
-        query = query.filter(WorkLog.assignment_id.in_(select(StaffAssignment.id).where(StaffAssignment.region_id == region_id)))
-    if cadre:
-        query = query.join(Cadre, Cadre.id == WorkLog.cadre_id).filter(Cadre.code == cadre)
+    query = _list_query(db, current, queue, mine, status, period_id, region_id, cadre, work_type)
+    if query is None:
+        return []
     order = WorkLog.status_changed_at.asc() if queue else WorkLog.updated_at.desc()
     return [_summary(db, log) for log in query.order_by(order).limit(500).all()]
+
+
+@router.get("/print")
+def print_worklogs(
+    month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    queue: bool = False,
+    status: Optional[str] = None,
+    period_id: Optional[int] = None,
+    region_id: Optional[int] = None,
+    cadre: Optional[str] = None,
+    work_type: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current: CurrentUser = Depends(get_current_user),
+):
+    """Every timesheet in a review list for one pay month, in one request, for printing as a set."""
+    query = _list_query(db, current, queue, False, status, period_id, region_id, cadre, work_type)
+    logs = query.limit(print_batch.LIMIT + 1).all() if query is not None else []
+    if len(logs) > print_batch.LIMIT:
+        raise HTTPException(422, f"More than {print_batch.LIMIT} timesheets match. Choose a region, cadre or status to print fewer at once.")
+    result = print_batch.build(db, current, logs, month)
+    system_audit.record(db, current, "work_log", None, "print_batch",
+                        after={"month": month, "work_log_ids": [log["id"] for log in result["logs"]]})
+    db.commit()
+    return result
 
 
 @router.post("", status_code=201)
@@ -311,6 +348,12 @@ def create_worklog(body: WorkLogCreate, db: Session = Depends(get_db), current: 
     kind = body.work_type if version >= 2 else "LEGACY"
     existing = db.query(WorkLog).filter(WorkLog.staff_id == staff.id, WorkLog.period_id == period.id,
                                       WorkLog.work_type.in_([kind, "LEGACY"])).first()
+    if existing and existing.status == wf.CANCELLED:
+        # One record per month: a cancelled one comes back as a draft rather than blocking the month for good.
+        existing.status, existing.status_changed_at, existing.attested_at, existing.submitted_at = wf.DRAFT, utcnow(), None, None
+        wf.audit(db, current, existing, "restart", PROVIDER, wf.CANCELLED)
+        db.commit()
+        return _detail(db, current, existing)
     if existing:
         raise HTTPException(status_code=409, detail=f"You already have work log #{existing.id} for this period")
     assignment = assignment_for_period(db, staff.id, period)
@@ -424,7 +467,9 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
     # each pass the daily/weekly cap using the same remaining hours.
     db.query(Staff).filter(Staff.id == log.staff_id).with_for_update().one()
     late_access = None
-    if not entry and period.status != "OPEN":
+    # Work sent back after the period closed must still be completable, or the provider can never put it right.
+    corrected = log.status in {wf.RETURNED, wf.REJECTED}
+    if not entry and period.status != "OPEN" and not corrected:
         raise HTTPException(status_code=409, detail="This reporting period is closed.")
     if get_setting(db, "backdate_restriction_enabled") and not entry and completed_at < earliest_allowed:
         if period.status != "OPEN":
@@ -490,7 +535,8 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
     existing_hours = (
         db.query(WorkLogEntry)
         .join(WorkLog, WorkLog.id == WorkLogEntry.work_log_id)
-        .filter(WorkLog.staff_id == log.staff_id, WorkLog.work_type == log.work_type,
+        .join(PayPeriod, PayPeriod.id == WorkLog.period_id)
+        .filter(WorkLog.staff_id == log.staff_id, WorkLog.work_type == log.work_type, WorkLog.status != wf.CANCELLED, PayPeriod.status != "ARCHIVED",
                 WorkLogEntry.entry_date >= week_start, WorkLogEntry.entry_date <= week_end)
         .all()
     )
