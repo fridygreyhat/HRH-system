@@ -6,8 +6,8 @@ import { useApi } from '../hooks';
 import { navigate } from '../nav';
 import { WorkLogAudit, WorkLogDetail, WorkLogEntry } from '../types';
 
-// Statuses a log only reaches once that stage is finished. Audit rows are for administrators only, so other
-// reviewers see from the current status that a stage is complete, without the signer's name or date.
+// Statuses a log only reaches once that stage is finished. Sign-off rows (who signed, when) reach administrators and
+// Regional Finance; other reviewers see from the current status that a stage is complete, without the name or date.
 const AFTER_RM = ['PENDING_FINANCE_REVIEW', 'FINANCE_REVIEWED', 'ROUTED_FHI360', 'ROUTED_CSO', 'PAID', 'APPROVED', 'BUDGET_HOLD'];
 const AFTER_TECHNICAL = ['PENDING_RPM_AUTHORIZATION', ...AFTER_RM];
 const AFTER_OTP = ['PENDING_TECHNICAL_REVIEW', ...AFTER_TECHNICAL];

@@ -67,6 +67,33 @@ def test_signer_names_follow_the_single_print_view_rule(api, db, route):  # noqa
     assert [(row["action"], row["actor_name"]) for row in administrator["audit"]] == [("verify", actor.full_name)]
 
 
+
+def test_regional_finance_sees_who_signed_each_step_but_not_the_rest_of_the_audit(api, db, route):  # noqa: F811
+    log = route["log"]("chw1", "SERVICES", "PENDING_FINANCE_REVIEW")
+    month = with_day(db, log)
+    signers = {name: db.query(User).filter_by(username=name).one() for name in ("chw1", "supervisor1", "tofficer1", "rpm1")}
+    steps = [("chw1", "submit", "DRAFT", "PENDING_CTC_VERIFICATION"),
+             ("supervisor1", "return", "PENDING_CTC_VERIFICATION", "RETURNED_TO_PROVIDER"),  # not a sign-off: stays private
+             ("chw1", "submit", "RETURNED_TO_PROVIDER", "PENDING_CTC_VERIFICATION"),
+             ("supervisor1", "verify", "PENDING_CTC_VERIFICATION", "PENDING_TECHNICAL_REVIEW"),
+             ("tofficer1", "endorse", "PENDING_TECHNICAL_REVIEW", "PENDING_RPM_AUTHORIZATION"),
+             ("rpm1", "authorize", "PENDING_RPM_AUTHORIZATION", "PENDING_FINANCE_REVIEW")]
+    for name, action, old, new in steps:
+        db.add(WorkLogAudit(work_log_id=log.id, actor_id=signers[name].id, action=action, old_status=old, new_status=new,
+                            version=log.version, details={"private": "administrators only"}))
+        db.flush()
+    db.commit()
+    expected = [(action, signers[name].full_name) for name, action, _, _ in steps if action != "return"]
+    finance = route["finance"]
+    printed = next(row for row in api.get(f"/worklogs/print?work_type=SERVICES&month={month}&period_id={log.period_id}", finance)["logs"]
+                   if row["id"] == log.id)
+    assert [(row["action"], row["actor_name"]) for row in printed["audit"]] == expected
+    detail = api.get(f"/worklogs/{log.id}", finance)
+    assert [(row["action"], row["actor_name"]) for row in detail["audit"]] == expected
+    assert all("details" not in row and "actor_id" not in row for row in detail["audit"])  # sign-off facts only
+    assert api.get(f"/worklogs/{log.id}", "rpm1")["audit"] == []  # other reviewers still see stage completion only
+    assert "return" in {row["action"] for row in api.get(f"/worklogs/{log.id}", "admin")["audit"]}  # administrators keep the full trail
+
 def test_a_list_too_long_to_print_is_refused_and_printing_is_recorded(api, db, route, monkeypatch):  # noqa: F811
     first = route["log"]("chw1", "SERVICES", "PENDING_CTC_VERIFICATION")
     month = with_day(db, first)

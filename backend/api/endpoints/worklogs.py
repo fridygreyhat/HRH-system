@@ -35,7 +35,7 @@ from ...models import (
     utcnow,
 )
 from ...services import claims as claims_service
-from ...core.audit_access import can_view_audit
+from ...core.audit_access import visible_audit
 from ...services import notifications
 from ...services import print_batch, public_holidays, service_targets
 from ...services import worklog_workflow as wf
@@ -208,7 +208,7 @@ def _detail(db: Session, current: CurrentUser, log: WorkLog) -> dict:
         "review_summary": review_summary(db, log, current),
         "location_exception_count": sum(1 for e in entries if e["location_exception"]),
         "gps_visible": show_gps,
-        "audit": [{**to_dict(a), "actor_name": name} for a, name in audit_rows] if can_view_audit(current) else [],
+        "audit": visible_audit(current, audit_rows, to_dict),
         "review_feedback": [
             {**{key: getattr(row, key) for key in ("action", "old_status", "new_status", "comment")},
              "actor_name": name, "details": {"flags": (row.details or {}).get("flags", [])}}

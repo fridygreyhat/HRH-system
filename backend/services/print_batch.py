@@ -1,11 +1,11 @@
 """Many timesheets printed as one set: a register of every provider, then each provider's paper form.
 
 The form data matches what one work log's print view uses, limited to the chosen pay month. Signer names follow the
-same rule as the single print view: only roles that may read the audit trail see who signed and when.
+same rule as the single print view: administrators and Regional Finance see who signed and when.
 """
 from collections import defaultdict
 
-from ..core.audit_access import can_view_audit
+from ..core.audit_access import SIGN_OFF_ACTIONS, can_view_sign_offs
 from ..core.period_dates import pay_month_range
 from ..core.serialize import to_dict
 from ..models import PayPeriod, Staff, StaffAssignment, User, WorkLog, WorkLogAudit, WorkLogEntry, WorkLogMeasure
@@ -13,7 +13,6 @@ from . import public_holidays, service_targets
 from .forms import assignment_out, log_cadre_out
 
 LIMIT = 500  # the review list's own limit
-SIGN_OFF_ACTIONS = ("submit", "verify", "confirm_otp", "facility_endorse", "endorse", "authorize")
 ENTRY_FIELDS = ("id", "entry_date", "start_time", "end_time", "hours_worked", "activity_key", "activity_location",
                 "activity_snapshot", "comment")
 
@@ -46,7 +45,7 @@ def build(db, current, logs: list[WorkLog], month: str) -> dict:
         for measure in db.query(WorkLogMeasure).filter(WorkLogMeasure.entry_id.in_([entry.id for entry in rows] or [-1])):
             measures[measure.entry_id][measure.field_key] = measure.value
     sign_offs = defaultdict(list)
-    if ids and can_view_audit(current):
+    if ids and can_view_sign_offs(current):
         for row, name in (db.query(WorkLogAudit, User.full_name).outerjoin(User, User.id == WorkLogAudit.actor_id)
                           .filter(WorkLogAudit.work_log_id.in_(ids), WorkLogAudit.action.in_(SIGN_OFF_ACTIONS))
                           .order_by(WorkLogAudit.timestamp, WorkLogAudit.id)):

@@ -50,7 +50,9 @@ def test_approval_records_who_and_when_but_keeps_the_name_out_of_reviewer_payloa
     assert saved.finance_timesheet_approved_at
     row = db.query(WorkLogAudit).filter_by(work_log_id=log["id"], action=ACTION).one()
     assert row.actor_id == saved.finance_timesheet_approved_by and row.actor_role == "REGIONAL_FINANCE"
-    assert "finance_timesheet_approved_by" not in approved and approved["audit"] == []
+    assert "finance_timesheet_approved_by" not in approved
+    # Regional Finance sees who signed the approval steps on the timesheet, never its own finance row or other audit history.
+    assert all(row["action"] in ("submit", "verify", "confirm_otp", "facility_endorse", "endorse", "authorize") for row in approved["audit"])
 
 
 def test_only_scoped_regional_finance_can_approve_and_only_once(api, period, v22):

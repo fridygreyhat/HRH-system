@@ -407,7 +407,9 @@ keeping rates editable and deletable, without rewriting financial history.
   The October 2026 work-record clearing feature has been removed from both
   the UI and API. Do not reintroduce a special reset or clear existing records.
   **Why:** the user explicitly requested removing “Clear October 2026 work records.”
-- Audit trails are visible only to Super Admin, System Admin and Central Admin.
+- Audit trails are visible only to Super Admin, System Admin and Central Admin. Regional Finance also sees the sign-off
+  steps of a timesheet (submitted, CTC, Technical, RM: who and when, with the comment), never the rest of the trail.
+  **Why:** the user asked that Regional Finance see who signed the papers it approves.
   Enforce this in APIs as well as UI; do not delete audit records. Operational
   reviewers and providers still receive current status and the latest correction
   note/flags, not the complete audit history.
@@ -567,7 +569,7 @@ keeping rates editable and deletable, without rewriting financial history.
 - **Print all** on Timesheet reviews prints every timesheet in the list being shown (same filters, same scope), for one pay
   month, in one request: a register of every provider first, then each provider's paper form on its own A4 landscape page.
 - The register ends with the printer's name and space for a signature and date. Signer names on each form follow the single
-  print view's rule: only roles that may read the audit trail see who signed.
+  print view's rule: audit administrators and Regional Finance see who signed.
 - Up to 500 timesheets at once, the review list's own limit. Each batch print is audited with the work-log IDs it contained.
 
 ### Central Finance PRF (Payment Request Form)
@@ -598,7 +600,7 @@ keeping rates editable and deletable, without rewriting financial history.
 
 ### Regional Finance's two Services approvals
 - Regional Finance approves each Services work log twice, in order, on the same record: first the **timesheet** (`finance_timesheet_approve`: days, hours, work), then the **Services payment** (`finance_review`: funding source and fixed daily amount). Routing to FHI360 with a named Central Finance reviewer follows, and the monthly budget deduction still happens only at that routing step.
-- The server refuses the payment step until the timesheet approval is saved, with who and when on the work log and in its audit history. Any return, rejection, reopening or new RM authorization clears it, so the record needs a fresh approval. The same Regional Finance person may do both approvals. Signer names stay hidden from non-admins under the audit rule.
+- The server refuses the payment step until the timesheet approval is saved, with who and when on the work log and in its audit history. Any return, rejection, reopening or new RM authorization clears it, so the record needs a fresh approval. The same Regional Finance person may do both approvals. Signer names of the sign-off steps reach admins and Regional Finance; the finance approval row stays in the admin audit.
 - Do not show a budget-left figure in Regional Finance's review. A missing or insufficient budget still blocks routing on the server.
 - Payroll is unchanged: it ends at RM approval, with no Finance approval.
 - RM and Finance review screens show the task and key numbers first, flags before the timesheet, closed provider details and versions, and a fixed bar to reach the decision. The scroll and confirmation rules stay. Reviewers start on **Waiting on me**.
@@ -609,7 +611,7 @@ keeping rates editable and deletable, without rewriting financial history.
 - The new claim waits for Central Finance review before becoming ready for payment/export. Reviewer identity and approval time remain with the claim. RM and Regional Finance use the work-log print preview before deciding; Central Finance reviews the print preview and frozen claim amount, then confirms approval. Monthly regional document sign-off also requires its all-provider print preview; it remains documentation only.
 - **Why:** the user requested a named regional Services handoff and explicitly chose selected-reviewer-only approval, with print-preview review at RM and Finance levels.
 - RM and Finance see one timesheet for every cadre: the bilingual form with dates across the top. It is the first section of the work-log drawer whether or not they have an action to take, and decision controls stay below it. The form includes additional services, so its totals match the server totals.
-- Sign-off boxes and Services steps show finished stages as Completed from the current status when audit rows are hidden. Signer names and dates stay with audit administrators.
+- Sign-off boxes and Services steps show finished stages as Completed from the current status when audit rows are hidden. Signer names and dates reach audit administrators and Regional Finance.
 - **Why:** the user asked for the RM and Finance preview to match the main timesheet for all cadres, and audit history stays limited to administrators.
 - Central FHI360 Finance can select up to 25 scoped, routed Services claims and save proof plus matching payment records atomically. The provider names, priced service names and approved amounts must match the current claims. Only outstanding balances are newly recorded; a fully recorded claim awaiting proof is confirmed without another payment record.
 - Finance must attest that the uploaded document actually lists the displayed beneficiaries, services and payment amounts. This is manual verification, not OCR or automatic document-content matching. The app records an external payment; it never initiates a bank or wallet transfer.
