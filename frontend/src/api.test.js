@@ -1,4 +1,4 @@
-import { RETRY_DELAY_MS, api, getToken, onUnauthorized, setToken } from './api';
+import { READ_TIMEOUT_MS, RETRY_DELAY_MS, api, getToken, onUnauthorized, setToken } from './api';
 
 afterEach(() => {
   jest.restoreAllMocks();
@@ -94,5 +94,51 @@ test('a save is never retried, so it cannot be applied twice', async () => {
   RETRY_DELAY_MS.value = 0;
   global.fetch = jest.fn().mockResolvedValue(gatewayTimeout);
   await expect(api.post('/worklogs', {})).rejects.toThrow('The server did not answer in time');
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+// A fetch that never answers until it is aborted, as when a tunnel drops a request.
+const stalled = (url, options) => new Promise((_, reject) => {
+  options.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+});
+
+test('a read that stalls is abandoned after the time limit and tried once more', async () => {
+  RETRY_DELAY_MS.value = 0;
+  READ_TIMEOUT_MS.value = 20;
+  global.fetch = jest.fn().mockImplementationOnce(stalled).mockResolvedValueOnce(okJson([{ id: 2 }]));
+  await expect(api.get('/admin/cadres')).resolves.toEqual([{ id: 2 }]);
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+test('a read that stalls twice says the server cannot be reached', async () => {
+  RETRY_DELAY_MS.value = 0;
+  READ_TIMEOUT_MS.value = 20;
+  global.fetch = jest.fn().mockImplementation(stalled);
+  await expect(api.get('/admin/cadres')).rejects.toThrow('Cannot reach the server');
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+test('a save has no time limit, so a slow save is never abandoned or sent twice', async () => {
+  READ_TIMEOUT_MS.value = 20;
+  let answer;
+  global.fetch = jest.fn().mockImplementation((url, options) => new Promise((resolve) => {
+    expect(options.signal).toBeUndefined();
+    answer = () => resolve(okJson({ saved: true }));
+  }));
+  const saving = api.post('/worklogs', {});
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  answer();
+  await expect(saving).resolves.toEqual({ saved: true });
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+test('a page that cancels its own read is not retried', async () => {
+  RETRY_DELAY_MS.value = 0;
+  READ_TIMEOUT_MS.value = 10000;
+  global.fetch = jest.fn().mockImplementation(stalled);
+  const page = new AbortController();
+  const reading = api.get('/admin/cadres', { signal: page.signal });
+  page.abort();
+  await expect(reading).rejects.toThrow('Cannot reach the server');
   expect(fetch).toHaveBeenCalledTimes(1);
 });

@@ -61,7 +61,9 @@ function errorMessage(body: unknown, fallback: string): string {
 
 type Payload = unknown | FormData | URLSearchParams | undefined;
 
-async function send(method: string, path: string, body?: Payload, options?: { signal?: AbortSignal }): Promise<Response> {
+type SendOptions = { signal?: AbortSignal; /** Give up when no answer has started by then. */ timeoutMs?: number };
+
+async function send(method: string, path: string, body?: Payload, options?: SendOptions): Promise<Response> {
   const headers: Record<string, string> = {};
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -72,11 +74,21 @@ async function send(method: string, path: string, body?: Payload, options?: { si
     headers['Content-Type'] = 'application/json';
     data = JSON.stringify(body);
   }
+  const caller = options?.signal;
+  // Only the wait for the answer to start is limited: a large list or file may then take as long as it needs.
+  const limit = options?.timeoutMs ? new AbortController() : null;
+  if (limit && caller) {
+    if (caller.aborted) limit.abort();
+    else caller.addEventListener('abort', () => limit.abort(), { once: true });
+  }
+  const timer = limit ? setTimeout(() => limit.abort(), options?.timeoutMs) : undefined;
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, { method, headers, body: data, cache: 'no-store', ...options });
+    res = await fetch(`${API_URL}${path}`, { method, headers, body: data, cache: 'no-store', signal: limit ? limit.signal : caller });
   } catch {
     throw new ApiError(0, 'Cannot reach the server. Check your connection and try again.');
+  } finally {
+    clearTimeout(timer);
   }
   if (res.status === 401 && token) {
     // A response started before a fresh sign-in cannot revoke the new session.
@@ -99,17 +111,21 @@ async function send(method: string, path: string, body?: Payload, options?: { si
 /** Statuses a proxy or tunnel returns when it loses the app for a moment, before the app has seen the request. */
 const GATEWAY_STATUSES = [502, 503, 504];
 export const RETRY_DELAY_MS = { value: 1500 };
+/** A read whose answer has not started by then is abandoned and tried again. A port-forwarding tunnel sometimes
+ *  drops a request without answering; a save is never abandoned, as the server may already have applied it. */
+export const READ_TIMEOUT_MS = { value: 20000 };
 
-/** A read that hits a dropped connection or a gateway timeout is tried once more; saves never are. */
+/** A read that hits a dropped connection, a stalled tunnel or a gateway timeout is tried once more; saves never are. */
 async function sendRetrying(method: string, path: string, body?: Payload, options?: { signal?: AbortSignal }): Promise<Response> {
+  const attempt = method === 'GET' ? { ...options, timeoutMs: READ_TIMEOUT_MS.value } : options;
   try {
-    return await send(method, path, body, options);
+    return await send(method, path, body, attempt);
   } catch (e) {
     const retryable = method === 'GET' && e instanceof ApiError && (e.status === 0 || GATEWAY_STATUSES.includes(e.status));
     if (!retryable || options?.signal?.aborted) throw e;
     await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS.value));
     if (options?.signal?.aborted) throw e;
-    return send(method, path, body, options);
+    return send(method, path, body, attempt);
   }
 }
 
