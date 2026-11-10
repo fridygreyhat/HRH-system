@@ -6,6 +6,7 @@ from collections import defaultdict, deque
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -23,9 +24,14 @@ HTML_HEADERS = {
     "Expires": "0",
 }
 
+# Build files carry a content hash in their name, so a browser may keep them until the next build renames them.
+STATIC_HEADERS = {"Cache-Control": "public, max-age=31536000, immutable"}
+
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/api", api)
-app.mount("/static", StaticFiles(directory=BUILD_DIR / "static"), name="static")
+# Compressed because the app script and styles hold no user data (unlike API responses, see main.py). Over a slow
+# link such as a port-forwarding tunnel this cuts the first load from about 830 KB to about 230 KB.
+app.mount("/static", GZipMiddleware(StaticFiles(directory=BUILD_DIR / "static"), minimum_size=1024), name="static")
 
 
 # nginx does these under Docker. This entry point has no nginx in front of it.
@@ -56,6 +62,8 @@ async def prevent_entry_point_caching(request, call_next):
     # must be fetched again after publishing. API headers are set by the API.
     if not request.url.path.startswith(("/static/", "/api/")):
         response.headers.update(HTML_HEADERS)
+    elif request.url.path.startswith("/static/") and response.status_code in (200, 304):
+        response.headers.update(STATIC_HEADERS)
     return response
 
 

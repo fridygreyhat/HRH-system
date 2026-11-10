@@ -23,6 +23,13 @@ app = FastAPI(title="HRH Digital Work-Log, Payment Claims and Payroll Routing", 
               docs_url="/docs" if _docs else None, redoc_url="/redoc" if _docs else None, openapi_url="/openapi.json" if _docs else None)
 
 
+# Large lists only (a batch print of 200 timesheets is megabytes of JSON). Small responses such as sign-in stay
+# uncompressed, so a secret is never compressed alongside text an attacker could choose. Added first so it sits
+# next to the routes: the "http" middleware below re-sends every body as a stream, and GZip compresses any stream
+# whatever its size, so placed outside it this limit was never applied.
+app.add_middleware(GZipMiddleware, minimum_size=64 * 1024)
+
+
 @app.middleware("http")
 async def prevent_api_caching(request, call_next):
     """Never retain financial records, exports or authentication responses in caches."""
@@ -41,9 +48,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["Content-Disposition", "X-Download-Id"],
 )
-# Large lists only (a batch print of 200 timesheets is megabytes of JSON). Small responses such as sign-in stay
-# uncompressed, so a secret is never compressed alongside text an attacker could choose.
-app.add_middleware(GZipMiddleware, minimum_size=64 * 1024)
 
 
 # Input the database refuses is the caller's mistake, not a server error. The request's session rolls back on close.
