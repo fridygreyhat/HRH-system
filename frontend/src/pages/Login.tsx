@@ -1,13 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../AuthContext';
-import { BrandMark, Icon } from '../components/Icon';
+import { BrandMark } from '../components/Icon';
 import { Alert, Field } from '../components/ui';
+import './polish-admin.css';
 
 interface Meta {
   version: string;
 }
-const STAGES = ['Provider logs work', 'CTC or CSO Technical', 'Technical review', 'RM approves', 'Finance and payment'];
+/** The five approval steps, in both languages: the sign-in page is read before anyone picks a language. */
+const STAGES: { en: string; sw: string }[] = [
+  { en: 'Provider logs work', sw: 'Mtoa huduma anarekodi kazi' },
+  { en: 'CTC or CSO Technical', sw: 'Uhakiki wa CTC au CSO' },
+  { en: 'Technical review', sw: 'Mapitio ya kitaalamu' },
+  { en: 'RM approves', sw: 'RM anaidhinisha' },
+  { en: 'Finance and payment', sw: 'Fedha na malipo' },
+];
 
 export function Login() {
   const { login, sessionExpired } = useAuth();
@@ -45,23 +53,25 @@ export function Login() {
             <BrandMark size={44} />
             <span>HRH Pay</span>
           </div>
-          <h1>
-            From reported work to <span className="hero-accent">verified payment</span>.
-          </h1>
-          <p className="hero-lead">Kumbukumbu za kazi, idhini na malipo ya watoa huduma wa afya, sehemu moja.</p>
+          <div className="hero-copy">
+            <h1>
+              From reported work to <span className="hero-accent">verified payment</span>.
+            </h1>
+            <p className="hero-lead">Kumbukumbu za kazi, idhini na malipo ya watoa huduma wa afya, sehemu moja.</p>
+          </div>
           <ol className="hero-pipeline" aria-label="Approval pipeline">
             {STAGES.map((s, i) => (
-              <li key={s}>
+              <li key={s.en}>
                 <span className="hero-step">{i + 1}</span>
-                {s}
+                <span className="hero-step-text">
+                  <span>{s.en}</span>
+                  <span className="hero-step-sw" lang="sw">
+                    {s.sw}
+                  </span>
+                </span>
               </li>
             ))}
           </ol>
-          <ul className="hero-points">
-            <li><Icon name="shield" />Every approval is on the record</li>
-            <li><Icon name="route" />Approved is never shown as paid</li>
-            <li><Icon name="phone" />Made for phones, in Kiswahili and English</li>
-          </ul>
         </div>
       </section>
 
@@ -69,7 +79,7 @@ export function Login() {
         <form className="login-card stack" onSubmit={submit}>
           <div className="login-welcome">
             <h2>Karibu · Welcome</h2>
-            <p className="muted">Ingia ili kuendelea · Sign in to continue</p>
+            <p className="muted">Ingia ili uendelee · Sign in to continue</p>
           </div>
           {sessionExpired && <Alert kind="info">Your session expired. Please sign in again.</Alert>}
           <Alert>{error}</Alert>
@@ -80,7 +90,7 @@ export function Login() {
             <input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
           </Field>
           <button className="btn btn-primary btn-lg" disabled={busy}>
-            {busy ? 'Signing in…' : 'Sign in / Ingia'}
+            {busy ? 'Signing in… / Inaingia…' : 'Sign in / Ingia'}
           </button>
           <div className="partner-bar" role="group" aria-label="Programme partners">
             <img src={`${process.env.PUBLIC_URL}/brand/usa-mark.png`} alt="United States of America" className="partner-usa" />

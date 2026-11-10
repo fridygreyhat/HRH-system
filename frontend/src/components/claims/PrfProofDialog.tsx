@@ -61,8 +61,8 @@ export function PrfProofDialog({ prf, onClose, onDone }: {
     <Modal title={sw ? `PRF ${prf.prf_number} · pakia uthibitisho wa malipo` : `PRF ${prf.prf_number} · upload proof of payment`} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
         <p className="notice notice-info">{sw
-          ? 'Baada ya kulipa PRF hii nje ya mfumo, pakia hati moja ya malipo (kwa mfano orodha ya benki au ya pesa kwa simu). Kila dai ambalo halijalipwa kwenye PRF linapata rekodi yake ya malipo na uthibitisho huu.'
-          : 'After paying this PRF outside the system, upload the one payment document (for example the bank or mobile-money schedule). Every unpaid claim on the PRF gets its payment record and this proof.'}</p>
+          ? 'Pakia hati moja ya malipo kwa madai yote ambayo hayajalipwa.'
+          : 'Upload one payment document for all unpaid claims on this PRF.'}</p>
         {list.error && <Alert>{list.error}</Alert>}
         {list.loading && !list.data && <p className="muted" role="status">{sw ? 'Inapakia madai ya PRF…' : 'Loading the PRF claims…'}</p>}
         {list.data && (
@@ -70,8 +70,8 @@ export function PrfProofDialog({ prf, onClose, onDone }: {
             <p><strong>{sw ? `Madai ${num(unpaid.length)} ya kulipwa` : `${num(unpaid.length)} claims to pay`}</strong>
               {' · '}{money(total, currency)}{rows.length > unpaid.length && (sw ? ` · ${num(rows.length - unpaid.length)} tayari yamelipwa` : ` · ${num(rows.length - unpaid.length)} already paid`)}</p>
             {blocked.length > 0 && <Alert kind="warn">{sw
-              ? `Madai ${num(blocked.length)} hayako tayari kwa malipo (kwa mfano bado yanasubiri mapitio ya Fedha Kuu): ${blocked.map((row) => `#${row.claim_id}`).join(', ')}.`
-              : `${num(blocked.length)} claim(s) are not ready for payment (for example still awaiting Central Finance review): ${blocked.map((row) => `#${row.claim_id}`).join(', ')}.`}</Alert>}
+              ? `Madai ${num(blocked.length)} hayako tayari kwa malipo: ${blocked.map((row) => `#${row.claim_id}`).join(', ')}.`
+              : `${num(blocked.length)} claim(s) are not ready for payment: ${blocked.map((row) => `#${row.claim_id}`).join(', ')}.`}</Alert>}
             <div className="table-wrap prf-proof-list">
               <table>
                 <thead><tr><th>{sw ? 'Dai' : 'Claim'}</th><th>{sw ? 'Mtoa huduma' : 'Provider'}</th><th>{sw ? 'Huduma' : 'Services'}</th><th className="num">{sw ? 'Kiasi' : 'Amount'}</th></tr></thead>
@@ -107,8 +107,8 @@ export function PrfProofDialog({ prf, onClose, onDone }: {
                 <label className="check-line">
                   <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
                   <span>{sw
-                    ? 'Nimekagua hati halisi ya malipo na inaorodhesha kila mtoa huduma hapo juu na kiasi chake.'
-                    : 'I have checked the real payment document and it lists every provider above with their amount.'}</span>
+                    ? 'Nimekagua hati ya malipo; inaorodhesha kila mtoa huduma na kiasi chake.'
+                    : 'I checked the payment document; it lists every provider and amount.'}</span>
                 </label>
               </>
             )}

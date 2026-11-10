@@ -82,7 +82,7 @@ test('mixed Regional and Central Finance roles use routing/report links, not man
     const routing = [...container.querySelectorAll('button')].find(button => button.textContent === 'Review Services routing');
     act(() => routing.click());
     expect(window.location.hash).toBe('#/routing-queue');
-    expect(container.textContent).toContain('No claim category, funding source, budget or finance approval is required');
+    expect(container.textContent).toContain('view monthly hours and indicators by cadre and provider');
   } finally { close(); }
 });
 

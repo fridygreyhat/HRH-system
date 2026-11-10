@@ -63,10 +63,10 @@ function CadreForm({ cadre, onDone, onCancel }: { cadre: Cadre; onDone: (c: Cadr
           <input value={form.form_title} onChange={(e) => setForm((f) => ({ ...f, form_title: e.target.value }))} maxLength={255} />
         </Field>
       </div>
-      <Field label="Technical reviewer" hint="The FHI360 position that gives technical endorsement for this cadre's work logs">
+      <Field label="Technical reviewer" hint="FHI360 position that endorses this cadre's work logs">
         <input value={form.technical_reviewer_title} onChange={(e) => setForm((f) => ({ ...f, technical_reviewer_title: e.target.value }))} maxLength={255} />
       </Field>
-      <Field label="Occupation options" hint="One per line. Leave empty if the form does not ask for an occupation.">
+      <Field label="Occupation options" hint="One per line. Leave empty if not asked.">
         <textarea rows={4} value={form.occupations} onChange={(e) => setForm((f) => ({ ...f, occupations: e.target.value }))} />
       </Field>
       <fieldset className="checks">
@@ -75,10 +75,7 @@ function CadreForm({ cadre, onDone, onCancel }: { cadre: Cadre; onDone: (c: Cadr
         {check('uses_section', 'Asks for the facility section')}
         {check('is_active', 'Cadre is active')}
       </fieldset>
-      <p className="muted small">
-        The cadre list does not report whether a cadre is active, so “Cadre is active” starts ticked and saving keeps (or makes) the cadre
-        active. Untick it only to deactivate the cadre. Hours mode is fixed and cannot be changed here.
-      </p>
+      <p className="muted small">Untick “Cadre is active” only to deactivate the cadre.</p>
       <Alert>{error}</Alert>
       <div className="row">
         <button className="btn btn-primary" disabled={busy}>
@@ -139,11 +136,11 @@ function FieldForm({
     return undefined;
   };
 
-  const fixedHint = field ? 'Fixed once the field exists: add a new field and deactivate this one to change it.' : undefined;
+  const fixedHint = field ? 'Fixed once created.' : undefined;
   return (
     <form className="stack" onSubmit={submit}>
       <div className="grid-2">
-        <Field label="Key *" hint={fixedHint || 'Lowercase letters, digits and _, e.g. clients_followed_up. Used by rate rules.'}>
+        <Field label="Key *" hint={fixedHint || 'Lowercase letters, digits and _, e.g. clients_followed_up'}>
           <input
             value={form.key}
             onChange={(e) => setForm((f) => ({ ...f, key: e.target.value }))}
@@ -178,7 +175,7 @@ function FieldForm({
         this field on the form
       </label>
       {field && (
-        <p className="muted small">Deactivated fields disappear from this list (the cadre list only returns active fields) and cannot be re-activated here.</p>
+        <p className="muted small">Deactivated fields cannot be re-activated here.</p>
       )}
       <Alert>{error}</Alert>
       <div className="row">
@@ -209,7 +206,7 @@ export function CadresSection() {
 
   return (
     <div className="stack">
-      {!canWrite && <p className="notice notice-info">Read only. Changes to cadre forms require the Central Admin role.</p>}
+      {!canWrite && <p className="notice notice-info">Read only. Editing requires the Central Admin role.</p>}
       <Alert kind="success">{notice}</Alert>
       <AsyncState data={data} error={error} loading={loading} empty="No cadres configured.">
         {(cadres) =>

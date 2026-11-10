@@ -315,3 +315,29 @@ export const routeLabel = (r: string | null | undefined, lang?: string): string 
 
 export const roleLabel = (r: string | null | undefined): string => (r ? ROLE_LABELS[r] || humanize(r) : '—');
 export const label = (map: Record<string, string>, key: string | null | undefined): string => (key ? map[key] || humanize(key) : '—');
+
+/** Cadre names readers recognise, instead of codes such as DATA_CLERK. Unknown codes are made readable. */
+export const CADRE_NAMES: Record<string, { en: string; sw: string; short: { en: string; sw: string } }> = {
+  CHW: { en: 'Community Health Worker', sw: 'Mhudumu wa Afya Ngazi ya Jamii', short: { en: 'CHW', sw: 'CHW' } },
+  HCP: { en: 'Health Care Provider', sw: 'Mtoa Huduma za Afya', short: { en: 'HCP', sw: 'HCP' } },
+  DATA_CLERK: { en: 'Data Clerk', sw: 'Karani wa Takwimu', short: { en: 'Data Clerk', sw: 'Karani' } },
+};
+export const cadreName = (code: string | null | undefined, lang?: string, short = false): string => {
+  if (!code) return '—';
+  const known = CADRE_NAMES[code];
+  if (!known) return humanize(code);
+  const sw = lang === 'sw';
+  return short ? (sw ? known.short.sw : known.short.en) : sw ? known.sw : known.en;
+};
+
+export const WORK_TYPE_NAMES: Record<string, { en: string; sw: string }> = {
+  PAYROLL: { en: 'Payroll', sw: 'Mshahara' },
+  SERVICES: { en: 'Services', sw: 'Huduma' },
+  LEGACY: { en: 'Legacy', sw: 'Ya zamani' },
+};
+export const workTypeName = (type: string | null | undefined, lang?: string): string =>
+  !type ? '—' : WORK_TYPE_NAMES[type] ? WORK_TYPE_NAMES[type][lang === 'sw' ? 'sw' : 'en'] : humanize(type);
+
+/** Two letters for an avatar: "Janeth Mandepu" -> "JM". */
+export const initialsOf = (name: string | null | undefined): string =>
+  (name || '').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() || '').join('') || '?';

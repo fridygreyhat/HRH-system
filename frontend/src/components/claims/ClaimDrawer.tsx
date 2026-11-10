@@ -124,10 +124,10 @@ function RecordPaymentDialog({ claim, onDone, onClose }: { claim: ClaimDetail; o
     <Modal title={sw ? `Rekodi malipo – dai #${claim.id}` : `Record payment – claim #${claim.id}`} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
         <p className="notice notice-info">
-          {sw ? 'Rekodi malipo yaliyofanyika nje ya mfumo huu (benki au pesa kwa simu). Kilichobaki:' : 'Record a payment that was made outside this system (bank or wallet). Outstanding:'} <strong>{money(outstanding, claim.currency)}</strong>.
+          {sw ? 'Kilichobaki:' : 'Outstanding:'} <strong>{money(outstanding, claim.currency)}</strong>.
         </p>
         <div className="grid-2">
-          <Field label={sw ? 'Kiasi' : 'Amount'} hint={sw ? `Kisichozidi ${money(outstanding, claim.currency)} kwa rekodi ya malipo kamili au ya sehemu` : `At most ${money(outstanding, claim.currency)} for a paid/partial record`}>
+          <Field label={sw ? 'Kiasi' : 'Amount'} hint={sw ? `Kisichozidi ${money(outstanding, claim.currency)}` : `At most ${money(outstanding, claim.currency)}`}>
             <input type="number" min="0.01" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} />
           </Field>
           <Field label={sw ? 'Matokeo' : 'Result'}>
@@ -193,15 +193,9 @@ function UploadProofDialog({ claim, onDone, onClose }: { claim: ClaimDetail; onD
       <form className="stack" onSubmit={submit}>
         <p className="notice">
           {sw ? (
-            <>
-              Kupakia uthibitisho <strong>hakuweki</strong> dai kuwa limelipwa. Malipo lazima yarekodiwe kwa kiasi chote, na uthibitisho ukiongezwa
-              baadaye mtu lazima atumie “Thibitisha yamelipwa”.
-            </>
+            <>Kupakia uthibitisho <strong>hakuweki</strong> dai kuwa limelipwa.</>
           ) : (
-            <>
-              Uploading proof does <strong>not</strong> mark the claim as paid. A payment must be recorded for the full amount, and if proof is added
-              afterwards someone must use “Confirm paid”.
-            </>
+            <>Uploading proof does <strong>not</strong> mark the claim paid.</>
           )}
         </p>
         <Field label={sw ? 'Faili la uthibitisho (PDF, PNG au JPEG, hadi MB 10)' : 'Proof file (PDF, PNG or JPEG, up to 10 MB)'}>
@@ -333,7 +327,7 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
                 [sw ? 'Mkaguzi aliyepangiwa' : 'Assigned reviewer', claim.central_reviewer_name],
                 [sw ? 'Idhini ya Fedha Kuu' : 'Central approval', claim.central_reviewed_at ? dateTime(claim.central_reviewed_at) : (sw ? 'Inasubiri mkaguzi aliyechaguliwa' : 'Pending selected reviewer')],
               ]} />
-              {claim.status === 'PENDING_CENTRAL_REVIEW' && <p className="notice notice-info">{sw ? 'Kurekodi malipo kumezuiwa hadi mkaguzi wa Fedha Kuu aliyechaguliwa aidhinishe. Watumiaji wengine wa Fedha hawawezi kuidhinisha kazi hii.' : 'Payment recording is blocked until the selected Central Finance reviewer approves. Other Finance users cannot approve this assignment.'}</p>}
+              {claim.status === 'PENDING_CENTRAL_REVIEW' && <p className="notice notice-info">{sw ? 'Kurekodi malipo kumezuiwa hadi mkaguzi aliyechaguliwa aidhinishe.' : 'Payment recording is blocked until the selected reviewer approves.'}</p>}
               {claim.available_actions.includes('central_approve') && claim.work_log_id && <>
                 <h3>{sw ? 'Muonekano wa kuchapisha kwa idhini' : 'Approval print preview'}</h3>
                 <p>{claim.staff_name} · {claim.period_label} · {money(claim.amount, claim.currency)}</p>
@@ -367,15 +361,15 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
           {estimateReached && budget && (
             <Alert kind="warn">
               {sw
-                ? `Makadirio yamefikiwa kwa ${budget.code}: ${money(exposure, claim.currency)} zimetengwa kati ya ${money(budget.estimated_amount!, claim.currency)} zilizokadiriwa. Hili ni onyo la mipango tu; halibadilishi hatua za dai wala kanuni ya kikomo cha idhini.`
-                : `Soft estimate reached for ${budget.code}: ${money(exposure, claim.currency)} exposure of ${money(budget.estimated_amount!, claim.currency)} estimated. This is a planning warning only; it does not change claim actions or the hard-cap approval rule.`}
+                ? `Makadirio yamefikiwa kwa ${budget.code}: ${money(exposure, claim.currency)} kati ya ${money(budget.estimated_amount!, claim.currency)} zilizokadiriwa.`
+                : `Soft estimate reached for ${budget.code}: ${money(exposure, claim.currency)} of ${money(budget.estimated_amount!, claim.currency)} estimated.`}
             </Alert>
           )}
           {financeReviewPending && (
             <p className="notice notice-info">
               {sw
-                ? 'Dai hili limeundwa kutoka kazi iliyoidhinishwa na RM na linasubiri Fedha ya Mkoa ikague chanzo chake cha fedha na kiasi. Bado halijatumwa kwa mlipaji wala haliwezi kulipwa; Fedha italikagua kabla ya kutumwa.'
-                : 'This claim was created from RM-approved work and is awaiting Regional Finance review of its funding source and amount. It is not routed or payable yet; finance will review it before routing.'}
+                ? 'Linasubiri mapitio ya Fedha ya Mkoa; bado haliwezi kulipwa.'
+                : 'Awaiting Regional Finance review; not payable yet.'}
             </p>
           )}
           {claim.payment_recipient && (
@@ -403,7 +397,7 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
                   </button>
                 ))}
               </div>
-              <p className="muted small">{sw ? 'Kila dai linaamuliwa peke yake. Idhini lazima itolewe na mtu tofauti na aliyeandaa.' : 'Each claim is decided individually. Approval must be by a different person from the preparer.'}</p>
+              <p className="muted small">{sw ? 'Anayeidhinisha lazima awe tofauti na aliyeandaa.' : 'The approver must differ from the preparer.'}</p>
             </Section>
           )}
 
@@ -448,17 +442,12 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
             <ComponentsTable components={claim.components} currency={claim.currency} />
             {claim.calculation_snapshot ? (
               <p className="muted small">
-                {sw ? (
-                  `Ukokotoaji ulioidhinishwa ulifungwa wakati wa idhini (${dateTime(claim.calculation_snapshot.authorized_at)}): njia ${claim.calculation_snapshot.route}, ${money(claim.calculation_snapshot.amount, claim.currency)}. Mabadiliko ya viwango baadaye hayaubadilishi.`
-                ) : (
-                  <>
-                    Authorized calculation frozen at approval ({dateTime(claim.calculation_snapshot.authorized_at)}): route {claim.calculation_snapshot.route},{' '}
-                    {money(claim.calculation_snapshot.amount, claim.currency)}. Later rate changes do not alter it.
-                  </>
-                )}
+                {sw
+                  ? `Imefungwa wakati wa idhini (${dateTime(claim.calculation_snapshot.authorized_at)}): njia ${claim.calculation_snapshot.route}, ${money(claim.calculation_snapshot.amount, claim.currency)}.`
+                  : `Frozen at approval (${dateTime(claim.calculation_snapshot.authorized_at)}): route ${claim.calculation_snapshot.route}, ${money(claim.calculation_snapshot.amount, claim.currency)}.`}
               </p>
             ) : (
-              <p className="muted small">{sw ? 'Bado halijaidhinishwa: kiasi kinakokotolewa upya kutoka kanuni za viwango zinazotumika hadi idhini itolewe.' : 'Not yet approved: the amount is recalculated from active rate rules until approval.'}</p>
+              <p className="muted small">{sw ? 'Bado halijaidhinishwa: kiasi kinafuata viwango vya sasa.' : 'Not yet approved: the amount follows current rates.'}</p>
             )}
           </Section>
 
@@ -485,14 +474,9 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
               }
             >
               <p className="notice notice-info small">
-                {sw ? (
-                  'Malipo hufanyika nje ya mfumo huu na hurekodiwa hapa. Kupakia uthibitisho pekee hakuweki malipo kuwa yamelipwa; dai linakuwa “Imelipwa” tu malipo ya kiasi chote yakirekodiwa pamoja na uthibitisho unaohitajika.'
-                ) : (
-                  <>
-                    Payments are made outside this system and recorded here. Uploading proof alone does not mark a payment as paid; a claim is “Paid” only
-                    when payments for the full amount are recorded with the required proof.
-                  </>
-                )}
+                {sw
+                  ? 'Dai linakuwa “Imelipwa” malipo kamili na uthibitisho yakirekodiwa.'
+                  : 'A claim is “Paid” once full payment and proof are recorded.'}
               </p>
               {claim.payments.length > 0 ? (
                 <div className="table-wrap">
@@ -592,7 +576,7 @@ export function ClaimDrawer({ claimId, onClose, onChanged }: { claimId: number; 
         <RecordPaymentDialog claim={claim} onClose={() => setDialog(null)} onDone={(c) => updated(c, sw ? 'Malipo yamerekodiwa.' : 'Payment recorded.')} />
       )}
       {claim && dialog?.kind === 'upload_proof' && (
-        <UploadProofDialog claim={claim} onClose={() => setDialog(null)} onDone={(c) => updated(c, sw ? 'Uthibitisho umepakiwa. Hii pekee haiweki dai kuwa limelipwa.' : 'Proof uploaded. This does not by itself mark the claim paid.')} />
+        <UploadProofDialog claim={claim} onClose={() => setDialog(null)} onDone={(c) => updated(c, sw ? 'Uthibitisho umepakiwa. Dai bado halijawekwa kuwa limelipwa.' : 'Proof uploaded. The claim is not marked paid yet.')} />
       )}
       {claim && dialog?.kind === 'services_proof_payment' && claim.payment_manifest && (
         <ServicesProofPaymentDialog
@@ -616,25 +600,25 @@ function actionHelp(action: string, claim: ClaimDetail, sw: boolean): string {
       if (noBudgetPolicyForClaim(claim)) {
         if (sw) {
           return claim.work_type === 'COMMUNITY'
-            ? 'Idhinisha dai la jamii lililohakikiwa kwa kiasi chake cha viwango vilivyoidhinishwa. Mgao wa bajeti ya mkoa hauhitajiki; malipo yanarekodiwa kando pamoja na uthibitisho.'
-            : 'Idhinisha kiasi cha Huduma kilichokaguliwa. Makato yoyote ya kila mwezi yanayohitajika hufanyika Fedha ya Mkoa inapowasilisha; malipo, uthibitisho na upatanisho hurekodiwa kando.';
+            ? 'Idhinisha kwa kiasi cha viwango vilivyoidhinishwa; mgao wa bajeti ya mkoa hauhitajiki.'
+            : 'Idhinisha kiasi cha Huduma kilichokaguliwa.';
         }
         return claim.work_type === 'COMMUNITY'
-          ? 'Approve the verified community claim using its captured approved-rate amount. No regional budget allocation is required; payment is recorded separately with proof.'
-          : 'Approve the reviewed Services amount. Any required monthly deduction occurs at Regional Finance submission; payment, proof and reconciliation are recorded separately.';
+          ? 'Approve at the approved-rate amount. No regional budget allocation is required.'
+          : 'Approve the reviewed Services amount.';
       }
       return sw
-        ? `Kuidhinisha kunatenga ${money(claim.amount, claim.currency)} kutoka kifungu cha bajeti. Kifungu kikipungukiwa, dai linazuiliwa.`
-        : `Approving commits ${money(claim.amount, claim.currency)} against the budget line. If the line is short the claim is held.`;
+        ? `Inatenga ${money(claim.amount, claim.currency)} kutoka kifungu cha bajeti; kikipungukiwa, dai linazuiliwa.`
+        : `Commits ${money(claim.amount, claim.currency)} to the budget line; held if the line is short.`;
     case 'send_back':
-      return sw ? 'Dai linarudi kwenye “Inahitaji uhakiki” na sababu yako itaonyeshwa kama dosari yake.' : 'The claim returns to “Validation needed” with your reason shown as its exception.';
+      return sw ? 'Dai linarudi kwenye “Inahitaji uhakiki” pamoja na sababu yako.' : 'The claim returns to “Validation needed” with your reason.';
     case 'cancel':
-      if (noBudgetPolicyForClaim(claim)) return sw ? 'Ghairi dai hili ambalo halijalipwa. Makato yoyote ya bajeti ya Huduma ya mwezi yanarejeshwa; malipo ya nje na uthibitisho vinabaki kuwa rekodi tofauti.' : 'Cancel this unpaid claim. Any monthly Services budget deduction is restored; external payments and proof remain separate records.';
+      if (noBudgetPolicyForClaim(claim)) return sw ? 'Ghairi dai hili ambalo halijalipwa. Makato ya bajeti ya mwezi yanarejeshwa.' : 'Cancel this unpaid claim. Any monthly budget deduction is restored.';
       return sw ? 'Kughairi kunaachilia bajeti yoyote iliyotengwa. Hatua hii haiwezi kutenduliwa.' : 'Cancelling releases any committed budget. This cannot be undone.';
     case 'confirm_paid':
       return sw ? 'Thibitisha kuwa malipo yaliyorekodiwa na uthibitisho uliopakiwa vinafikia kiasi chote.' : 'Confirm that the recorded payments and uploaded proof cover the full amount.';
     case 'reconcile':
-      return sw ? 'Upatanisho lazima ufanywe na mtu tofauti na aliyerekodi malipo.' : 'Reconciliation must be done by someone other than the person who recorded the payment.';
+      return sw ? 'Lazima ufanywe na mtu tofauti na aliyerekodi malipo.' : 'Must be done by someone other than the payment recorder.';
     case 'verify_community':
       return sw ? 'Thibitisha kuwa huduma ya jamii iliyoelezwa kwenye ushahidi ilifanyika.' : 'Confirm that the community service described in the evidence took place.';
     case 'mark_ready':
@@ -643,12 +627,12 @@ function actionHelp(action: string, claim: ClaimDetail, sw: boolean): string {
       if (noBudgetPolicyForClaim(claim)) {
         if (sw) {
           return claim.work_type === 'COMMUNITY'
-            ? 'Kokotoa upya kiasi cha kiwango cha jamii kilichoidhinishwa kutoka mipangilio ya sasa. Kifungu cha bajeti ya mkoa hakihitajiki.'
-            : 'Kokotoa upya kiasi cha kila siku cha Huduma kutoka viwango vilivyoidhinishwa. Kifungu cha bajeti hakihitajiki.';
+            ? 'Kokotoa upya kiasi cha jamii kutoka mipangilio ya sasa.'
+            : 'Kokotoa upya kiasi cha kila siku cha Huduma kutoka viwango vilivyoidhinishwa.';
         }
         return claim.work_type === 'COMMUNITY'
-          ? 'Recalculate the approved community-rate amount from the current configuration. No regional budget line is required.'
-          : 'Recalculate the fixed daily Services amount from approved rates. No budget line is required.';
+          ? 'Recalculate the community amount from current settings.'
+          : 'Recalculate the daily Services amount from approved rates.';
       }
       return sw ? 'Kokotoa upya njia, kifungu cha bajeti na kiasi kutoka mipangilio ya sasa.' : 'Recalculate the route, budget line and amount from the current configuration.';
     default:

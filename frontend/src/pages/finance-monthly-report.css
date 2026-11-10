@@ -1,4 +1,4 @@
-.finance-monthly { --report-ink: #173b37; }
+.finance-monthly { --report-ink: var(--text); }
 .finance-monthly-heading { align-items: flex-start; }
 .finance-monthly-heading h1 { font-size: clamp(1.9rem, 4vw, 2.55rem); }
 .finance-monthly-heading .routing-eyebrow { color: var(--primary); font-size: .7rem; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
@@ -102,7 +102,7 @@
 .finance-signoff-control { display: grid; justify-items: start; gap: .75rem; }
 .finance-confirm-check { display: flex; align-items: flex-start; gap: .55rem; color: var(--text); font-size: .8rem; line-height: 1.45; cursor: pointer; }
 .finance-confirm-check input { width: 1rem; height: 1rem; margin: .1rem 0 0; accent-color: var(--primary); }
-.finance-stale-note { color: #8a4f16 !important; }
+.finance-stale-note { color: var(--warn-fg) !important; }
 .finance-readonly-note { color: var(--report-ink) !important; }
 .finance-signoff .finance-signoff-legal { font-size: .72rem; }
 .finance-report-actions .btn:disabled { opacity: .58; cursor: wait; }

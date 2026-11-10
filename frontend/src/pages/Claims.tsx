@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { ApprovalFinanceGuide } from '../components/worklogs/ApprovalFinanceGuide';
 import { qs } from '../api';
 import { useAuth } from '../AuthContext';
 import { ClaimDrawer } from '../components/claims/ClaimDrawer';
@@ -7,12 +6,45 @@ import { CreateClaim } from '../components/claims/CreateClaim';
 import { ServicesProofPaymentDialog } from '../components/claims/ServicesProofPaymentDialog';
 import { RegionalFinanceNextSteps } from '../components/claims/RegionalFinanceNextSteps';
 import { ServicesReportPanel } from '../components/claims/ServicesReportPanel';
-import { Alert, AsyncState, Field, RouteBadge, StatusBadge } from '../components/ui';
-import { CLAIM_STATUS_LABELS, CLAIM_STATUS_LABELS_SW, CLAIM_STATUSES, dateTime, money, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_LABELS_SW, PAYMENT_STATUSES, routeLabel } from '../format';
+import { Alert, AsyncState, Field, Kpi, KpiStrip, PersonCell, RouteBadge, StatusBadge, WorkTypeChip } from '../components/ui';
+import { CLAIM_STATUS_LABELS, CLAIM_STATUS_LABELS_SW, CLAIM_STATUSES, dateTime, money, num, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_LABELS_SW, PAYMENT_STATUSES, routeLabel } from '../format';
 import { useApi } from '../hooks';
 import { ClaimSummary, PayPeriod } from '../types';
+import './polish-finance.css';
 
-const WORK_TYPE_LABELS_SW: Record<string, string> = { SERVICES: 'Huduma', PAYROLL: 'Payroll', COMMUNITY: 'Jamii' };
+const COMMUNITY_SW = 'Jamii';
+const REVIEW_STATUSES = ['PENDING_CENTRAL_REVIEW', 'PENDING_FINANCE_REVIEW', 'AWAITING_APPROVAL', 'PENDING_COMMUNITY_VERIFICATION'];
+const PAYABLE_STATUSES = ['APPROVED', 'READY', 'EXPORTED', 'HANDED_OFF'];
+const isPaid = (c: ClaimSummary) => c.payment_status === 'PAID' || c.payment_status === 'RECONCILED';
+
+/** Totals per currency, e.g. "TZS 120,000 + USD 40". */
+function totalText(rows: ClaimSummary[], pick: (c: ClaimSummary) => number): string {
+  const totals = new Map<string, number>();
+  rows.forEach((c) => totals.set(c.currency || 'TZS', (totals.get(c.currency || 'TZS') || 0) + pick(c)));
+  return totals.size ? Array.from(totals, ([currency, total]) => money(total, currency)).join(' + ') : money(0);
+}
+
+/** Headline numbers from the claims already on screen. */
+function claimKpis(rows: ClaimSummary[], sw: boolean, central: boolean, status: string, setStatus: (s: string) => void): Kpi[] {
+  const review = central ? rows.filter((c) => c.status === 'PENDING_CENTRAL_REVIEW') : rows.filter((c) => REVIEW_STATUSES.includes(c.status));
+  const payable = rows.filter((c) => PAYABLE_STATUSES.includes(c.status) && !isPaid(c));
+  const paid = rows.filter(isPaid);
+  const onPage = sw ? 'Kwenye ukurasa huu' : 'On this page';
+  return [
+    {
+      label: central ? (sw ? 'Zinasubiri mapitio ya Fedha Kuu' : 'Awaiting Central Finance review') : (sw ? 'Zinasubiri mapitio' : 'Awaiting review'),
+      value: num(review.length), tone: review.length ? 'warn' : 'neutral', icon: 'clock',
+      note: review.length ? totalText(review, (c) => Number(c.amount)) : onPage,
+      ...(central ? { onClick: () => setStatus(status === 'PENDING_CENTRAL_REVIEW' ? '' : 'PENDING_CENTRAL_REVIEW'), active: status === 'PENDING_CENTRAL_REVIEW' } : {}),
+    },
+    {
+      label: sw ? 'Tayari kulipwa' : 'Ready to pay', value: num(payable.length), tone: payable.length ? 'info' : 'neutral', icon: 'wallet',
+      note: payable.length ? `${totalText(payable, (c) => Math.max(0, Number(c.amount) - Number(c.amount_paid || 0)))} ${sw ? 'bado' : 'outstanding'}` : onPage,
+    },
+    { label: sw ? 'Zimelipwa' : 'Paid', value: num(paid.length), tone: 'success', icon: 'check', note: totalText(paid, (c) => Number(c.amount_paid || 0)) },
+    { label: sw ? 'Jumla ya kiasi' : 'Total amount', value: totalText(rows, (c) => Number(c.amount)), icon: 'receipt', note: sw ? `Madai ${num(rows.length)} kwenye ukurasa huu` : `${num(rows.length)} claims on this page` },
+  ];
+}
 
 export function Claims() {
   const { hasRole, lang } = useAuth();
@@ -39,17 +71,62 @@ export function Claims() {
 
   return (
     <div className="stack-lg">
-      <ApprovalFinanceGuide />
-      <header className="page-header">
-        <div>
-          <h1>{onlyProvider ? (sw ? 'Madai yangu ya malipo' : 'My payment claims') : (sw ? 'Madai ya malipo' : 'Payment claims')}</h1>
-          <p className="muted small">
-            {sw
-              ? 'Hali ya dai na hali ya malipo ni vitu tofauti. Dai la kumbukumbu ya kazi linalosubiri mapitio ya Fedha ni rekodi ya kiutendaji; bado halijatumwa kwa mlipaji wala haliwezi kulipwa.'
-              : 'Claim status and payment status are separate. A work-log claim awaiting finance review is an operational record, not routed or payable yet.'}
-          </p>
+      <header className="page-header fin-title-only">
+        <h1>{onlyProvider ? (sw ? 'Madai yangu ya malipo' : 'My payment claims') : (sw ? 'Madai ya malipo' : 'Payment claims')}</h1>
+      </header>
+
+      {!providerOnly && claims.data && claims.data.length > 0 && (
+        <KpiStrip label={sw ? 'Muhtasari wa madai' : 'Claims at a glance'} items={claimKpis(claims.data, sw, hasRole('FHI360_FINANCE'), status, setStatus)} />
+      )}
+
+      {regionalFinance && <RegionalFinanceNextSteps />}
+
+      {hasRole('FHI360_FINANCE') && <ServicesReportPanel onPaid={claims.reload} />}
+
+      <div className="fin-toolbar">
+        <div className="filters" role="search">
+          <Field label={sw ? 'Hali ya dai' : 'Claim status'}>
+            <select value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="">{sw ? 'Zote' : 'All'}</option>
+              {CLAIM_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {(sw && CLAIM_STATUS_LABELS_SW[s]) || CLAIM_STATUS_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label={sw ? 'Hali ya malipo' : 'Payment status'}>
+            <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)}>
+              <option value="">{sw ? 'Zote' : 'All'}</option>
+              {PAYMENT_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {(sw && PAYMENT_STATUS_LABELS_SW[s]) || PAYMENT_STATUS_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label={sw ? 'Malipo' : 'Payment'}>
+            <select value={route} onChange={(e) => setRoute(e.target.value)}>
+              <option value="">{sw ? 'Yote' : 'All'}</option>
+              {['A', 'B', 'C'].map((r) => (
+                <option key={r} value={r}>
+                  {routeLabel(r, lang)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label={sw ? 'Kipindi' : 'Period'}>
+            <select value={periodId} onChange={(e) => setPeriodId(e.target.value)}>
+              <option value="">{sw ? 'Vyote' : 'All'}</option>
+              {(periods.data || []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.period_label || p.start_date}
+                </option>
+              ))}
+            </select>
+          </Field>
         </div>
-        <div className="row">
+        <div className="fin-actions">
           {canCreate && (
             <button className="btn btn-primary" onClick={() => setCreating(true)}>
               {sw ? 'Andaa dai' : 'Prepare a claim'}
@@ -60,57 +137,10 @@ export function Claims() {
               {sw ? 'Uthibitisho + malipo ya Huduma' : 'Services proof + payment'}
             </button>
           )}
-          <button className="btn btn-secondary" onClick={claims.reload} disabled={claims.loading}>
+          <button className="btn btn-ghost" onClick={claims.reload} disabled={claims.loading}>
             {sw ? 'Pakia upya' : 'Refresh'}
           </button>
         </div>
-      </header>
-
-      {regionalFinance && <RegionalFinanceNextSteps />}
-
-      {hasRole('FHI360_FINANCE') && <ServicesReportPanel onPaid={claims.reload} />}
-
-      <div className="filters" role="search">
-        <Field label={sw ? 'Hali ya dai' : 'Claim status'}>
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="">{sw ? 'Zote' : 'All'}</option>
-            {CLAIM_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {(sw && CLAIM_STATUS_LABELS_SW[s]) || CLAIM_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label={sw ? 'Hali ya malipo' : 'Payment status'}>
-          <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)}>
-            <option value="">{sw ? 'Zote' : 'All'}</option>
-            {PAYMENT_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {(sw && PAYMENT_STATUS_LABELS_SW[s]) || PAYMENT_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label={sw ? 'Malipo' : 'Payment'}>
-          <select value={route} onChange={(e) => setRoute(e.target.value)}>
-            <option value="">{sw ? 'Yote' : 'All'}</option>
-            {['A', 'B', 'C'].map((r) => (
-              <option key={r} value={r}>
-                {routeLabel(r, lang)}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label={sw ? 'Kipindi' : 'Period'}>
-          <select value={periodId} onChange={(e) => setPeriodId(e.target.value)}>
-            <option value="">{sw ? 'Vyote' : 'All'}</option>
-            {(periods.data || []).map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.period_label || p.start_date}
-              </option>
-            ))}
-          </select>
-        </Field>
       </div>
 
       <Alert kind="success">{notice}</Alert>
@@ -127,19 +157,16 @@ export function Claims() {
           </div>
         ) : (
           <div className="table-wrap">
-            <table className="clickable">
+            <table className="clickable fin-claims-table">
               <thead>
                 <tr>
                   <th>#</th>
                   <th>{sw ? 'Mtumishi' : 'Staff'}</th>
                   <th>{sw ? 'Huduma / kategoria' : 'Services / category'}</th>
-                  <th>{sw ? 'Aina' : 'Type'}</th>
-                  <th>{sw ? 'Kipindi' : 'Period'}</th>
-                  <th>{sw ? 'Malipo' : 'Payment'}</th>
+                  <th>{sw ? 'Aina / malipo' : 'Type / payment'}</th>
                   <th>{sw ? 'Hali ya dai' : 'Claim status'}</th>
                   <th>{sw ? 'Hali ya malipo' : 'Payment status'}</th>
                   <th className="num">{sw ? 'Kiasi' : 'Amount'}</th>
-                  <th className="num">{sw ? 'Kilicholipwa' : 'Recorded paid'}</th>
                   <th>{sw ? 'Imesasishwa' : 'Updated'}</th>
                 </tr>
               </thead>
@@ -152,32 +179,40 @@ export function Claims() {
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenId(c.id); } }}
                     aria-label={sw ? `Fungua dai ${c.id}` : `Open claim ${c.id}`}
                   >
-                    <td>{c.id}</td>
-                    <td>{c.staff_name}{c.central_reviewer_name && <div className="muted small">{sw ? 'Mkaguzi wa Fedha Kuu' : 'Central reviewer'}: {c.central_reviewer_name}</div>}</td>
-                    <td>
+                    <td className="muted nowrap">#{c.id}</td>
+                    <td><PersonCell name={c.staff_name} sub={c.period_label} /></td>
+                    <td className="fin-wrap">
+                      <span className="cell-main">
+                        {c.service_names && c.service_names.length > 0
+                          ? c.service_names.join(', ')
+                          : c.category_name || (c.category_id == null ? (sw ? 'Kategoria haijachaguliwa' : 'Category not selected') : `${sw ? 'Kategoria' : 'Category'} #${c.category_id}`)}
+                      </span>
                       {c.service_names && c.service_names.length > 0 && (
-                        <div><strong>{c.service_names.join(', ')}</strong></div>
+                        <span className="cell-sub">{c.category_name || (c.category_id == null ? (sw ? 'Kategoria haijachaguliwa' : 'Category not selected') : `${sw ? 'Kategoria' : 'Category'} #${c.category_id}`)}</span>
                       )}
-                      {c.category_name || (c.category_id == null ? (sw ? 'Kategoria haijachaguliwa' : 'Category not selected') : `${sw ? 'Kategoria' : 'Category'} #${c.category_id}`)}
                       {c.exception_reason && (
-                        <div className="small" style={{ color: 'var(--warn-fg)' }} title={c.exception_reason}>
-                          {sw ? 'Dosari' : 'Exception'}
-                        </div>
+                        <span className="cell-sub fin-warn" title={c.exception_reason}>{sw ? 'Dosari' : 'Exception'}</span>
                       )}
                     </td>
-                    <td>{c.work_type && c.work_type !== 'LEGACY' ? <span className="badge badge-neutral">{(sw && WORK_TYPE_LABELS_SW[c.work_type]) || c.work_type}</span> : '—'}</td>
-                    <td>{c.period_label}</td>
                     <td>
-                      <RouteBadge route={c.route_code} />
+                      <span className="fin-stack">
+                        {c.work_type === 'COMMUNITY'
+                          ? <span className="chip chip-legacy">{sw ? COMMUNITY_SW : 'Community'}</span>
+                          : c.work_type && c.work_type !== 'LEGACY' ? <WorkTypeChip type={c.work_type} /> : null}
+                        <RouteBadge route={c.route_code} />
+                      </span>
                     </td>
                     <td>
                       <StatusBadge kind="claim" status={c.status} bare />
+                      {c.central_reviewer_name && <span className="cell-sub">{sw ? 'Mkaguzi wa Fedha Kuu' : 'Central reviewer'}: {c.central_reviewer_name}</span>}
                     </td>
                     <td>
                       <StatusBadge kind="payment" status={c.payment_status} bare />
                     </td>
-                    <td className="num">{money(c.amount, c.currency)}</td>
-                    <td className="num">{money(c.amount_paid, c.currency)}</td>
+                    <td className="num">
+                      <span className="cell-main">{money(c.amount, c.currency)}</span>
+                      <span className="cell-sub">{sw ? 'Kilicholipwa' : 'Paid'} {money(c.amount_paid, c.currency)}</span>
+                    </td>
                     <td className="nowrap small">{dateTime(c.updated_at)}</td>
                   </tr>
                 ))}
@@ -187,11 +222,11 @@ export function Claims() {
         ))}
       </AsyncState>
 
-      <nav className="row" aria-label={sw ? 'Kurasa za madai' : 'Claims pages'}>
+      {(page > 0 || (claims.data?.length || 0) >= 100) && <nav className="row fin-pager" aria-label={sw ? 'Kurasa za madai' : 'Claims pages'}>
         <button className="btn btn-secondary" disabled={claims.loading || page === 0} onClick={() => setPage(page - 1)}>{sw ? 'Madai yaliyotangulia' : 'Previous claims'}</button>
         <span>{sw ? 'Ukurasa' : 'Page'} {page + 1}</span>
         <button className="btn btn-secondary" disabled={claims.loading || (claims.data?.length || 0) < 100} onClick={() => setPage(page + 1)}>{sw ? 'Madai yanayofuata' : 'Next claims'}</button>
-      </nav>
+      </nav>}
 
       {creating && (
         <CreateClaim

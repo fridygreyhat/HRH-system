@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Icon } from './Icon';
+import { pageLang } from './ui';
 
 /**
  * Lightweight HTML/CSS charts. Colors come from the validated categorical palette (--series-1..5, light and
@@ -58,6 +59,7 @@ export function ChartCard({
   footer?: React.ReactNode;
 }) {
   const [view, setView] = useState<'chart' | 'table'>('chart');
+  const sw = pageLang() === 'sw';
   return (
     <section className="card chart-card">
       <header className="chart-head">
@@ -65,11 +67,11 @@ export function ChartCard({
           <h3>{title}</h3>
           {subtitle && <p className="muted small">{subtitle}</p>}
         </div>
-        <div className="seg-mini" role="group" aria-label={`${title} view`}>
-          <button type="button" aria-pressed={view === 'chart'} onClick={() => setView('chart')} title="Chart view">
+        <div className="seg-mini" role="group" aria-label={sw ? `${title}: mwonekano` : `${title} view`}>
+          <button type="button" aria-pressed={view === 'chart'} onClick={() => setView('chart')} title={sw ? 'Chati' : 'Chart view'} aria-label={sw ? 'Chati' : 'Chart view'}>
             <Icon name="chart" size={16} />
           </button>
-          <button type="button" aria-pressed={view === 'table'} onClick={() => setView('table')} title="Table view">
+          <button type="button" aria-pressed={view === 'table'} onClick={() => setView('table')} title={sw ? 'Jedwali' : 'Table view'} aria-label={sw ? 'Jedwali' : 'Table view'}>
             <Icon name="table" size={16} />
           </button>
         </div>

@@ -3,11 +3,13 @@ import { MiniStepper } from '../components/worklogs/ApprovalStepper';
 import { api } from '../api';
 import { useAuth } from '../AuthContext';
 import { WorkLogEditor } from '../components/worklogs/WorkLogEditor';
-import { Alert, AsyncState, Field, StatusBadge } from '../components/ui';
-import { num, payMonth, payMonthDates, todayLocal, workHours } from '../format';
+import { Icon } from '../components/Icon';
+import { Alert, AsyncState, Field, StatusBadge, WorkTypeChip } from '../components/ui';
+import { num, payMonth, payMonthDates, todayLocal, workHours, workTypeName } from '../format';
 import { useAction, useApi } from '../hooks';
 import { PayPeriod, WorkLogDetail, WorkLogSummary } from '../types';
 import { resolveWorkLogMonth, workMonthLabel } from './workLogStart';
+import './polish-provider.css';
 
 export function MyWorkLogs() {
   const { me, t, lang } = useAuth();
@@ -56,16 +58,22 @@ export function MyWorkLogs() {
   const hasExisting = Boolean(resolution.existing);
   const disableStart = busy || loadingStartData || Boolean(startDataError) || !me?.staff || (!hasExisting && !resolution.period);
   const typeTitle = workType === 'SERVICES' ? 'Services' : 'Payroll';
+  const typeName = workTypeName(workType, sw ? 'sw' : 'en');
   const typeDescription = workType === 'SERVICES'
-    ? 'Record your actual service activities on the dates you worked during this month.'
-    : 'Fill your daily timesheet across the selected month, choosing each date you actually worked.';
-  const typeEyebrow = workType === 'SERVICES' ? 'SERVICE RECORD' : 'DAILY TIMESHEET';
+    ? (sw ? 'Rekodi huduma kwa tarehe ulizofanya kazi.' : 'Record services on the dates you worked.')
+    : (sw ? 'Jaza jedwali lako kwa kila tarehe uliyofanya kazi.' : 'Fill your timesheet for each date you worked.');
   const cascadePreviewCount = workType === 'SERVICES' ? 6 : 3;
   const chwService = me?.cadre?.activities?.find((activity) => activity.key === 'chw_weekend_clinic');
   const chwPayroll = me?.cadre?.activities?.find((activity) => activity.key === 'chw_daily_timesheet');
+  const monthText = workMonthLabel(workMonth, lang);
+  const needsCorrection = hasExisting && NEEDS_CORRECTION.includes(resolution.existing!.status);
+  const startError = resolution.error && sw ? START_ERRORS_SW[resolution.error] || resolution.error : resolution.error;
+  const startLabel = busy ? t('loading') : hasExisting
+    ? needsCorrection ? (sw ? `Rekebisha ${typeName}` : `Correct ${typeTitle}`) : (sw ? `Fungua ${typeName}` : `Open ${typeTitle}`)
+    : (sw ? `Anza ${typeName}` : `Start ${typeTitle}`);
 
   return (
-    <div className="stack-lg">
+    <div className="stack-lg my-logs">
       <header className="page-header">
         <div>
           <h1>{t('myWorkLogs')}</h1>
@@ -75,17 +83,14 @@ export function MyWorkLogs() {
 
       {!me?.staff && (
         <Alert kind="warn">
-          Your account is not linked to a staff record (CHW, Data Clerk or HCP), so you cannot start work logs yet. A system administrator can link it
-          under Administration → Users → Manage.
+          {sw ? 'Akaunti yako haijaunganishwa na rekodi ya mtumishi. Muombe msimamizi aiunganishe.' : 'Your account is not linked to a staff record. Ask an administrator to link it.'}
         </Alert>
       )}
 
       <form className={`worklog-start-card worklog-start-${workType.toLowerCase()}`} onSubmit={start}>
         <div className="worklog-start-intro">
           <div>
-            <span className="worklog-start-kicker">{t('startLog')}</span>
             <h2>{sw ? 'Chagua kumbukumbu ya kazi' : isHcp ? 'Timesheet / activity type' : 'Choose a work log'}</h2>
-            <p>{sw ? 'Chagua Huduma au Payroll na mwezi. Kazi iliyorudishwa inafunguka kwenye rekodi hiyo hiyo kwa marekebisho.' : 'Choose Services or Payroll and the month. Rejected work reopens in the same record for correction.'}</p>
           </div>
           <span className="worklog-start-mark" aria-hidden="true">{workType === 'SERVICES' ? 'S' : 'P'}</span>
         </div>
@@ -97,8 +102,8 @@ export function MyWorkLogs() {
               onChange={(e) => setWorkType(e.target.value as 'SERVICES' | 'PAYROLL')}
               aria-label={isHcp ? 'Timesheet / activity type' : 'Work type'}
             >
-              <option value="SERVICES">Services</option>
-              <option value="PAYROLL">Payroll</option>
+              <option value="SERVICES">{workTypeName('SERVICES', sw ? 'sw' : 'en')}</option>
+              <option value="PAYROLL">{workTypeName('PAYROLL', sw ? 'sw' : 'en')}</option>
             </select>
           </Field>
           <Field label={sw ? 'Mwezi wa kazi' : 'Work month'} hint={`${payMonthDates(workMonth)}. ${sw ? 'Wasilisha tarehe 25.' : 'Submit on the 25th.'}`}>
@@ -114,26 +119,27 @@ export function MyWorkLogs() {
 
         <section className="worklog-type-panel" aria-live="polite" aria-labelledby="worklog-type-title">
           <div className="worklog-type-copy">
-            <span className="worklog-type-eyebrow">{typeEyebrow}</span>
-            <h3 id="worklog-type-title">{typeTitle}</h3>
+            <h3 id="worklog-type-title">{typeName}</h3>
             <p>{typeDescription}</p>
             {isHcp && (
               <div className="worklog-cascade-preview">
                 <span className="worklog-cascade-count">{cascadePreviewCount}</span>
-                <span>{workType === 'SERVICES' ? 'service cascades' : 'daily facility cascades'} in this record</span>
+                <span>{workType === 'SERVICES'
+                  ? (sw ? 'kaskedi za huduma katika rekodi hii' : 'service cascades in this record')
+                  : (sw ? 'kaskedi za kila siku katika rekodi hii' : 'daily facility cascades in this record')}</span>
               </div>
             )}
             {isChw && (
-              <div className="worklog-cascade-preview" aria-label="CHW activity overview">
+              <div className="worklog-cascade-preview" aria-label={sw ? 'Muhtasari wa shughuli za CHW' : 'CHW activity overview'}>
                 {workType === 'SERVICES' ? (
                   <>
                     <span className="worklog-cascade-count">{chwService?.fields.length ?? 1}</span>
-                    <span>Special and Weekend Clinics</span>
+                    <span>{sw ? 'Kliniki maalum na za mwisho wa wiki' : 'Special and Weekend Clinics'}</span>
                   </>
                 ) : (
                   <>
                     <span className="worklog-cascade-count">{chwPayroll?.fields.length ?? 14}</span>
-                    <span>indicators · {chwPayroll?.groups?.length ?? 5} groups</span>
+                    <span>{sw ? `viashiria · makundi ${chwPayroll?.groups?.length ?? 5}` : `indicators · ${chwPayroll?.groups?.length ?? 5} groups`}</span>
                   </>
                 )}
               </div>
@@ -141,71 +147,99 @@ export function MyWorkLogs() {
           </div>
           <div className="worklog-type-date">
             <span className="worklog-date-label">{sw ? 'Mwezi uliochaguliwa' : 'Selected month'}</span>
-            <strong>{workMonthLabel(workMonth)}</strong>
+            <strong>{monthText}</strong>
           </div>
         </section>
 
         {loadingStartData && (
-          <div className="worklog-start-loading" role="status" aria-label="Checking work log availability">
+          <div className="worklog-start-loading" role="status" aria-label={sw ? 'Inaangalia kumbukumbu zilizopo' : 'Checking work log availability'}>
             <span />
             <span />
             <span />
           </div>
         )}
         {startDataError && <Alert>{startDataError}</Alert>}
-        {resolution.error && !startDataError && !hasExisting && <Alert kind="warn">{resolution.error}</Alert>}
+        {resolution.error && !startDataError && !hasExisting && <Alert kind="warn">{startError}</Alert>}
         {!loadingStartData && !startDataError && !resolution.period && !hasExisting && !resolution.error && (
-          <p className="worklog-start-note" role="status">No monthly schedule is available. Contact your regional Technical Officer.</p>
+          <p className="worklog-start-note" role="status">{sw ? 'Hakuna ratiba ya mwezi. Wasiliana na Afisa wa Ufundi wa mkoa wako.' : 'No monthly schedule is available. Contact your regional Technical Officer.'}</p>
         )}
         {resolution.error && !startDataError && hasExisting && (
-          <p className="worklog-start-note" role="status">{resolution.error}</p>
+          <p className="worklog-start-note" role="status">{startError}</p>
         )}
 
         <div className="worklog-start-actions">
           <p className="worklog-start-guidance">
             {hasExisting
-              ? ['REJECTED', 'RETURNED_TO_PROVIDER'].includes(resolution.existing!.status)
-                ? `Your ${typeTitle.toLowerCase()} record for ${workMonthLabel(workMonth)} needs correction. Open it, fill or correct the eligible dates across the month, then submit again.`
-                : `A ${typeTitle.toLowerCase()} record already exists for ${workMonthLabel(workMonth)}. Open it to continue or review your work.`
+              ? needsCorrection
+                ? (sw ? `Rekodi yako ya ${typeName} ya ${monthText} inahitaji marekebisho.` : `Your ${typeTitle.toLowerCase()} record for ${monthText} needs correction.`)
+                : (sw ? `Rekodi ya ${typeName} ya ${monthText} ipo.` : `A ${typeTitle.toLowerCase()} record exists for ${monthText}.`)
               : resolution.period
-                ? (sw ? `Tayari kujaza ${workMonthLabel(workMonth)}. Chagua siku ulizofanya kazi kwenye kalenda.` : `Ready to fill ${workMonthLabel(workMonth)}. Select the actual workdays in the calendar.`)
-                : 'Your regional Technical Officer can open the monthly schedule for new work.'}
+                ? (sw ? `Tayari kujaza ${monthText}.` : `Ready to fill ${monthText}.`)
+                : (sw ? 'Hakuna ratiba iliyo wazi kwa mwezi huu.' : 'No schedule is open for this month.')}
           </p>
-          <button className="btn btn-primary btn-lg" disabled={disableStart}>
-            {busy ? t('loading') : hasExisting
-              ? ['REJECTED', 'RETURNED_TO_PROVIDER'].includes(resolution.existing!.status) ? `Correct ${typeTitle}` : `Open ${typeTitle}`
-              : `Start ${typeTitle}`}
-          </button>
+          <button className="btn btn-primary btn-lg" disabled={disableStart}>{startLabel}</button>
         </div>
         <Alert>{error?.replace(/pay period/gi, 'work month')}</Alert>
       </form>
 
-      <AsyncState data={logs.data} error={logs.error} loading={logs.loading} empty={t('noLogs')}>
-        {(rows) => (
-          <div className="stack">
-            {rows.map((l) => (
-              <button key={l.id} type="button" className="card log-card" onClick={() => { setEditorMonth(undefined); setOpenId(l.id); }} aria-label={`${t('open')} ${recordMonth(l, periods.data || [])}`}>
-                <div className="row-between">
-                  <strong>{recordMonth(l, periods.data || [])}</strong>
-                  <span className="row"><span className="badge badge-neutral">{l.work_type === 'LEGACY' ? 'Legacy' : l.work_type === 'SERVICES' ? 'Services' : l.work_type === 'PAYROLL' && isHcp ? 'Daily timesheet · Payroll' : l.work_type}</span><StatusBadge kind="log" status={l.status} /></span>
-                </div>
-                <MiniStepper status={l.status} />
-                <div className="muted small">
-                  {num(l.entry_count)} {t('days').toLowerCase()} · {workHours(l.total_hours)} {t('hours').toLowerCase()} · #{l.id}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </AsyncState>
+      <section className="stack" aria-labelledby="my-records-title">
+        <div className="section-title">
+          <h2 id="my-records-title">{sw ? 'Rekodi zangu' : 'My records'}</h2>
+          {logs.data && logs.data.length > 0 && <span>{sw ? `Rekodi ${num(logs.data.length)}` : `${num(logs.data.length)} ${logs.data.length === 1 ? 'record' : 'records'}`}</span>}
+        </div>
+        <AsyncState data={logs.data} error={logs.error} loading={logs.loading} empty={t('noLogs')}>
+          {(rows) => (
+            <div className="log-grid">
+              {rows.map((l) => {
+                const month = recordMonth(l, periods.data || [], lang);
+                const fix = NEEDS_CORRECTION.includes(l.status);
+                const editable = fix || l.status === 'DRAFT';
+                return (
+                  <button key={l.id} type="button" className={`card log-card${fix ? ' needs-fix' : ''}`} onClick={() => { setEditorMonth(undefined); setOpenId(l.id); }} aria-label={`${t('open')} ${month}`}>
+                    <span className="log-card-head">
+                      <span>
+                        <span className="log-card-month">{month}</span>
+                        <span className="cell-sub">{l.work_type === 'PAYROLL' && isHcp ? (sw ? 'Daftari la kila siku' : 'Daily timesheet') : `#${l.id}`}</span>
+                      </span>
+                      <WorkTypeChip type={l.work_type} />
+                    </span>
+                    <span className="log-card-status"><StatusBadge kind="log" status={l.status} bare /></span>
+                    <MiniStepper status={l.status} />
+                    <span className="log-card-foot">
+                      <span className="log-card-figures">
+                        <span><strong>{num(l.entry_count)}</strong> {t('days').toLowerCase()}</span>
+                        <span><strong>{workHours(l.total_hours)}</strong> {t('hours').toLowerCase()}</span>
+                      </span>
+                      <span className={`log-card-action${fix ? ' is-fix' : ''}`}>
+                        {fix ? (sw ? 'Rekebisha' : 'Correct') : editable ? (sw ? 'Endelea' : 'Continue') : t('open')}
+                        <Icon name="chevron" size={16} />
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </AsyncState>
+      </section>
     </div>
   );
 }
 
-function recordMonth(log: WorkLogSummary, periods: PayPeriod[]): string {
+const NEEDS_CORRECTION = ['REJECTED', 'RETURNED_TO_PROVIDER'];
+
+const START_ERRORS_SW: Record<string, string> = {
+  'Choose a valid work month.': 'Chagua mwezi sahihi wa kazi.',
+  'Future work months are not available yet.': 'Miezi ijayo bado haijafunguliwa.',
+  'Several records cover this month. Open the correct record from your records below.': 'Rekodi kadhaa zinahusu mwezi huu. Fungua rekodi sahihi hapa chini.',
+  'Several schedules cover this month. Ask your regional Technical Officer to clarify the monthly dates.': 'Ratiba kadhaa zinahusu mwezi huu. Muombe Afisa wa Ufundi wa mkoa afafanue tarehe.',
+  'This month is not open for new work records. Ask your regional Technical Officer to open the monthly schedule.': 'Mwezi huu haujafunguliwa kwa rekodi mpya. Muombe Afisa wa Ufundi wa mkoa afungue ratiba.',
+};
+
+function recordMonth(log: WorkLogSummary, periods: PayPeriod[], lang?: string): string {
   const period = periods.find(p => p.id === log.period_id);
-  if (!period) return 'Monthly work record';
+  if (!period) return lang === 'sw' ? 'Rekodi ya mwezi' : 'Monthly work record';
   const start = payMonth(period.start_date);
   const end = payMonth(period.end_date);
-  return start === end ? workMonthLabel(start) : `${workMonthLabel(start)} – ${workMonthLabel(end)}`;
+  return start === end ? workMonthLabel(start, lang) : `${workMonthLabel(start, lang)} – ${workMonthLabel(end, lang)}`;
 }

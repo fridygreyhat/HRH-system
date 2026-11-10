@@ -60,3 +60,29 @@ test.each([
 ])('on %s the work month is %s', (today, month, last, left) => {
   expect(monthProgress(today)).toMatchObject({ month, last, left });
 });
+
+test('a provider sees this month\'s timesheet, reviews and payments as headline numbers', () => {
+  const html = home(['PROVIDER'], {
+    '/admin/pay-periods': [{ id: 7, start_date: '2000-01-01', end_date: '2999-12-31', status: 'OPEN' }],
+    '/worklogs?mine=true': [
+      { id: 2, period_id: 7, work_type: 'PAYROLL', status: 'DRAFT', entry_count: 3, total_hours: 24 },
+      { id: 1, period_id: 9, work_type: 'SERVICES', status: 'PAID', entry_count: 5, total_hours: 20 },
+    ],
+  });
+  expect(html).toContain('Payroll this month');
+  expect(html).toContain('3 days');
+  expect(html).toContain('With reviewers');
+  expect(html).toContain('My recent timesheets');
+});
+
+test('a reviewer sees what waits on them and what is over 24 hours', () => {
+  const html = home(['RPM'], {
+    '/worklogs?queue=true&work_type=PAYROLL': [{ id: 1, work_type: 'PAYROLL', staff_name: 'Neema Mushi', hours_in_status: 30 }],
+    '/worklogs?queue=true&work_type=SERVICES': [{ id: 2, work_type: 'SERVICES', staff_name: 'Juma Ali', hours_in_status: 2 }],
+  });
+  expect(html).toContain('Waiting on me');
+  expect(html).toContain('Over 24 h');
+  expect(html).toContain('Waiting longest');
+  expect(html).toContain('Neema Mushi');
+  expect(html).toContain('2 timesheets wait for your decision.');
+});

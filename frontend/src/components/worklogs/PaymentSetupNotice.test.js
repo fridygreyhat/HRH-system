@@ -11,7 +11,7 @@ test('groups missing amounts by service and removes duplicate consequences', () 
     'The validated payment amount must be greater than zero.',
   ]} />);
   expect(html).toContain('Payment setup required');
-  expect(html).toContain('RM can approve the work');
+  expect(html).toContain('Payment cannot be routed until amounts are set');
   expect(html.match(/Special and Weekend Clinics/g)).toHaveLength(1);
   expect(html).toContain('2026-10-01, 2026-10-02');
   expect(html).toContain('TB Contact tracing');

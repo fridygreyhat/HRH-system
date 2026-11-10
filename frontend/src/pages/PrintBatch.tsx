@@ -6,6 +6,7 @@ import { WORKLOG_STATUS_LABELS, label, num, payMonth, payMonthDates, previousMon
 import { useApi } from '../hooks';
 import { navigate } from '../nav';
 import { PrintableLog, TimesheetPaper, monthLabel } from './PrintWorkLog';
+import './polish-review.css';
 
 export interface PrintBatchLog extends PrintableLog {
   days: number;
@@ -55,13 +56,10 @@ export function PrintBatch({ target }: { target: string | null }) {
 
   return (
     <div className="print-batch">
-      <div className="print-toolbar no-print">
+      <div className="print-toolbar review-print-toolbar no-print">
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => (window.history.length > 1 ? window.history.back() : navigate('worklogs'))}>← {sw ? 'Rudi' : 'Back'}</button>
-        <button type="button" className="btn btn-primary btn-sm" onClick={() => window.print()} disabled={!printed.length}>
-          {sw ? `Chapisha${printed.length ? ` majedwali ${printed.length}` : ''}` : `Print${printed.length ? ` ${printed.length} timesheets` : ''}`}
-        </button>
         <label className="row print-month">
-          {sw ? 'Mwezi wa malipo' : 'Pay month'}
+          <span className="review-print-label">{sw ? 'Mwezi wa malipo' : 'Pay month'}</span>
           <select aria-label={sw ? 'Mwezi wa malipo' : 'Pay month'} value={month} onChange={(event) => setMonth(event.target.value)}>
             {months.map((value) => <option key={value} value={value}>{monthLabel(value)} ({payMonthDates(value)})</option>)}
           </select>
@@ -70,7 +68,17 @@ export function PrintBatch({ target }: { target: string | null }) {
           <input type="checkbox" checked={skipEmpty} onChange={(event) => setSkipEmpty(event.target.checked)} />
           <span>{sw ? 'Acha majedwali yasiyo na siku mwezi huu' : 'Leave out timesheets with no days this month'}</span>
         </label>
-        <span className="muted small">{sw ? 'A4 kwa ulalo. Daftari kwanza, kisha ukurasa mmoja kwa kila mtoa huduma.' : 'Landscape A4. A register comes first, then one page per provider.'}</span>
+        <span className="review-print-end">
+          {batch.data && printed.length > 0 && <span className="review-print-summary">
+            {sw
+              ? `Majedwali ${num(printed.length)} · siku ${num(totalDays)} · masaa ${workHours(totalHours)}`
+              : `${num(printed.length)} timesheets · ${num(totalDays)} days · ${workHours(totalHours)} h`}
+          </span>}
+          <span className="muted small">{sw ? 'A4 kwa ulalo.' : 'Landscape A4.'}</span>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => window.print()} disabled={!printed.length}>
+            {sw ? `Chapisha${printed.length ? ` majedwali ${printed.length}` : ''}` : `Print${printed.length ? ` ${printed.length} timesheets` : ''}`}
+          </button>
+        </span>
       </div>
 
       {batch.error && <Alert>{batch.error}</Alert>}

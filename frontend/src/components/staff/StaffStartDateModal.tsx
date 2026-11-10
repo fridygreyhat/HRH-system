@@ -28,7 +28,7 @@ export function StaffStartDateModal({ staff, onClose, onSaved }: {
   return (
     <Modal title="Edit staff start date" onClose={onClose}>
       <form className="stack" onSubmit={submit}>
-        <p>Correct the employment start date for <strong>{staff.legal_name}</strong>. A reason is required for the administrator audit record.</p>
+        <p>Correct the employment start date for <strong>{staff.legal_name}</strong>.</p>
         <Field label="Employment start date">
           <input type="date" required value={startDate} max={staff.employment_end_date || undefined}
             onChange={event => setStartDate(event.target.value)} />
@@ -45,11 +45,7 @@ export function StaffStartDateModal({ staff, onClose, onSaved }: {
             </label>
           </Field>
         )}
-        <p className="muted small">
-          An earlier employment date alone does not extend placement coverage. Changing placement dates can affect work-log eligibility.
-          Existing workdays cannot be excluded, and submitted placement dates remain protected.
-          This does not create work records or reopen closed pay periods.
-        </p>
+        <p className="muted small">Changing placement dates can affect work-log eligibility.</p>
         <Field label="Reason for correction">
           <textarea required minLength={3} maxLength={1000} value={reason} onChange={event => setReason(event.target.value)} />
         </Field>

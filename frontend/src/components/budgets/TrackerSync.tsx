@@ -76,7 +76,7 @@ export function TrackerPanel({ periodId, onChanged }: { periodId: string; onChan
         <form className="stack" onSubmit={doImport}>
           <h4>Import allocations</h4>
           <p className="muted small">
-            Upload a CSV exported from the HQ tracker. Columns:{' '}
+            HQ tracker CSV columns:{' '}
             {TRACKER_COLUMNS.map((c, i) => (
               <React.Fragment key={c}>
                 {i > 0 && ', '}
@@ -84,7 +84,7 @@ export function TrackerPanel({ periodId, onChanged }: { periodId: string; onChan
                 {REQUIRED.has(c) ? '*' : ''}
               </React.Fragment>
             ))}
-            . <code>estimated_amount</code> is optional; blank preserves an unknown historical estimate. * required. <code>category</code> and <code>region</code> use the exact names in the system; <code>period_start</code> is YYYY-MM-DD.
+            . * required. Exact system names; <code>period_start</code> is YYYY-MM-DD.
           </p>
           <pre className="json small">{TRACKER_COLUMNS.join(',')}</pre>
           <Field label="Tracker CSV file">
@@ -100,8 +100,7 @@ export function TrackerPanel({ periodId, onChanged }: { periodId: string; onChan
         <div className="stack">
           <h4>Export commitments and expenditure</h4>
           <p className="muted small">
-            Downloads a CSV of FHI360 lines {periodId ? 'for the selected period' : 'for all periods'} to upload to the HQ tracker. Use the period filter above
-            to narrow it.
+            FHI360 lines {periodId ? 'for the selected period' : 'for all periods'}, for the HQ tracker.
           </p>
           <Alert>{exp.error}</Alert>
           <Alert kind="success">{exported && `Downloaded ${exported}.`}</Alert>

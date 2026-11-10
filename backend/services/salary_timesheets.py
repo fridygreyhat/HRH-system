@@ -3,7 +3,7 @@ import csv
 import io
 from calendar import month_name
 from datetime import timedelta
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 from html import escape
 
 from fastapi import HTTPException
@@ -16,7 +16,7 @@ from ..core.period_dates import pay_month_range
 from ..models import Cadre, Region, Staff
 from . import monthly_report_approval as reports
 from . import public_holidays
-from .monthly_report_exports import _cell
+from .monthly_report_exports import _cell, hours_text
 from .provider_payment_details import details
 from .salary_amounts import amounts_for
 
@@ -34,11 +34,6 @@ SCREEN_FIELDS = ("staff_id", "provider_name", "cadre_name", "facility_name", "co
                  "region_name", "days_signed", "monthly_salary", "checks")
 
 
-def hours_text(value):
-    """Whole hours and minutes, matching the on-screen timesheet; never decimal hours."""
-    minutes = int((Decimal(str(value)) * 60).quantize(Decimal(1), rounding=ROUND_HALF_UP))
-    hours, remainder = divmod(minutes, 60)
-    return f"{hours} h {remainder} min" if remainder else str(hours)
 
 
 def month_title(month):

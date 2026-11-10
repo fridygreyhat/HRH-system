@@ -62,7 +62,6 @@ test('provider previews a period aggregate, explicitly saves draft and opens its
     expect(container.textContent).toContain('TZS 12,000');
     expect(container.textContent).toContain('Preview only · not submitted');
     expect(container.textContent).toContain('Save as draft');
-    expect(container.textContent).toContain('No regional budget allocation is required');
     expect(container.textContent).not.toContain('budget line');
     await act(async () => Simulate.click(Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Save as draft')));
     expect(api.post).toHaveBeenLastCalledWith('/community-claims', expect.objectContaining({ period_id: 7, category_id: 5 }));

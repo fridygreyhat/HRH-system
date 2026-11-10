@@ -29,7 +29,7 @@ test('with no claims it explains why there is nothing to upload', () => {
   mockEligible = [];
   act(() => root.render(<ServicesProofPaymentDialog onClose={jest.fn()} onDone={jest.fn()} />));
   expect(container.textContent).toContain('No Services claims are ready for proof yet.');
-  expect(container.textContent).toContain('Central Finance reviewer approves it');
+  expect(container.textContent).toContain('Central Finance reviewer approves them');
   expect(container.querySelector('input[type=file]')).toBeNull();
   expect(saveButton()).toBeUndefined();
 });

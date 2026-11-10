@@ -141,7 +141,7 @@ export function AssignmentFields({ value, onChange, showSection = true }: { valu
             ))}
           </select>
         </Field>
-        <Field label="Facility name" hint={value.ward_id ? 'Type the full name, e.g. Mbezi Health Centre.' : 'Choose the ward first.'}>
+        <Field label="Facility name" hint={value.ward_id ? 'Use the full name.' : 'Choose the ward first.'}>
           <input
             value={value.facility_name}
             onChange={(e) => set({ facility_name: e.target.value })}

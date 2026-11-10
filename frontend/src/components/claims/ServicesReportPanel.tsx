@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { api, qs, saveBlob } from '../../api';
 import { useAuth } from '../../AuthContext';
 import { dateOnly, dateTime, money, num, payMonth, payMonthDates, previousMonth, todayLocal } from '../../format';
-import { monthLabel } from '../../pages/PrintWorkLog';
 import { useAction, useApi } from '../../hooks';
 import { Alert, Field } from '../ui';
 import { PrfProofDialog } from './PrfProofDialog';
@@ -82,19 +81,22 @@ export function ServicesReportPanel({ onPaid }: { onPaid?: () => void } = {}) {
     }
   };
 
+  const monthDate = new Date(`${month}-01T00:00:00Z`);
+  const monthText = Number.isNaN(monthDate.getTime()) ? month : new Intl.DateTimeFormat(sw ? 'sw' : 'en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(monthDate);
+  const awaitingProof = (prfs.data || []).filter((prf) => prf.paid_count < prf.claim_count).length;
+  const prfCount = prfs.data?.length ?? null;
+
   return (
-    <details className="card folded" open aria-label={sw ? 'Nyaraka za malipo ya Huduma' : 'Services payment documentation'}>
-      <summary>{sw ? 'Ripoti ya malipo ya Huduma, PRF na uthibitisho wa malipo' : 'Services payment report, PRF and proof of payment'}</summary>
+    <details className="card folded fin-prf-panel" aria-label={sw ? 'Nyaraka za malipo ya Huduma' : 'Services payment documentation'}>
+      <summary>
+        <span className="fin-prf-title">{sw ? 'Ripoti ya malipo ya Huduma, PRF na uthibitisho wa malipo' : 'Services payment report, PRF and proof of payment'}</span>
+        <span className="fin-prf-meta">
+          {monthText}
+          {prfCount !== null && <> · {sw ? `PRF ${num(prfCount)}` : `${num(prfCount)} ${prfCount === 1 ? 'PRF' : 'PRFs'}`}</>}
+          {awaitingProof > 0 && <> · <span className="fin-prf-due">{sw ? `${num(awaitingProof)} ${awaitingProof === 1 ? 'inasubiri' : 'zinasubiri'} uthibitisho` : `${num(awaitingProof)} awaiting proof`}</span></>}
+        </span>
+      </summary>
       <div className="stack">
-        <ol className="prf-steps">
-          <li>{sw ? 'Pakua ripoti ya Huduma (CSV au PDF).' : 'Download the Services report (CSV or PDF).'}</li>
-          <li>{sw ? 'Rekodi namba ya PRF uliyoiandaa kutoka faili hilo.' : 'Record the PRF number you raised from that file.'}</li>
-          <li>{sw ? 'Lipa nje ya mfumo (benki au pesa kwa simu).' : 'Pay outside the system (bank or mobile money).'}</li>
-          <li>{sw ? 'Pakia uthibitisho wa malipo kwenye PRF hiyo hapa chini.' : 'Upload the proof of payment on that PRF below.'}</li>
-        </ol>
-        <p className="muted small">{sw
-          ? 'Pakua Huduma zilizotumwa za mwezi, andaa PRF kutoka kwenye faili hilo, kisha rekodi namba ya PRF hapa. Madai yaliyo tayari kwenye PRF hayamo kwenye ripoti inayofuata, ili pesa ileile isiombwe mara mbili.'
-          : 'Download the routed Services for the month, raise the PRF from that file, then record its PRF number here. Claims already on a PRF are left out of the next report, so the same money is never requested twice.'}</p>
         <div className="row">
           <Field label={sw ? 'Mwezi wa ripoti ya Huduma' : 'Services report month'} hint={payMonthDates(month)}>
             <input type="month" required value={month} onChange={(e) => { setMonth(e.target.value); setDownload(null); }} />
@@ -104,7 +106,7 @@ export function ServicesReportPanel({ onPaid }: { onPaid?: () => void } = {}) {
         </div>
         <label className="check-line small">
           <input type="checkbox" checked={includePrf} onChange={(e) => setIncludePrf(e.target.checked)} />
-          <span>{sw ? 'Jumuisha madai yaliyo tayari kwenye PRF (kwa kumbukumbu tu; PRF haiwezi kurekodiwa kutoka faili hili)' : 'Include claims already on a PRF (for reference only; a PRF cannot be recorded from this file)'}</span>
+          <span>{sw ? 'Jumuisha madai yaliyo kwenye PRF tayari (kumbukumbu tu, haiwezi kurekodi PRF)' : 'Include claims already on a PRF (reference only, cannot record a PRF)'}</span>
         </label>
         <Alert>{error}</Alert>
 
@@ -120,10 +122,10 @@ export function ServicesReportPanel({ onPaid }: { onPaid?: () => void } = {}) {
               <Alert kind="success">{sw ? `Imerekodiwa kama PRF ${download.prf.prf_number}.` : `Recorded as PRF ${download.prf.prf_number}.`}</Alert>
             ) : download.awaiting_review > 0 ? (
               <Alert kind="warn">{sw
-                ? `Madai ${num(download.awaiting_review)} kwenye faili hili bado yanasubiri mapitio yako ya Fedha Kuu. Yaidhinishe kwanza, kisha pakua tena ili kurekodi PRF.`
-                : `${num(download.awaiting_review)} claim(s) in this file still await your Central Finance review. Approve them first, then download again to record the PRF.`}</Alert>
+                ? `Madai ${num(download.awaiting_review)} bado yanasubiri mapitio ya Fedha Kuu. Yaidhinishe, kisha pakua tena.`
+                : `${num(download.awaiting_review)} claim(s) still await Central Finance review. Approve them, then download again.`}</Alert>
             ) : includePrf ? (
-              <Alert kind="info">{sw ? 'Faili hili lina madai yaliyo kwenye PRF tayari. Pakua tena bila kisanduku hicho ili kurekodi PRF mpya.' : 'This file includes claims already on a PRF. Download again without that box ticked to record a new PRF.'}</Alert>
+              <Alert kind="info">{sw ? 'Pakua tena bila kisanduku hicho ili kurekodi PRF mpya.' : 'Download again without that box ticked to record a new PRF.'}</Alert>
             ) : (
               <form className="stack" onSubmit={record}>
                 <div className="grid-2">
@@ -144,7 +146,7 @@ export function ServicesReportPanel({ onPaid }: { onPaid?: () => void } = {}) {
           </section>
         )}
 
-        <h3>{sw ? `PRF za ${monthLabel(month)}` : `PRFs for ${monthLabel(month)}`}</h3>
+        <h3>{sw ? `PRF za ${monthText}` : `PRFs for ${monthText}`}</h3>
         {prfs.error && <Alert>{prfs.error}</Alert>}
         {prfs.data && !prfs.data.length && <p className="muted small">{sw ? 'Hakuna PRF iliyorekodiwa kwa mwezi huu.' : 'No PRF recorded for this month yet.'}</p>}
         {!!prfs.data?.length && (
@@ -156,10 +158,10 @@ export function ServicesReportPanel({ onPaid }: { onPaid?: () => void } = {}) {
               <tbody>
                 {prfs.data.map((prf) => (
                   <tr key={prf.id}>
-                    <td>{prf.prf_number}</td>
-                    <td>{dateOnly(prf.prf_date)}</td>
+                    <td className="nowrap"><strong>{prf.prf_number}</strong></td>
+                    <td className="nowrap">{dateOnly(prf.prf_date)}</td>
                     <td className="num">{num(prf.claim_count)}</td>
-                    <td className="num">{amountsText(prf.amounts)}</td>
+                    <td className="num nowrap">{amountsText(prf.amounts)}</td>
                     <td>
                       {prf.paid_count >= prf.claim_count
                         ? <span className="badge badge-success">{sw ? 'Imelipwa' : 'Paid'}</span>
@@ -170,7 +172,7 @@ export function ServicesReportPanel({ onPaid }: { onPaid?: () => void } = {}) {
                           </button>
                         </>}
                     </td>
-                    <td>{prf.recorded_by}<div className="muted small">{dateTime(prf.recorded_at)}</div></td>
+                    <td><span className="cell-main">{prf.recorded_by}</span><span className="cell-sub">{dateTime(prf.recorded_at)}</span></td>
                     <td>{prf.note || '—'}</td>
                   </tr>
                 ))}

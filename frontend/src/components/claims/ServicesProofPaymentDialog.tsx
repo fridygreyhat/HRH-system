@@ -88,16 +88,6 @@ export function ServicesProofPaymentDialog({
   return (
     <Modal title={sw ? 'Huduma · ambatisha uthibitisho wa malipo' : 'Services · attach payment proof'} onClose={onClose}>
       <form className="stack services-proof-form" onSubmit={submit}>
-        <div className="notice notice-info">
-          {sw ? (
-            'Hatua hii inarekodi malipo ya nje ya mara moja na kuambatisha uthibitisho wake kwa kuhifadhi mara moja. Haianzishi uhamisho wa benki au pesa kwa simu, na hati haisomwi wala kuhakikiwa na OCR.'
-          ) : (
-            <>
-              This records one external payment and attaches its proof in a single save. It does not initiate a bank or wallet transfer, and the
-              document is not read or verified by OCR.
-            </>
-          )}
-        </div>
         {manifests === undefined && eligible.loading && <div className="services-skeleton" role="status">{sw ? 'Inapakia madai ya Huduma yanayostahili…' : 'Loading eligible Services claims…'}</div>}
         {manifests === undefined && eligible.error && (
           <Alert>{eligible.error} <button type="button" className="link" onClick={eligible.reload}>{sw ? 'Jaribu tena' : 'Retry'}</button></Alert>
@@ -105,7 +95,7 @@ export function ServicesProofPaymentDialog({
         {!eligible.loading && !eligible.error && rows.length === 0 && (
           <div className="empty">
             <strong>{sw ? 'Bado hakuna madai ya Huduma yaliyo tayari kwa uthibitisho.' : 'No Services claims are ready for proof yet.'}</strong>
-            <p className="small">{sw ? 'Sehemu ya kupakia uthibitisho itaonekana hapa kukiwa na dai la kuuambatisha. Dai linaorodheshwa baada ya Fedha ya Mkoa kuliwasilisha na mkaguzi wa Fedha Kuu aliyetajwa kuliidhinisha.' : 'The proof upload appears here once there is a claim to attach it to. A claim is listed after Regional Finance submits it and the named Central Finance reviewer approves it.'}</p>
+            <p className="small">{sw ? 'Madai yanaonekana hapa baada ya mkaguzi wa Fedha Kuu kuyaidhinisha.' : 'Claims appear here once the Central Finance reviewer approves them.'}</p>
           </div>
         )}
         {rows.length > 0 && (
@@ -145,7 +135,7 @@ export function ServicesProofPaymentDialog({
                         <span><small>{sw ? 'Kiasi kwenye uthibitisho' : 'Amount on proof'}</small><strong>{money(Number(row.outstanding_amount) > 0 ? row.outstanding_amount : row.amount, row.currency)}</strong></span>
                       </span>
                       {isFullyRecorded && row.can_record_with_proof && (
-                        <span className="services-proof-note">{sw ? `Tayari yamerekodiwa — kiasi kwenye uthibitisho kinabaki ${money(row.amount, row.currency)}; hakuna malipo yanayoongezwa.` : `Already recorded — proof amount remains ${money(row.amount, row.currency)}; no payment is added.`}</span>
+                        <span className="services-proof-note">{sw ? `Tayari yamerekodiwa — hakuna malipo yanayoongezwa.` : `Already recorded — no payment is added.`}</span>
                       )}
                     </span>
                   </label>
@@ -156,7 +146,7 @@ export function ServicesProofPaymentDialog({
               <span>{sw ? `${selectedRows.length === 1 ? 'Dai' : 'Madai'} ${selectedRows.length}` : `${selectedRows.length} ${selectedRows.length === 1 ? 'claim' : 'claims'}`} · {currency || (sw ? 'Chagua sarafu' : 'Select a currency')}</span>
               <strong>{sw ? 'Kiasi kwenye uthibitisho' : 'Proof amount'} {money(total, currency || '')}</strong>
               {selectedRows.some((row) => Number(row.outstanding_amount) <= 0) && (
-                <small>{sw ? 'Madai yaliyorekodiwa kikamilifu yamejumuishwa kwa ajili ya uthibitisho tu na hayaundi malipo ya marudio.' : 'Fully recorded claims are included for proof confirmation only and do not create a duplicate payment.'}</small>
+                <small>{sw ? 'Madai yaliyorekodiwa tayari hayaundi malipo ya marudio.' : 'Already recorded claims do not create a duplicate payment.'}</small>
               )}
             </div>
             <div className="grid-2">
@@ -181,11 +171,8 @@ export function ServicesProofPaymentDialog({
             <Alert>{fileError}</Alert>
             <label className="services-confirmation">
               <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
-              <span>{sw ? 'Nimekagua hati halisi ya malipo na ninathibitisha kuwa inaorodhesha kila mtoa huduma aliyechaguliwa, huduma zake, na kiasi halisi cha malipo kwa kila mnufaika.' : 'I have checked the actual payment document and confirm it lists each selected provider, their services, and the actual payment amount for each beneficiary.'}</span>
+              <span>{sw ? 'Nimekagua hati ya malipo; inaorodhesha kila mtoa huduma aliyechaguliwa na kiasi chake.' : 'I checked the payment document; it lists each selected provider and amount.'}</span>
             </label>
-            <div className="notice">
-              {sw ? 'Huu ni uthibitisho wa mkono tu. HRH haihakiki yaliyomo kwenye hati, haisomi uthibitisho kwa OCR, wala haitumi pesa kupitia benki au pesa kwa simu.' : 'This is a manual confirmation only. HRH does not verify document contents, OCR the proof, or send money through a bank or wallet.'}
-            </div>
           </>
         )}
         <Alert>{error}</Alert>

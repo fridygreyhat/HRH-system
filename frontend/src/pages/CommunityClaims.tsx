@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { api, qs } from '../api';
 import { useAuth } from '../AuthContext';
 import { ClaimDrawer, ComponentsTable } from '../components/claims/ClaimDrawer';
-import { Alert, AsyncState, Field, RouteBadge, StatusBadge } from '../components/ui';
-import { dateTime, humanize, money } from '../format';
+import { Alert, AsyncState, Field, Kpi, KpiStrip, PersonCell, RouteBadge, StatusBadge } from '../components/ui';
+import { dateTime, humanize, money, num } from '../format';
 import { useAction, useApi } from '../hooks';
 import { ClaimComponent, ClaimDetail, ClaimSummary, CommunityClaimOptions, CommunityClaimPreview } from '../types';
 
@@ -115,25 +115,38 @@ export function CommunityClaims() {
   const unitFieldsComplete = unitFields.every((field) => units[field.key] !== undefined && units[field.key] !== '' && Number.isFinite(Number(units[field.key])) && Number(units[field.key]) >= 0);
   const canPreview = !!periodId && !!categoryId && unitFieldsComplete && !selectedCategory?.configuration_error;
   const hasUnitFields = unitFields.length > 0;
+  const rows = claims.data || [];
+  const count = (test: (claim: ClaimSummary) => boolean) => num(rows.filter(test).length);
+  const paid = (claim: ClaimSummary) => ['PAID', 'RECONCILED'].includes(claim.payment_status);
+  const kpis: Kpi[] = provider
+    ? [
+      { label: sw ? 'Rasimu au zilizorudishwa' : 'Drafts or returned', value: count((c) => ['DRAFT', 'VALIDATION_NEEDED'].includes(c.status)), tone: 'warn', icon: 'clipboard' },
+      { label: sw ? 'Yanakaguliwa' : 'In review', value: count((c) => ['PENDING_COMMUNITY_VERIFICATION', 'AWAITING_APPROVAL'].includes(c.status)), tone: 'info', icon: 'clock' },
+      { label: sw ? 'Yamelipwa' : 'Paid', value: count(paid), tone: 'success', icon: 'check' },
+    ]
+    : [
+      { label: sw ? 'Yanasubiri uhakiki wa jamii' : 'Awaiting verification', value: count((c) => c.status === 'PENDING_COMMUNITY_VERIFICATION'), tone: 'info', icon: 'shield' },
+      { label: sw ? 'Yanasubiri idhini' : 'Awaiting approval', value: count((c) => c.status === 'AWAITING_APPROVAL'), tone: 'warn', icon: 'clock' },
+      { label: sw ? 'Malipo ya kurekodi' : 'Payment to record', value: count((c) => c.status === 'APPROVED' && !paid(c)), tone: 'warn', icon: 'wallet' },
+      { label: sw ? 'Yamelipwa' : 'Paid', value: count(paid), tone: 'success', icon: 'check' },
+    ];
 
   return (
     <div className="stack-lg community-claims">
       <header className="page-header">
         <div>
-          <p className="routing-eyebrow">{sw ? 'Njia C · malipo ya moja kwa moja ya jamii' : 'Route C · direct community payment'}</p>
           <h1>{provider ? (sw ? 'Madai yangu ya jamii' : 'My community claims') : (sw ? 'Madai ya jamii' : 'Community claims')}</h1>
-          <p className="muted small">{sw ? 'Jumla ya kipindi: wasilisha mara moja, hakiki huduma kwa kujitegemea, kisha Fedha ya CSO inaidhinisha na kurekodi malipo ya nje na uthibitisho.' : 'A period aggregate: submit once, verify the service independently, then CSO Finance approves and records the external payment and proof.'}</p>
         </div>
         <button type="button" className="btn btn-secondary" onClick={refresh} disabled={claims.loading || options.loading}>{sw ? 'Pakia upya' : 'Refresh'}</button>
       </header>
 
+      {claims.data && <KpiStrip items={kpis} label={sw ? 'Muhtasari wa madai ya jamii' : 'Community claims at a glance'} />}
+
       {provider && (
         <section className="community-compose card" aria-labelledby="community-form-title">
           <div className="community-compose-heading">
-            <span className="community-step">{sw ? '01 / ANDAA' : '01 / PREPARE'}</span>
             <div>
               <h2 id="community-form-title">{editing ? (sw ? `Hariri rasimu #${editing.id}` : `Edit draft #${editing.id}`) : (sw ? 'Andaa dai la kipindi' : 'Prepare a period claim')}</h2>
-              <p className="muted small">{sw ? 'Weka jumla za kipindi zinazokokotolewa kwa viwango vya jamii vilivyowekwa. Mgao wa bajeti ya mkoa hauhitajiki, na ushahidi wa kila siku si sehemu ya aina hii ya dai.' : 'Enter period totals priced from configured community rates. No regional budget allocation is required, and daily evidence is not part of this claim type.'}</p>
             </div>
           </div>
           <Alert>{options.error || previewAction.error || saveAction.error}</Alert>
@@ -141,7 +154,7 @@ export function CommunityClaims() {
           {options.data && options.data.periods?.length === 0 && !periodId && (
             <div className="community-config-state"><strong>{sw ? 'Hakuna vipindi vya madai vilivyo wazi.' : 'No open claim periods are available.'}</strong><p>{sw ? 'Muombe msimamizi wa programu aweke kipindi cha malipo kinachostahili.' : 'Ask your programme administrator to configure an eligible pay period.'}</p></div>
           )}
-          {editing && <p className="notice notice-info small">{sw ? 'Kipindi na kategoria vimefungwa. Kubadilisha vipimo hakubadilishi viwango vilivyorekodiwa awali.' : 'Period and category are locked. Changing units keeps the original captured rate snapshot.'}</p>}
+          {editing && <p className="notice notice-info small">{sw ? 'Kipindi na kategoria vimefungwa.' : 'Period and category are locked.'}</p>}
           <form className="stack" onSubmit={editing ? updateClaim : previewClaim}>
             <div className="grid-2">
               {editing ? (
@@ -181,10 +194,10 @@ export function CommunityClaims() {
                       </Field>
                     ))}
                   </div>
-                ) : <p className="muted small">{editing ? (sw ? 'Hakuna vipimo vinavyobadilika vilivyorekodiwa; vipengele vya kiasi maalum havibadiliki.' : 'No variable units were captured; fixed components remain unchanged.') : (sw ? 'Kategoria hii haina sehemu za vipimo zilizowekwa. Angalia kiasi kilichowekwa kabla ya kuhifadhi.' : 'This category has no configured unit fields. Preview the configured amount before saving.')}</p>}
+                ) : <p className="muted small">{editing ? (sw ? 'Hakuna vipimo vinavyobadilika.' : 'No variable units to change.') : (sw ? 'Kategoria hii haina sehemu za vipimo.' : 'This category has no unit fields.')}</p>}
               </fieldset>
             )}
-            <Field label={sw ? 'Maelezo (si lazima)' : 'Description (optional)'} hint={sw ? 'Ongeza maelezo mafupi ikihitajika. Usiandike taarifa zinazomtambulisha mgonjwa.' : 'Add brief context if useful. Do not include patient-identifying details.'}>
+            <Field label={sw ? 'Maelezo (si lazima)' : 'Description (optional)'} hint={sw ? 'Usiandike taarifa zinazomtambulisha mgonjwa.' : 'Do not include patient-identifying details.'}>
               <textarea rows={2} maxLength={2000} value={description} onChange={(event) => { setDescription(event.target.value); resetPreview(); }} />
             </Field>
             {editing ? (
@@ -208,25 +221,24 @@ export function CommunityClaims() {
                 <button type="button" className="btn btn-primary" onClick={createClaim} disabled={saveAction.busy}>{saveAction.busy ? (sw ? 'Inahifadhi…' : 'Saving…') : (sw ? 'Hifadhi kama rasimu' : 'Save as draft')}</button>
                 <button type="button" className="btn btn-ghost" onClick={resetPreview}>{sw ? 'Rekebisha vipimo' : 'Adjust units'}</button>
               </div>
-              <p className="muted small">{sw ? 'Kuhifadhi hakuwasilishi dai. Liwasilishe kando kutoka kwenye taarifa za dai ukiwa tayari.' : 'Saving does not submit the claim. Submit separately from the claim details when ready.'}</p>
+              <p className="muted small">{sw ? 'Kuhifadhi hakuwasilishi dai.' : 'Saving does not submit the claim.'}</p>
             </div>
           )}
         </section>
       )}
 
-      {!provider && <section className="community-flow card"><span className="community-step">{sw ? 'MAPITIO HURU · NJIA C' : 'INDEPENDENT REVIEW · ROUTE C'}</span><p><strong>{sw ? 'Mtoa huduma anawasilisha → mhakiki wa eneo husika anathibitisha → Fedha ya CSO iliyopangiwa inaidhinisha → malipo, uthibitisho na upatanisho.' : 'Provider submits → scoped verifier confirms → assigned CSO Finance approves → payment, proof and reconciliation.'}</strong> {sw ? 'Viwango vya jamii vilivyoidhinishwa ndivyo vinavyoamua kiasi; RM, Fedha ya Mkoa au mgao wa bajeti ya mkoa havihitajiki.' : 'Approved community rates determine the amount; no RM, Regional Finance or regional budget allocation is required.'}</p></section>}
       <section className="stack">
-        <div className="community-list-heading"><div><span className="community-step">{sw ? 'DAFTARI LA MADAI' : 'CLAIM REGISTER'}</span><h2>{provider ? (sw ? 'Madai yako' : 'Your claims') : (sw ? 'Madai katika eneo lako' : 'Claims in your scope')}</h2></div><span className="muted small">{sw ? 'Idhini ya kazi na kurekodi malipo ni vitu tofauti.' : 'Work approval and payment recording remain separate.'}</span></div>
-        <AsyncState data={claims.data} error={claims.error} loading={claims.loading} empty={sw ? 'Bado hakuna madai ya jamii yanayoonekana. Rasimu na mapitio yataonekana hapa yakipatikana.' : 'No community claims are visible yet. Drafts and reviews will appear here when available.'}>
-          {(rows) => (
+        <div className="section-title"><h2>{provider ? (sw ? 'Madai yako' : 'Your claims') : (sw ? 'Madai katika eneo lako' : 'Claims in your scope')}</h2>{claims.data && <span>{sw ? `Madai ${num(rows.length)}` : `${num(rows.length)} claims`}</span>}</div>
+        <AsyncState data={claims.data} error={claims.error} loading={claims.loading} empty={sw ? 'Bado hakuna madai ya jamii.' : 'No community claims yet.'}>
+          {(list) => (
             <div className="table-wrap">
               <table className="community-table">
                 <thead><tr><th>{sw ? 'Dai' : 'Claim'}</th><th>{sw ? 'Mtoa huduma' : 'Provider'}</th><th>{sw ? 'Kategoria · kipindi' : 'Category · period'}</th><th>{sw ? 'Mtiririko' : 'Workflow'}</th><th>{sw ? 'Malipo' : 'Payment'}</th><th className="num">{sw ? 'Kiasi' : 'Amount'}</th><th>{sw ? 'Imesasishwa' : 'Updated'}</th><th><span className="sr-only">{sw ? 'Hatua' : 'Actions'}</span></th></tr></thead>
-                <tbody>{rows.map((claim) => (
+                <tbody>{list.map((claim) => (
                   <tr key={claim.id}>
-                    <td><button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpenId(claim.id)}>#{claim.id}</button></td>
-                    <td>{claim.staff_name}</td>
-                    <td>{claim.category_name || (sw ? 'Kategoria inasubiriwa' : 'Category pending')}<span className="routing-subline">{claim.period_label}</span></td>
+                    <td className="nowrap"><button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpenId(claim.id)}>#{claim.id}</button></td>
+                    <td><PersonCell name={claim.staff_name} /></td>
+                    <td><span className="cell-main">{claim.category_name || (sw ? 'Kategoria inasubiriwa' : 'Category pending')}</span><span className="cell-sub">{claim.period_label}</span></td>
                     <td><StatusBadge kind="claim" status={claim.status} bare /></td>
                     <td><RouteBadge route={claim.route_code} /><span className="routing-subline"><StatusBadge kind="payment" status={claim.payment_status} bare /></span></td>
                     <td className="num nowrap">{money(claim.amount, claim.currency)}</td>

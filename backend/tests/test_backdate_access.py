@@ -136,6 +136,24 @@ def test_expiry_scope_and_date_do_not_leak_access(api, db, period, deadline):
     api.put(f"/worklogs/{log['id']}/entries/{day}", "hcp1", body, expect=422)
     assert api.get(f"/backdate-access?entry_date={day}", "tofficer1")["grants"][0]["status"] == "EXPIRED"
 
+    # A range opens every date from the first to the last, and nothing outside it.
+    first = next(day + timedelta(days=n) for n in range(1, 20) if all((day + timedelta(days=n + k)).weekday() < 5 for k in range(3)))
+    second, outside = first + timedelta(days=1), first + timedelta(days=2)
+    base = {"staff_id": provider_id, "reason": "Approved missed week"}
+    api.post("/backdate-access", "tofficer1", {**base, "entry_date": str(second), "end_date": str(first)}, expect=422)  # ends before it starts
+    api.post("/backdate-access", "tofficer1", {**base, "entry_date": str(first), "end_date": str(first + timedelta(days=31))}, expect=422)  # over 31 days
+    api.post("/backdate-access", "tofficer1", {**base, "entry_date": str(first), "end_date": str(date.today() + timedelta(days=2))}, expect=422)  # future
+    ranged = api.post("/backdate-access", "tofficer1", {**base, "entry_date": str(first), "end_date": str(second)})
+    assert (ranged["entry_date"], ranged["end_date"], ranged["status"]) == (str(first), str(second), "ACTIVE")
+    assert ranged["id"] in {g["id"] for g in api.get(f"/backdate-access?entry_date={second}", "tofficer1")["grants"]}
+    saved = api.put(f"/worklogs/{log['id']}/entries/{first}", "hcp1", body)
+    api.put(f"/worklogs/{log['id']}/entries/{second}", "hcp1", body)
+    assert {"entry_date": str(first), "end_date": str(second)}.items() <= saved["backdate_access"]["grants"][-1].items()
+    api.put(f"/worklogs/{log['id']}/entries/{outside}", "hcp1", body, expect=422)
+    api.call("DELETE", f"/backdate-access/{ranged['id']}", "tofficer1")  # one revoke closes the whole range
+    api.call("DELETE", f"/worklogs/{log['id']}/entries/{second}", "hcp1")
+    api.put(f"/worklogs/{log['id']}/entries/{second}", "hcp1", body, expect=422)
+
 
 def test_grants_do_not_bypass_hour_limits_or_closed_periods(api, db, period, deadline):
     from backend.models import PayPeriod

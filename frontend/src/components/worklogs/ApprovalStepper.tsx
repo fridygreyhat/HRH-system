@@ -1,8 +1,10 @@
 import React from 'react';
 import { useAuth } from '../../AuthContext';
-import { dateTime, hoursAge } from '../../format';
+import { dateTime } from '../../format';
 import { WorkLogAudit } from '../../types';
 import { Icon } from '../Icon';
+import { ageText } from './shared';
+import '../../pages/polish-review.css';
 
 /**
  * Visual map of the approval journey every cadre follows. Historical provider confirmations remain
@@ -18,6 +20,26 @@ const ALL_STEPS = [
 ];
 const CSO_TECHNICAL_STEP = { action: 'verify', en: 'CSO Technical approval', sw: 'Idhini ya kitaalamu ya CSO', who: { en: 'CSO Technical Officer', sw: 'Afisa wa kitaalamu wa CSO' } };
 const DONE_LABEL = { en: 'Approved', sw: 'Imeidhinishwa' };
+const NOTE_SW: Record<string, string> = {
+  Cancelled: 'Imefutwa', Rejected: 'Imekataliwa', 'Returned for correction': 'Imerudishwa kwa marekebisho', 'Historical hold': 'Zuio la kihistoria',
+};
+
+/** One line above the steps saying where the record is now, so the stepper reads at a glance. */
+function StepperNow({ lang, position, total, title, state, hoursInStatus }: {
+  lang: 'en' | 'sw'; position: number; total: number; title: string | null; state: 'current' | 'warn' | 'danger' | 'done' | 'none'; hoursInStatus?: number;
+}) {
+  const sw = lang === 'sw';
+  if (state === 'none' || (!title && state !== 'done')) return null;
+  const text = state === 'done'
+    ? (sw ? 'Hatua zote zimekamilika' : 'All steps complete')
+    : `${sw ? `Hatua ${position} kati ya ${total}` : `Step ${position} of ${total}`} · ${state === 'danger' ? (sw ? 'Imesimama: ' : 'Stopped at: ') : (sw ? 'Sasa: ' : 'Now: ')}${title}`;
+  return (
+    <p className={`stepper-now stepper-now-${state}`}>
+      <span>{text}</span>
+      {state !== 'done' && state !== 'danger' && hoursInStatus !== undefined && <span className="stepper-now-age">{sw ? 'Muda katika hatua hii' : 'In this step'}: {ageText(hoursInStatus, lang)}</span>}
+    </p>
+  );
+}
 
 // Index of the step currently waiting, for each status (5 = all done).
 const CURRENT: Record<string, number> = {
@@ -100,16 +122,17 @@ export function ApprovalStepper({
   if (workflowVersion === 2 && workType !== 'PAYROLL') {
     const routeAction = status === 'ROUTED_CSO' ? 'route_cso' : 'route_fhi360';
     const allV2Steps = [
-      { action: 'submit', title: 'Submitted' },
-      { action: 'verify', title: communityOnly ? 'CSO Technical approval' : 'CTC verification' },
-      { action: 'confirm_otp', title: 'Provider confirmation' },
-      { action: 'endorse', title: 'Technical review' },
-      { action: 'authorize', title: 'RM authorization' },
-      { action: 'finance_timesheet_approve', title: 'Regional finance: timesheet' },
-      { action: 'finance_review', title: 'Regional finance: Services payment' },
-      { action: routeAction, title: status === 'ROUTED_CSO' ? 'Routed to CSO' : 'Routed to FHI360' },
-      { action: 'paid', title: 'Paid' },
+      { action: 'submit', title: 'Submitted', sw: 'Imewasilishwa' },
+      { action: 'verify', title: communityOnly ? 'CSO Technical approval' : 'CTC verification', sw: communityOnly ? 'Idhini ya kitaalamu ya CSO' : 'Uhakiki wa CTC' },
+      { action: 'confirm_otp', title: 'Provider confirmation', sw: 'Uthibitisho wa mtoa huduma' },
+      { action: 'endorse', title: 'Technical review', sw: 'Mapitio ya kitaalamu' },
+      { action: 'authorize', title: 'RM authorization', sw: 'Idhini ya RM' },
+      { action: 'finance_timesheet_approve', title: 'Regional finance: timesheet', sw: 'Fedha ya Mkoa: jedwali' },
+      { action: 'finance_review', title: 'Regional finance: Services payment', sw: 'Fedha ya Mkoa: malipo ya Huduma' },
+      { action: routeAction, title: status === 'ROUTED_CSO' ? 'Routed to CSO' : 'Routed to FHI360', sw: status === 'ROUTED_CSO' ? 'Imetumwa CSO' : 'Imetumwa FHI360' },
+      { action: 'paid', title: 'Paid', sw: 'Imelipwa' },
     ];
+    const stepTitle = (step: (typeof allV2Steps)[number]) => (step.action === 'endorse' && technicalReviewer ? technicalReviewer : l === 'sw' ? step.sw : step.title);
     const showOtpV2 = !otpSkipped || latestCycleHasOtp(audit);
     // Records past finance review before this approval existed have no timesheet step to show.
     const noTimesheetStep = !financeTimesheetApproved && ['FINANCE_REVIEWED', 'ROUTED_FHI360', 'ROUTED_CSO', 'PAID', 'APPROVED'].includes(status);
@@ -124,9 +147,17 @@ export function ApprovalStepper({
     const doneRows: Record<string, WorkLogAudit> = {};
     audit.forEach((row) => { doneRows[row.action] = row; });
     const rejected = status === 'REJECTED';
+    const nowIndex = rejected ? Math.min(currentStep, 5) : currentStep;
+    const nowState = status === 'PAID' || status === 'APPROVED' ? 'done' : status === 'CANCELLED' || status === 'DRAFT' ? 'none' : rejected ? 'danger' : status === 'RETURNED_TO_PROVIDER' ? 'warn' : 'current';
+    const nowStep = v2Steps[nowIndex];
+    const nowTitle = status === 'RETURNED_TO_PROVIDER' ? (l === 'sw' ? 'Imerudishwa kwa mtoa huduma kwa marekebisho' : 'Returned to the provider for correction')
+      : !nowStep ? null
+      : nowStep.action === 'paid' ? (l === 'sw' ? 'Inasubiri malipo' : 'Awaiting payment')
+        : nowStep.action === routeAction && !['ROUTED_FHI360', 'ROUTED_CSO'].includes(status) ? (l === 'sw' ? 'Kutumwa kwa mlipaji' : 'Routing to the payor')
+          : stepTitle(nowStep);
     return (
       <div className="stepper-wrap">
-        <p className="muted small">{workType} workflow · version 2</p>
+        <StepperNow lang={l} position={nowIndex + 1} total={v2Steps.length} title={nowTitle} state={nowState} hoursInStatus={hoursInStatus} />
         <ol className="stepper" aria-label={l === 'sw' ? 'Hatua za idhini' : 'Approval steps'}>
           {v2Steps.map((step, index) => {
             const isPaid = step.action === 'paid';
@@ -134,11 +165,14 @@ export function ApprovalStepper({
             const done = isPaid ? status === 'PAID' : index < currentStep || (index === routeIndex && (status === 'ROUTED_FHI360' || status === 'ROUTED_CSO' || status === 'PAID'));
             const currentState = rejected && index === Math.min(currentStep, 5) ? 'danger' : done ? 'done' : index === currentStep && !isPaid ? 'current' : 'upcoming';
             const auditRow = doneRows[step.action];
-            const title = step.action === 'endorse' && technicalReviewer ? technicalReviewer : step.title;
+            const title = stepTitle(step);
             return <li key={`${step.action}-${index}`} className={`step step-${currentState}`} aria-current={currentState === 'current' ? 'step' : undefined}>
               <span className="step-marker" aria-hidden="true">{currentState === 'done' ? <Icon name="check" size={15} /> : currentState === 'danger' ? <Icon name="close" size={14} /> : index + 1}</span>
               <div className="step-text"><span className="step-title">{title}</span><span className="step-sub">
-                {auditRow ? `${auditRow.actor_name || 'Recorded'} · ${dateTime(auditRow.timestamp)}` : currentState === 'done' ? 'Completed' : currentState === 'current' ? `Waiting${hoursInStatus !== undefined ? ` · ${hoursAge(hoursInStatus)}` : ''}` : isPaid ? 'Not yet paid' : 'Pending'}
+                {auditRow ? `${auditRow.actor_name || (l === 'sw' ? 'Imerekodiwa' : 'Recorded')} · ${dateTime(auditRow.timestamp)}`
+                  : currentState === 'done' ? (l === 'sw' ? 'Imekamilika' : 'Completed')
+                    : currentState === 'current' ? `${l === 'sw' ? 'Inasubiri' : 'Waiting'}${hoursInStatus !== undefined ? ` · ${ageText(hoursInStatus, l)}` : ''}`
+                      : isPaid ? (l === 'sw' ? 'Bado haijalipwa' : 'Not yet paid') : l === 'sw' ? 'Bado' : 'Pending'}
               </span></div>
             </li>;
           })}
@@ -152,9 +186,14 @@ export function ApprovalStepper({
   const { current, state, note } = states(status, audit, steps);
   const by = completedBy(audit);
   const approved = status === 'APPROVED';
+  const shownNote = note && l === 'sw' ? NOTE_SW[note] || note : note;
+  const nowState = approved ? 'done' : current < 0 || status === 'DRAFT' ? 'none' : (state[current] === 'danger' ? 'danger' : state[current] === 'warn' ? 'warn' : 'current');
+  const nowStep = steps[current];
+  const nowTitle = nowStep ? `${nowStep.action === 'endorse' && technicalReviewer ? technicalReviewer : nowStep[l]}${nowState === 'warn' && shownNote ? ` (${shownNote})` : ''}` : null;
 
   return (
     <div className="stepper-wrap">
+      <StepperNow lang={l} position={current + 1} total={steps.length + 1} title={nowTitle} state={nowState} hoursInStatus={status === 'DRAFT' ? undefined : hoursInStatus} />
       <ol className="stepper" aria-label={l === 'sw' ? 'Hatua za idhini' : 'Approval steps'}>
         {steps.map((step, i) => {
           const s = state[i];
@@ -174,19 +213,19 @@ export function ApprovalStepper({
                     </>
                   ) : s === 'current' || s === 'warn' ? (
                     <>
-                      {note || (l === 'sw' ? 'Inasubiri' : 'Waiting')}
+                      {shownNote || (l === 'sw' ? 'Inasubiri' : 'Waiting')}
                       {step.action === 'endorse' && technicalReviewer && ` · ${technicalReviewer}`}
                       {hoursInStatus !== undefined && status !== 'DRAFT' && (
-                        <span className={hoursInStatus > 48 ? 'step-late' : undefined}> · {hoursAge(hoursInStatus)}</span>
+                        <span className={hoursInStatus > 48 ? 'step-late' : undefined}> · {ageText(hoursInStatus, l)}</span>
                       )}
                     </>
                   ) : s === 'danger' ? (
-                    note
+                    shownNote
                   ) : (
                     who
                   )}
                 </span>
-                {step.action === 'endorse' && facilityEndorsed && <span className="step-sub">Facility In-Charge: {facilityEndorsed}</span>}
+                {step.action === 'endorse' && facilityEndorsed && <span className="step-sub">{l === 'sw' ? 'Mkuu wa Kituo' : 'Facility In-Charge'}: {facilityEndorsed}</span>}
               </div>
             </li>
           );
@@ -201,7 +240,7 @@ export function ApprovalStepper({
           </div>
         </li>
       </ol>
-      {current === -1 && <p className="muted small">This work log was cancelled.</p>}
+      {current === -1 && <p className="muted small">{l === 'sw' ? 'Jedwali hili limefutwa.' : 'This work log was cancelled.'}</p>}
     </div>
   );
 }

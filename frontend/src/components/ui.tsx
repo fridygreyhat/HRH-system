@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
-import { Icon } from './Icon';
+import { Icon, IconName } from './Icon';
 import {
   CLAIM_STATUS_LABELS,
   CLAIM_STATUS_LABELS_SW,
@@ -10,6 +10,8 @@ import {
   WORKLOG_STATUS_LABELS_SW,
   dateTime,
   humanize,
+  initialsOf,
+  workTypeName,
   label,
   roleLabel,
   routeLabel,
@@ -168,7 +170,7 @@ export function AsyncState<T>({
 }
 
 /** Shown when the mock SMS gateway echoes the OTP so testers can complete the flow. */
-export function DevCodeNotice({ code, label: text = 'Development code (test mode only — real users receive this by SMS)' }: { code?: string | null; label?: string }) {
+export function DevCodeNotice({ code, label: text = 'Test code (real users get it by SMS)' }: { code?: string | null; label?: string }) {
   if (!code) return null;
   return (
     <div className="dev-code" role="status">
@@ -426,5 +428,61 @@ export function Section({ title, actions, children, className }: { title: React.
       </div>
       {children}
     </section>
+  );
+}
+
+
+export interface Kpi {
+  label: React.ReactNode;
+  value: React.ReactNode;
+  /** A short second line, e.g. "2 over 24 h". */
+  note?: React.ReactNode;
+  tone?: Tone;
+  icon?: IconName;
+  /** Makes the tile a button, e.g. to filter the list below. */
+  onClick?: () => void;
+  active?: boolean;
+}
+
+/** A row of headline numbers at the top of a work page: what is waiting, done and owed, at a glance. */
+export function KpiStrip({ items, label: aria }: { items: Kpi[]; label?: string }) {
+  return (
+    <div className="kpis" role="group" aria-label={aria}>
+      {items.map((item, index) => {
+        const body = (
+          <>
+            {item.icon && <span className="kpi-icon" aria-hidden="true"><Icon name={item.icon} size={18} /></span>}
+            <span className="kpi-text">
+              <span className="kpi-value">{item.value}</span>
+              <span className="kpi-label">{item.label}</span>
+              {item.note && <span className="kpi-note">{item.note}</span>}
+            </span>
+          </>
+        );
+        const className = `kpi kpi-${item.tone || 'neutral'}${item.active ? ' is-active' : ''}`;
+        return item.onClick
+          ? <button key={index} type="button" className={className} onClick={item.onClick} aria-pressed={!!item.active}>{body}</button>
+          : <div key={index} className={className}>{body}</div>;
+      })}
+    </div>
+  );
+}
+
+/** Payroll, Services or Legacy as a small coloured chip, in the reader's language. */
+export function WorkTypeChip({ type }: { type: string | null | undefined }) {
+  if (!type) return <span className="muted">—</span>;
+  return <span className={`chip chip-${type.toLowerCase()}`}>{workTypeName(type, pageLang())}</span>;
+}
+
+/** A person in a table: initials, name, and a quiet second line such as the facility. */
+export function PersonCell({ name, sub }: { name: string | null | undefined; sub?: React.ReactNode }) {
+  return (
+    <span className="person-cell">
+      <span className="avatar-sm" aria-hidden="true">{initialsOf(name)}</span>
+      <span className="person-text">
+        <span className="cell-main">{name || '—'}</span>
+        {sub && <span className="cell-sub">{sub}</span>}
+      </span>
+    </span>
   );
 }

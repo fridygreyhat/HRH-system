@@ -56,9 +56,7 @@ export function RosterImport() {
               </p>
               <pre className="json small">{t.columns.join(',')}</pre>
               <p className="muted small">
-                <code>cadre</code> is the cadre code (e.g. CHW, HCP); region, district, ward, facility and organization use the exact names in the system;{' '}
-                <code>start_date</code> is YYYY-MM-DD. A phone number that already exists records a rotation for that person instead of a new identity. Bad rows are
-                skipped and reported.
+                <code>cadre</code> is a code (e.g. CHW); place names must match exactly; <code>start_date</code> is YYYY-MM-DD. Existing phones update that person.
               </p>
             </div>
           )}
@@ -103,9 +101,7 @@ export function RosterImport() {
               <table>
                 <thead>
                   <tr>
-                    <th>When</th>
                     <th>File</th>
-                    <th>Source</th>
                     <th className="num">Rows</th>
                     <th className="num">Created</th>
                     <th className="num">Updated</th>
@@ -119,13 +115,16 @@ export function RosterImport() {
                     return (
                       <React.Fragment key={r.id}>
                         <tr>
-                          <td className="nowrap">{dateTime(r.created_at)}</td>
-                          <td>{r.filename}</td>
-                          <td>{humanize(r.enrollment_source)}</td>
+                          <td>
+                            <span className="cell-main">{r.filename}</span>
+                            <span className="cell-sub">
+                              {dateTime(r.created_at)} · {humanize(r.enrollment_source)}
+                            </span>
+                          </td>
                           <td className="num">{num(r.total_rows)}</td>
                           <td className="num">{num(r.created_count)}</td>
                           <td className="num">{num(r.updated_count)}</td>
-                          <td className="num">{num(r.error_count)}</td>
+                          <td className="num">{r.error_count ? <strong className="text-danger">{num(r.error_count)}</strong> : num(r.error_count)}</td>
                           <td>
                             {errs.length ? (
                               <button type="button" className="btn btn-ghost btn-sm" aria-expanded={open === r.id} onClick={() => setOpen(open === r.id ? null : r.id)}>
@@ -138,7 +137,7 @@ export function RosterImport() {
                         </tr>
                         {open === r.id && (
                           <tr>
-                            <td colSpan={8}>
+                            <td colSpan={6}>
                               <RowErrors errors={errs} />
                             </td>
                           </tr>

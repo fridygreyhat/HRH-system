@@ -211,14 +211,9 @@ export function ClaimTrace({ claimId }: { claimId: number }) {
       </div>
       {s.all_reconcile === false && (
         <Alert>
-          {sw ? (
-            'Thamani za kila siku zilizo kwenye hifadhidata sasa zinatofautiana na kilicholipwa. Kumbukumbu zilizoidhinishwa zimefungwa kwenye mfumo, kwa hiyo hii inaonyesha mabadiliko yaliyofanywa nje ya mtiririko wa kawaida. Chunguza kabla ya malipo mengine.'
-          ) : (
-            <>
-              The daily values now in the database differ from what was paid. Approved logs are locked in the system, so this points to a change made outside the
-              normal workflow. Investigate before further payment.
-            </>
-          )}
+          {sw
+            ? 'Thamani za kila siku sasa zinatofautiana na kilicholipwa. Chunguza kabla ya malipo mengine.'
+            : 'Daily values now differ from what was paid. Investigate before further payment.'}
         </Alert>
       )}
 

@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api, qs, saveBlob } from '../api';
 import { useAuth } from '../AuthContext';
-import { Alert, AsyncState, Field, Modal } from '../components/ui';
+import { Alert, AsyncState, Field, KpiStrip, Modal } from '../components/ui';
 import { todayLocal, num, payMonth, payMonthDates, previousMonth, workHours } from '../format';
 import { useApi } from '../hooks';
 import { Named } from '../types';
 import './finance-monthly-report.css';
+import './polish-finance.css';
 
 type WorkType = 'PAYROLL' | 'SERVICES';
 interface IndicatorTotal {
@@ -280,46 +281,32 @@ export function FinanceMonthlyReport() {
 
   return (
     <div className="stack-lg finance-monthly">
-      <header className="page-header finance-monthly-heading">
-        <div>
-          <p className="routing-eyebrow">{sw ? 'Fedha · jumla za mwezi wa malipo' : 'Finance · pay-month totals'}</p>
-          <h1>{sw ? 'Ripoti ya kazi ya mwezi' : 'Monthly work report'}</h1>
-          <p className="muted small">{sw
-            ? 'Mwonekano mmoja wa kazi iliyoidhinishwa kwa kada za CHW, HCP na Karani wa Takwimu. Jumla hufuata tarehe za kazi ndani ya mwezi wa malipo uliochaguliwa, tarehe 26 hadi 25.'
-            : 'One approved-work view across CHW, HCP and Data Clerk cadres. Totals follow entry dates within the selected pay month, the 26th to the 25th.'}</p>
+      <div className="fin-toolbar">
+        <h1>{sw ? 'Ripoti ya kazi ya mwezi' : 'Monthly work report'}</h1>
+        <div className="filters finance-monthly-filters" role="search" aria-label={sw ? 'Chuja ripoti ya mwezi' : 'Filter monthly report'}>
+          <Field label={sw ? 'Mwezi wa malipo' : 'Pay month'} hint={payMonthDates(month)}>
+            <input type="month" value={month} onChange={(event) => setMonth(event.target.value)} aria-label="Pay month" />
+          </Field>
+          <Field label={sw ? 'Aina ya kazi' : 'Work type'}>
+            <select value={workType} onChange={(event) => setWorkType(event.target.value as WorkType)} aria-label="Work type">
+              <option value="PAYROLL">{sw ? 'Mshahara · kazi iliyoidhinishwa' : 'Payroll · approved work'}</option>
+              <option value="SERVICES">{sw ? 'Huduma · mwonekano wa jumla' : 'Services · aggregate view'}</option>
+            </select>
+          </Field>
+          <Field label={sw ? 'Mkoa' : 'Region'}>
+            <select value={regionId} onChange={(event) => setRegionId(event.target.value)} aria-label="Region">
+              <option value="">{sw ? 'Mikoa yote niliyopangiwa' : 'All regions in my scope'}</option>
+              {(regions.data || []).map((region) => <option key={region.id} value={region.id}>{region.name}</option>)}
+            </select>
+          </Field>
         </div>
-        <div className="finance-report-actions">
-          <button type="button" className="btn btn-secondary" onClick={() => { summary.reload(); regions.reload(); }} disabled={summary.loading}>{sw ? 'Pakia ripoti upya' : 'Refresh report'}</button>
+        <div className="fin-actions finance-report-actions">
+          <button type="button" className="btn btn-ghost" onClick={() => { summary.reload(); regions.reload(); }} disabled={summary.loading}>{sw ? 'Pakia ripoti upya' : 'Refresh report'}</button>
           <button type="button" className="btn btn-secondary" onClick={() => download('csv')} disabled={!!exporting}>{exporting === 'csv' ? (sw ? 'Inaandaa CSV…' : 'Preparing CSV…') : (sw ? 'Pakua CSV' : 'Download CSV')}</button>
           <button type="button" className="btn btn-secondary" onClick={() => download('pdf')} disabled={!!exporting}>{exporting === 'pdf' ? (sw ? 'Inaandaa PDF…' : 'Preparing PDF…') : (sw ? 'Pakua PDF' : 'Download PDF')}</button>
         </div>
-      </header>
-
-      <section className="finance-report-note" aria-label={sw ? 'Wigo wa ripoti' : 'Report scope'}>
-        <span className="finance-report-note-mark" aria-hidden="true">{sw ? 'MWEZI' : 'MONTH'}</span>
-        {sw
-          ? <p><strong>Kazi iliyoidhinishwa, si maandalizi ya malipo.</strong> Mshahara huonekana baada ya idhini ya CTC → Kitaalamu → RM. Ripoti hii inajumlisha viashiria na masaa pekee; haionyeshi kazi ya kila siku, bei, bajeti wala idhini za fedha.</p>
-          : <p><strong>Approved work, not payment preparation.</strong> Payroll appears after CTC → Technical → RM authorization. This report aggregates indicators and hours only; it does not show daily entries, prices, budgets or finance approvals.</p>}
-      </section>
-
-      <div className="filters finance-monthly-filters" role="search" aria-label={sw ? 'Chuja ripoti ya mwezi' : 'Filter monthly report'}>
-        <Field label={sw ? 'Mwezi wa malipo' : 'Pay month'} hint={payMonthDates(month)}>
-          <input type="month" value={month} onChange={(event) => setMonth(event.target.value)} aria-label="Pay month" />
-        </Field>
-        <Field label={sw ? 'Aina ya kazi' : 'Work type'}>
-          <select value={workType} onChange={(event) => setWorkType(event.target.value as WorkType)} aria-label="Work type">
-            <option value="PAYROLL">{sw ? 'Mshahara · kazi iliyoidhinishwa' : 'Payroll · approved work'}</option>
-            <option value="SERVICES">{sw ? 'Huduma · mwonekano wa jumla' : 'Services · aggregate view'}</option>
-          </select>
-        </Field>
-        <Field label={sw ? 'Mkoa' : 'Region'}>
-          <select value={regionId} onChange={(event) => setRegionId(event.target.value)} aria-label="Region">
-            <option value="">{sw ? 'Mikoa yote niliyopangiwa' : 'All regions in my scope'}</option>
-            {(regions.data || []).map((region) => <option key={region.id} value={region.id}>{region.name}</option>)}
-          </select>
-        </Field>
-        {regions.error && <Alert kind="warn">{sw ? 'Orodha ya mikoa haikupakia. Inaonyesha wigo wako ulioidhinishwa.' : 'Region options could not be loaded. Showing your authorized scope.'} {regions.error}</Alert>}
       </div>
+      {regions.error && <Alert kind="warn">{sw ? 'Orodha ya mikoa haikupakia. Inaonyesha wigo wako ulioidhinishwa.' : 'Region options could not be loaded. Showing your authorized scope.'} {regions.error}</Alert>}
 
       {reportState.data && (
         <section className={`finance-signoff ${approval ? 'is-approved' : ''}`} aria-labelledby="finance-signoff-heading">
@@ -331,11 +318,10 @@ export function FinanceMonthlyReport() {
             ) : (
               <p>{regionId
                 ? (sw ? `Pitia ripoti ya ${workTypeName.toLowerCase()} ya ${monthName(month, sw)} kwa mkoa uliochaguliwa kabla ya kusaini.` : `Review the ${monthName(month)} ${workType.toLowerCase()} report for the selected region before signing.`)
-                : (sw ? 'Chagua mkoa mmoja ili kupitia na kusaini. Mwonekano wa mikoa yote ni wa kusoma tu.' : 'Choose one region to review and sign off. All-region view is available for browsing only.')}</p>
+                : (sw ? 'Chagua mkoa mmoja ili kusaini.' : 'Choose one region to sign off.')}</p>
             )}
-            {reportState.data.stale && <p className="finance-stale-note" role="status">{sw ? 'Kuna kazi mpya au iliyobadilika baada ya uidhinishaji huu. Pakia upya na upitie ripoti ya sasa kabla ya kuitegemea hati hii.' : 'New or changed work is present after this sign-off. Refresh and review the current report before relying on this document.'}</p>}
-            {isCsoOnly && <p className="finance-readonly-note">{sw ? 'Mwonekano wa kusoma tu. Akaunti hii inaona nakala ya ripoti iliyoidhinishwa kwa wigo wake.' : 'Read-only documentation view. This account sees the approved report snapshot for its assigned scope.'}</p>}
-            <p className="finance-signoff-legal">{sw ? 'Kusaini ripoti kunathibitisha mapitio ya mkoa pekee. Hakuidhinishi wala kuanzisha malipo.' : 'Report sign-off documents regional review only. It does not authorize or initiate payment.'}</p>
+            {reportState.data.stale && <p className="finance-stale-note" role="status">{sw ? 'Kuna kazi mpya au iliyobadilika baada ya uidhinishaji. Pakia upya na upitie tena.' : 'New or changed work since this sign-off. Refresh and review again.'}</p>}
+            {isCsoOnly && <p className="finance-readonly-note">{sw ? 'Mwonekano wa kusoma tu.' : 'Read-only documentation view.'}</p>}
           </div>
           {canSignOff && (
             <div className="finance-signoff-control">
@@ -371,7 +357,6 @@ export function FinanceMonthlyReport() {
               </tr>)}</tbody>
             </table>
           </section>)}
-          <p>{sw ? 'Kusaini ripoti ya mkoa ni uthibitisho wa hati pekee, si idhini ya malipo.' : 'Regional report sign-off is documentation only, not payment approval.'}</p>
         </article>
         <div className="row">
           <button className="btn btn-secondary" onClick={() => download('pdf')} disabled={!!exporting}>{sw ? 'Pakua PDF ya kuchapisha' : 'Download printable PDF'}</button>
@@ -392,25 +377,30 @@ export function FinanceMonthlyReport() {
           isEmpty={(data) => data.providers.length === 0}
           empty={<div className="finance-monthly-empty"><span className="finance-empty-month">{month}</span><div>
             <strong>{sw ? 'Hakuna kazi iliyoidhinishwa mwezi huu' : 'No approved work in this month'}</strong>
-            <p>{sw ? 'Jaribu mwezi au mkoa mwingine. Kazi iliyoidhinishwa na RM yenye tarehe ndani ya mwezi uliochaguliwa pekee ndiyo inajumuishwa.' : 'Try another month or region. Only RM-authorized work with entry dates in the selected month is included.'}</p>
+            <p>{sw ? 'Jaribu mwezi au mkoa mwingine.' : 'Try another month or region.'}</p>
           </div></div>}
         >
           {(data) => (
             <div className="stack-lg" aria-live="polite">
-              <section className="finance-monthly-overview" aria-label={sw ? `Jumla za ripoti ya ${monthName(data.month, sw)}` : `${monthName(data.month)} report totals`}>
-                <div className="finance-overview-title">
-                  <span className="finance-overview-kicker">{data.work_type === 'PAYROLL' ? (sw ? 'Kazi ya mshahara iliyoidhinishwa' : 'Approved payroll work') : (sw ? 'Shughuli za huduma' : 'Services activity')}</span>
+              <div className="stack">
+                <div className="section-title">
                   <h2>{monthName(data.month, sw)}</h2>
+                  <span>{data.work_type === 'PAYROLL' ? (sw ? 'Kazi ya mshahara iliyoidhinishwa' : 'Approved payroll work') : (sw ? 'Shughuli za huduma' : 'Services activity')}</span>
                 </div>
-                <div className="finance-total"><span>{sw ? 'Watoa huduma' : 'Providers'}</span><strong>{num(data.totals.providers)}</strong></div>
-                <div className="finance-total"><span>{sw ? 'Jumla ya masaa' : 'Total hours'}</span><strong>{workHours(data.totals.hours)}<small>{sw ? 'masaa' : 'hrs'}</small></strong></div>
-                <div className="finance-total"><span>{sw ? 'Siku za kazi' : 'Work days'}</span><strong>{num(data.totals.days)}</strong></div>
-                <div className="finance-total"><span>{sw ? 'Majedwali yaliyoidhinishwa' : 'Approved logs'}</span><strong>{num(data.totals.logs)}</strong></div>
-              </section>
+                <KpiStrip
+                  label={sw ? `Jumla za ripoti ya ${monthName(data.month, sw)}` : `${monthName(data.month)} report totals`}
+                  items={[
+                    { label: sw ? 'Watoa huduma' : 'Providers', value: num(data.totals.providers), icon: 'users' },
+                    { label: sw ? 'Jumla ya masaa' : 'Total hours', value: workHours(data.totals.hours), icon: 'clock', tone: 'info' },
+                    { label: sw ? 'Siku za kazi' : 'Work days', value: num(data.totals.days), icon: 'calendar', tone: 'info' },
+                    { label: sw ? 'Majedwali yaliyoidhinishwa' : 'Approved logs', value: num(data.totals.logs), icon: 'check', tone: 'success' },
+                  ]}
+                />
+              </div>
 
               <section className="finance-cadre-section" aria-labelledby="cadre-totals-heading">
                 <div className="finance-section-heading">
-                  <div><p className="finance-overview-kicker">{sw ? 'Ndani ya mwezi huo huo' : 'Across the same month'}</p><h2 id="cadre-totals-heading">{sw ? 'Jumla kwa kada' : 'Cadre totals'}</h2></div>
+                  <div><h2 id="cadre-totals-heading">{sw ? 'Jumla kwa kada' : 'Cadre totals'}</h2></div>
                   <span>{sw ? `Kada ${data.cadres.length} kwenye wigo` : `${data.cadres.length} cadres in scope`}</span>
                 </div>
                 <div className="table-wrap finance-report-table-wrap">
@@ -431,7 +421,7 @@ export function FinanceMonthlyReport() {
 
               <section className="finance-provider-section" aria-labelledby="provider-totals-heading">
                 <div className="finance-section-heading">
-                  <div><p className="finance-overview-kicker">{sw ? 'Bila kazi ya kila siku · vituo vilivyoidhinishwa na RM' : 'No daily entries · RM-authorized placements'}</p><h2 id="provider-totals-heading">{sw ? 'Watoa huduma kwa kada' : 'Providers by cadre'}</h2></div>
+                  <div><h2 id="provider-totals-heading">{sw ? 'Watoa huduma kwa kada' : 'Providers by cadre'}</h2></div>
                   <span>{sw ? `Kada ${providerGroups.length} · watoa huduma ${num(data.totals.providers)}` : `${providerGroups.length} cadres · ${num(data.totals.providers)} providers`}</span>
                 </div>
                 <div className="finance-provider-groups">
@@ -444,9 +434,6 @@ export function FinanceMonthlyReport() {
           )}
         </AsyncState>
       )}
-      <p className="muted small finance-report-footnote">{sw
-        ? 'Viashiria ni jumla za shughuli, si idadi ya wateja wa kipekee. Kipindi cha kazi kinachovuka miezi huhesabiwa kwa tarehe zake za kazi, kamwe si kipindi kizima cha malipo.'
-        : 'Indicators are aggregated activity totals, not unique-client counts. A work period spanning months is counted by its entry dates, never as a whole pay period.'}</p>
     </div>
   );
 }

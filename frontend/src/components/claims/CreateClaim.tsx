@@ -129,7 +129,7 @@ function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCrea
         <form className="stack" onSubmit={runPreview}>
           {mode === 'worklog' ? (
             <div className="grid-2">
-              <Field label={sw ? 'Kumbukumbu ya kazi iliyoidhinishwa' : 'Approved work log'} hint={sw ? 'Kumbukumbu za kazi ZILIZOIDHINISHWA unazoweza kuona ndizo pekee zinazoorodheshwa.' : 'Only APPROVED work logs you can see are listed.'}>
+              <Field label={sw ? 'Kumbukumbu ya kazi iliyoidhinishwa' : 'Approved work log'}>
                 <select
                   required
                   value={workLogId}
@@ -148,7 +148,7 @@ function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCrea
                   ))}
                 </select>
               </Field>
-              <Field label={sw ? 'Kategoria ya dai' : 'Claim category'} hint={sw ? 'Kategoria ambazo tayari zimedaiwa kwa kumbukumbu hii zimefichwa.' : 'Categories already claimed for this work log are hidden.'}>
+              <Field label={sw ? 'Kategoria ya dai' : 'Claim category'}>
                 <select
                   required
                   value={categoryId}
@@ -170,7 +170,7 @@ function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCrea
           ) : (
             <>
               <div className="grid-2">
-                <Field label={sw ? 'Kategoria ya dai' : 'Claim category'} hint={sw ? 'Kategoria zisizohitaji kumbukumbu ya kazi ya HRH pekee.' : 'Only categories that do not require an HRH work log.'}>
+                <Field label={sw ? 'Kategoria ya dai' : 'Claim category'}>
                   <select
                     required
                     value={categoryId}
@@ -243,7 +243,7 @@ function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCrea
                   <legend>{sw ? 'Vipimo vilivyotangazwa' : 'Declared units'}</legend>
                   {rules.loading && <p className="muted">{sw ? 'Inapakia kanuni za viwango…' : 'Loading rate rules…'}</p>}
                   {!rules.loading && unitFields.length === 0 && (
-                    <p className="muted small">{sw ? 'Kanuni za viwango zinazotumika za kategoria hii hazihitaji vipimo vilivyotangazwa (viasi maalum tu), au hakuna kanuni inayotumika.' : "This category's active rate rules need no declared units (fixed amounts only), or no rule is active."}</p>
+                    <p className="muted small">{sw ? 'Kategoria hii haihitaji vipimo vilivyotangazwa.' : 'This category needs no declared units.'}</p>
                   )}
                   <div className="grid-3">
                     {unitFields.map((f) => (
@@ -276,7 +276,7 @@ function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCrea
 
         {preview && (
           <section className="card stack" aria-live="polite">
-            <h3>{sw ? 'Muhtasari – bado hakuna kilichoundwa' : 'Preview – nothing has been created yet'}</h3>
+            <h3>{sw ? 'Muhtasari – bado haujaundwa' : 'Preview – not created yet'}</h3>
             <div className="badges">
               <RouteBadge route={preview.route_code} />
             </div>
@@ -301,7 +301,7 @@ function LegacyCreateClaim({ onClose, onCreated }: { onClose: () => void; onCrea
             <ComponentsTable components={preview.components} currency={currency} />
             {preview.exceptions.length > 0 && (
               <div className="alert alert-warn" role="status">
-                <strong>{sw ? 'Dosari:' : 'Exceptions:'}</strong> {sw ? 'dai linaweza kuundwa lakini litahitaji uhakiki kabla ya kuwasilishwa.' : 'the claim can be created but will need validation before it can be submitted.'}
+                <strong>{sw ? 'Dosari:' : 'Exceptions:'}</strong> {sw ? 'litahitaji uhakiki kabla ya kuwasilishwa.' : 'the claim will need validation before submission.'}
                 <ul>
                   {preview.exceptions.map((x) => (
                     <li key={x}>{x}</li>

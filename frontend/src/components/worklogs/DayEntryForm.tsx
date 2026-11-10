@@ -160,7 +160,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
     for (const item of additionalServices) {
       const activity = activities.find(candidate => candidate.key === item.activity_key);
       if (!activity || (activity.required_fields || []).some(key => item.measures[key] === undefined || item.measures[key] === '')) {
-        setValidationError('Complete all required indicators for every additional service. Enter zero for none.');
+        setValidationError(lang === 'sw' ? 'Jaza viashiria vyote vinavyohitajika kwa kila huduma ya ziada. Weka sifuri ikiwa hakuna.' : 'Complete all required indicators for every additional service. Enter zero for none.');
         return;
       }
     }
@@ -183,7 +183,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
     if (direct) {
       const duration = Number(hours) + Number(minutes) / 60;
       if (!Number.isInteger(Number(hours)) || !Number.isInteger(Number(minutes)) || duration < minimumHours || duration > maximumHours) {
-        setValidationError(`Enter hours and minutes between ${minimumHours} and ${maximumHours} hours.`);
+        setValidationError(lang === 'sw' ? `Weka masaa na dakika kati ya saa ${minimumHours} na ${maximumHours}.` : `Enter hours and minutes between ${minimumHours} and ${maximumHours} hours.`);
         return;
       }
       payload.hours_worked = Number(duration.toFixed(6));
@@ -206,31 +206,31 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
   const busy = save.busy || remove.busy;
 
   return (
-    <form className="card stack" onSubmit={submit} aria-label={`${t('editingDay')} ${dateOnly(date)}`} id="day-form">
-      <div className="row-between">
+    <form className="card stack day-form" onSubmit={submit} aria-label={`${t('editingDay')} ${dateOnly(date)}`} id="day-form">
+      <div className="row-between day-form-head">
         <h3>
-          {t('editingDay')} {weekday(date, lang)} {dateOnly(date)}
+          <span className="day-form-kicker">{t('editingDay')}</span>
+          {weekday(date, lang)} {dateOnly(date)}
         </h3>
         <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
           {t('close')}
         </button>
       </div>
 
-      <p className={isSunday ? 'alert alert-warn' : 'muted small'}>
+      <p className={isSunday ? 'alert alert-warn' : 'muted small day-form-limits'}>
         {lang === 'sw'
-          ? `Jumatatu–Ijumaa: hadi saa ${limits.daily_hours} kwa siku na ${limits.weekly_hours} kwa wiki. Kliniki za Jumamosi: saa ${limits.saturday_min_hours}–${limits.saturday_max_hours}, hazihesabiwi kwenye kikomo cha siku za kazi. Kazi ya Jumapili hairuhusiwi.`
-          : `Monday–Friday: up to ${limits.daily_hours} hours per day and ${limits.weekly_hours} total. Saturday weekend clinics: ${limits.saturday_min_hours}–${limits.saturday_max_hours} hours, separate from the weekday limit. Sunday work is not allowed.`}
-      </p>
-      <p className="notice notice-info" role="note">
-        {lang === 'sw'
-          ? 'Unaweza kujaza Payroll na Services kwa tarehe moja, kila moja kwenye daftari lake. Saa na idhini zinahesabiwa kando.'
-          : 'You can record Payroll and Services on the same date in their separate work logs. Hours and approvals are tracked separately.'}
+          ? `Jumatatu–Ijumaa: hadi saa ${limits.daily_hours} kwa siku, ${limits.weekly_hours} kwa wiki. Jumamosi: saa ${limits.saturday_min_hours}–${limits.saturday_max_hours}. Hakuna kazi Jumapili.`
+          : `Mon–Fri: up to ${limits.daily_hours} hours per day, ${limits.weekly_hours} per week. Saturday: ${limits.saturday_min_hours}–${limits.saturday_max_hours} hours. No Sunday work.`}
       </p>
       {backdateAccess && backdateAccess.enabled !== false && (
         <p className="notice notice-info" role="note">
           {dateGrant
-            ? <>This date has approved backdated access until <strong>{new Date(dateGrant.expires_at).toLocaleString()}</strong>.</>
-            : <>New entries can normally be made up to {backdateAccess.grace_hours} hours after work completion. A Technical Officer can grant temporary access for a missed older date.</>}
+            ? (lang === 'sw'
+              ? <>Tarehe hii ina ruhusa ya kujaza hadi <strong>{new Date(dateGrant.expires_at).toLocaleString()}</strong>.</>
+              : <>This date has approved backdated access until <strong>{new Date(dateGrant.expires_at).toLocaleString()}</strong>.</>)
+            : (lang === 'sw'
+              ? <>Kujaza kunafungwa saa {backdateAccess.grace_hours} baada ya kazi.</>
+              : <>Entries close {backdateAccess.grace_hours} hours after the work.</>)}
         </p>
       )}
 
@@ -258,14 +258,6 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
               ? activityType === 'SERVICES' ? (lang === 'sw' ? 'Huduma' : 'Service')
                 : (lang === 'sw' ? 'Shughuli ya daftari la siku' : 'Daily timesheet activity')
             : lang === 'sw' ? 'Aina ya shughuli' : 'Activity'}
-          hint={isHcp
-            ? (lang === 'sw'
-              ? 'Chagua kaskedi ya shughuli za kila siku na ujaze viashiria. Services inarekodiwa kando.'
-              : 'Choose the daily activity cascade and complete its indicators. Services are recorded separately.')
-            : isDataClerk && activityType === 'SERVICES'
-              ? (lang === 'sw' ? 'Kliniki za mwisho wa wiki pekee kwa sasa. Huduma nyingine zitaongezwa na Afisa wa Ufundi wa Mkoa.'
-                : 'Weekend Clinics only for now. Your Regional Technical Officer can add other services.')
-              : lang === 'sw' ? 'Chagua shughuli ili kuonyesha viashiria vyake.' : 'Select an activity to show its specific indicators.'}
         >
           <select required value={activityKey} onChange={(e) => { setActivityKey(e.target.value); setAdditionalServices(items => items.filter(item => item.activity_key !== e.target.value)); }}>
             {isHcp && <option value="">— {lang === 'sw' ? 'Chagua shughuli' : 'Select an activity'} —</option>}
@@ -296,7 +288,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
           <div className="grid-2">
             <input aria-label="Whole hours worked" type="number" inputMode="numeric" min="0" max={maximumHours} step="1" required value={hours} onChange={(e) => setHours(e.target.value)} />
             <select aria-label="Minutes worked" value={minutes} onChange={event => setMinutes(event.target.value)}>
-              {Array.from({ length: 60 }, (_, minute) => <option key={minute} value={minute}>{minute} min</option>)}
+              {Array.from({ length: 60 }, (_, minute) => <option key={minute} value={minute}>{lang === 'sw' ? `dakika ${minute}` : `${minute} min`}</option>)}
             </select>
           </div>
         </Field>
@@ -305,7 +297,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
           <Field label={<FieldLabel field={{ label_en: 'Start time', label_sw: 'Muda wa kuanza' }} lang={lang} />}>
             <input type="time" required value={start} onChange={(e) => setStart(e.target.value)} />
           </Field>
-          <Field label={<FieldLabel field={{ label_en: 'End time', label_sw: 'Muda wa kumaliza' }} lang={lang} />} hint={t('hoursComputed')}>
+          <Field label={<FieldLabel field={{ label_en: 'End time', label_sw: 'Muda wa kumaliza' }} lang={lang} />}>
             <input type="time" required value={end} onChange={(e) => setEnd(e.target.value)} />
           </Field>
         </div>
@@ -347,7 +339,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
       )}
 
       {captureGps && (
-        <div className={`stack${flaggedFields.has('location') ? ' flagged-field' : ''}`}>
+        <div className={`stack day-gps${flaggedFields.has('location') ? ' flagged-field' : ''}`}>
           <div className="row">
             <button type="button" className="btn btn-secondary" onClick={getLocation} disabled={gpsState === 'busy'}>
               {gpsState === 'busy' ? t('loading') : t('captureGps')}
@@ -359,23 +351,19 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
             )}
           </div>
           {gpsState === 'failed' && <Alert kind="warn">{t('gpsFailed')}</Alert>}
-          <span className="field-hint">
-            {requiresGps
-              ? (lang === 'sw'
-                ? 'Lazima unase mahali ulipo kabla ya kuhifadhi au kusahihisha siku hii. Ruhusu kivinjari kufikia mahali ulipo. Hii ni eneo la wakati wa kuingiza taarifa, si uthibitisho wa eneo la kazi ya siku iliyopita.'
-                : 'Capture location before saving or updating this day. Allow location access in your browser. This records your location at entry time, not proof of where past work took place.')
-              : t('gpsHint')}
-          </span>
+          {requiresGps && <span className="field-hint">
+            {lang === 'sw' ? 'Nasa mahali ulipo kabla ya kuhifadhi siku hii.' : 'Capture your location before saving this day.'}
+          </span>}
         </div>
       )}
 
       <Alert>{validationError || save.error || remove.error}</Alert>
-      <div className="row">
-        <button className="btn btn-primary" disabled={busy || isSunday || (requiresGps && (!gps || gpsState !== 'ok')) || (!hidesEvidence && evidence.trim().length < 3)}>
+      <div className="row day-form-actions">
+        <button className="btn btn-primary btn-lg" disabled={busy || isSunday || (requiresGps && (!gps || gpsState !== 'ok')) || (!hidesEvidence && evidence.trim().length < 3)}>
           {save.busy ? t('saving') : t('saveDay')}
         </button>
         {entry && (
-          <button type="button" className="btn btn-secondary" onClick={del} disabled={busy}>
+          <button type="button" className="btn btn-ghost" onClick={del} disabled={busy}>
             {t('deleteDay')}
           </button>
         )}

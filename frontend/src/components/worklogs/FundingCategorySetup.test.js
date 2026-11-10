@@ -72,8 +72,7 @@ test('FHI finance user can confirm and save a mapping using the selected source 
   changeValue(view.container.querySelector('select'), '19');
   changeValue(view.container.querySelector('input'), 'Initial programme assignment');
   clickButton(view.container, 'Review initial assignment');
-  expect(view.container.textContent).toContain('affects other new claims');
-  expect(view.container.textContent).toContain('does not allocate funds');
+  expect(view.container.textContent).toContain('affects all new claims');
 
   await act(async () => {
     clickButton(view.container, 'Confirm and link category');

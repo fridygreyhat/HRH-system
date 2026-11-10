@@ -67,13 +67,13 @@ export function CreateLineModal({
   const activityContext = categoriesLoading
     ? 'Loading configured payment items…'
     : activeCategories.length === 0
-      ? 'No active payment items are configured. Ask a finance administrator to configure Services or Payroll items.'
+      ? 'No active payment items are configured. Ask a finance administrator.'
       : !form.activity_type
-        ? 'Choose Services or Payroll, then select a matching configured payment item. Approved payments must match the activity type, region and pay period.'
+        ? 'Choose Services or Payroll, then select a matching configured payment item.'
         : eligibleCategories.length === 0
-          ? `No active payment items are configured for ${activityName}. Ask a finance administrator to configure an eligible item.`
+          ? `No active payment items are configured for ${activityName}. Ask a finance administrator.`
           : selectedCategory
-            ? <><strong>{activityName} · {selectedCategory.name}.</strong> Approved payments must match this activity type, payment item, region and pay period.</>
+            ? <strong>{activityName} · {selectedCategory.name}.</strong>
             : `Choose one configured payment item for ${activityName}.`;
   const isCsoBudget = selectedOrg?.type === 'CSO';
   const existingLines = useApi<BudgetLine[]>('/budgets/lines');
@@ -179,7 +179,7 @@ export function CreateLineModal({
               ))}
             </select>
           </Field>
-          <Field label="Activity type" hint="Services covers CHW/HCP PNP, coordination and community services. Payroll is salary.">
+          <Field label="Activity type" hint="Services: PNP, coordination, community. Payroll: salary.">
             <select value={form.activity_type} onChange={changeActivityType} required>
               <option value="">Choose type…</option>
               <option value="SERVICES">Services</option>
@@ -187,7 +187,7 @@ export function CreateLineModal({
             </select>
           </Field>
           {form.activity_type && eligibleCategories.length > 1 && (
-            <Field label="Payment item" hint="Choose the configured item this budget will pay for.">
+            <Field label="Payment item">
               <select
                 value={selectedCategory ? String(selectedCategory.id) : ''}
                 onChange={(event) => setForm((current) => ({ ...current, category_id: event.target.value }))}
@@ -209,7 +209,7 @@ export function CreateLineModal({
           {activityContext}
         </div>
         <div className="grid-2">
-          <Field label="Pay period" hint="Choose a global schedule or a regional schedule matching the selected region.">
+          <Field label="Pay period" hint="Global, or a schedule for the selected region.">
             <select value={form.period_id} onChange={set('period_id')} required>
               <option value="">Select…</option>
               {allowedPeriods.map((p) => (
@@ -219,7 +219,7 @@ export function CreateLineModal({
               ))}
             </select>
           </Field>
-          <Field label="Region" hint={isCsoBudget ? 'Choose an active CSO-region assignment. CSO budgets cannot cover all regions.' : 'Leave as “All regions” for a line that covers every region.'}>
+          <Field label="Region" hint={isCsoBudget ? 'CSO budgets need one assigned region.' : undefined}>
             <select value={form.region_id} onChange={setRegion} required={isCsoBudget}>
               {isCsoBudget
                 ? <option value="">Choose an assigned region…</option>
@@ -236,20 +236,19 @@ export function CreateLineModal({
           <Field label="Hard cap">
             <input type="number" min={0} step="0.01" inputMode="decimal" value={form.allocated_amount} onChange={set('allocated_amount')} required />
           </Field>
-          <Field label="Estimated spend (optional)" hint="Leave blank for Not set. Zero is a recorded estimate of zero.">
+          <Field label="Estimated spend (optional)" hint="Blank means Not set; 0 is an estimate of zero.">
             <input type="number" min={0} step="0.01" inputMode="decimal" value={form.estimated_amount} onChange={set('estimated_amount')} />
           </Field>
           <Field label="Currency">
             <input value={form.currency} onChange={set('currency')} required maxLength={3} />
           </Field>
         </div>
-        <p className="muted small">FHI360 lines start as “Unsynced” until they are exported to or reconciled with the HQ tracker. Historical all-region lines remain visible but cannot be used for new CSO budgets.</p>
-        {isCsoBudget && !mappingData.loading && allowedRegions.length === 0 && <Alert>No active regional assignment is configured for this organization. Add an assignment before creating a CSO budget.</Alert>}
+        {isCsoBudget && !mappingData.loading && allowedRegions.length === 0 && <Alert>No active regional assignment for this organization. Add one first.</Alert>}
         {periodRegionMismatch && <Alert>That regional pay period does not match the selected budget region.</Alert>}
         {!categoriesLoading && (activeCategories.length === 0 || (form.activity_type && eligibleCategories.length === 0)) && (
           <Alert kind="warn">This budget cannot be created until an active payment item is configured for the selected activity type.</Alert>
         )}
-        {estimateInvalid && <Alert kind="warn">Estimated spend must be between zero and the hard cap. Leave blank if no estimate has been approved.</Alert>}
+        {estimateInvalid && <Alert kind="warn">Estimated spend must be between zero and the hard cap.</Alert>}
         {existingBucket && <Alert>A CSO budget already exists for this organization, region, payment item, and pay period. Change the budget combination rather than creating a duplicate.</Alert>}
         <Alert>{mappingData.error || (isCsoBudget ? existingLines.error : null) || error}</Alert>
         {isCsoBudget && existingLines.error && <button type="button" className="btn btn-secondary btn-sm" onClick={existingLines.reload}>Retry budget check</button>}
@@ -302,16 +301,16 @@ export function EditAllocationModal({
   return (
     <Modal title={`Update allocation · ${line.code}`} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
-        <p className="notice notice-info">The hard cap is the strict approval limit. The estimate is a soft planning warning; neither field changes committed claims or spend.</p>
+        <p className="notice notice-info">The hard cap limits approvals; the estimate only warns.</p>
         <div className="grid-2">
-          <Field label={`Estimated spend (${line.currency})`} hint="Blank means Not set. Enter 0 only when zero is the actual estimate.">
+          <Field label={`Estimated spend (${line.currency})`} hint="Blank means Not set; 0 is an estimate of zero.">
             <input type="number" min={0} step="0.01" inputMode="decimal" value={estimated} onChange={(event) => setEstimated(event.target.value)} />
           </Field>
           <Field label={`Hard cap (${line.currency})`}>
             <input type="number" min={0} step="0.01" inputMode="decimal" value={hardCap} onChange={(event) => setHardCap(event.target.value)} required />
           </Field>
         </div>
-        <p className="muted small">Current exposure: {money(exposure, line.currency)} (committed + spent). An estimate reached warning does not block approval; the hard cap remains the strict limit.</p>
+        <p className="muted small">Current exposure (committed + spent): {money(exposure, line.currency)}.</p>
         {capBelowExposure && <Alert kind="warn">The hard cap cannot be below current exposure of {money(exposure, line.currency)}.</Alert>}
         {capBelowEstimate && <Alert kind="warn">Adjust the estimate first: the hard cap cannot be lower than the estimate.</Alert>}
         {invalidEstimate && <Alert kind="warn">Estimated spend must be blank or between zero and the hard cap.</Alert>}
@@ -379,7 +378,7 @@ export function ReallocateModal({
   return (
     <Modal title="Reallocate budget" onClose={onClose}>
       <form className="stack" onSubmit={submit}>
-        <p className="muted small">Money can only move between lines of the same organization and currency, and only from the uncommitted balance.</p>
+        <p className="muted small">Move uncommitted money between lines of one organization and currency.</p>
         <Field label="From line">
           <select
             value={fromId}
@@ -447,9 +446,9 @@ export function ReconcileModal({ line, onClose, onDone }: { line: BudgetLine; on
     <Modal title={`Reconcile ${line.code} with the HQ tracker`} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
         <p className="muted small">
-          Confirm that this line matches the FHI360 HQ tracker (checked manually — there is no live connection). The line is marked “Reconciled”.
+          Confirm this line matches the FHI360 HQ tracker.
         </p>
-        <Field label="Tracker reference" hint="Optional; keeps the current reference when left blank.">
+        <Field label="Tracker reference" hint="Optional; blank keeps the current reference.">
           <input value={ref} onChange={(e) => setRef(e.target.value)} maxLength={255} />
         </Field>
         <Field label="Comment (required, at least 3 characters)">

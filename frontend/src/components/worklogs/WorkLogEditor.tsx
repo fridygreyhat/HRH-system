@@ -7,7 +7,9 @@ import { dateOnly, datesBetween, dayOfMonth, money, num, periodDateError, todayL
 import { useAction, useApi } from '../../hooks';
 import { navigate } from '../../nav';
 import { PayoutEstimateData, Section as SectionRow, WorkLogDetail } from '../../types';
-import { Alert, AuditTimeline, Field, ReasonDialog, StatusBadge } from '../ui';
+import { Alert, AuditTimeline, Field, ReasonDialog, StatusBadge, WorkTypeChip } from '../ui';
+import { Icon } from '../Icon';
+import '../../pages/polish-provider.css';
 import { captureLocation, DayEntryForm } from './DayEntryForm';
 import { OtpPanel } from './OtpPanel';
 import { ServiceTargets } from './ServiceTargets';
@@ -49,7 +51,7 @@ export function HeaderForm({ log, onSaved }: { log: WorkLogDetail; onSaved: (l: 
   };
 
   return (
-    <form className="card stack" onSubmit={submit}>
+    <form className="card stack editor-details" onSubmit={submit}>
       <h3>{t('header')}</h3>
       <dl className="facts">
         {(
@@ -144,7 +146,7 @@ export function DayCalendar({
   useEffect(() => { if (selected) setVisibleMonth(selected.slice(0, 7)); }, [selected]);
   useEffect(() => setVisibleMonth(preferredMonth), [log.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const dateError = periodDateError(log.period.start_date, log.period.end_date);
-  if (dateError) return <div role="alert" className="alert alert-warn">{dateError} Contact an administrator to correct the monthly reporting dates.</div>;
+  if (dateError) return <div role="alert" className="alert alert-warn">{dateError} {lang === 'sw' ? 'Wasiliana na msimamizi kurekebisha tarehe za mwezi.' : 'Contact an administrator to correct the monthly reporting dates.'}</div>;
   const month = months.includes(visibleMonth) ? visibleMonth : preferredMonth;
   const monthIndex = months.indexOf(month);
   const visibleDates = dates.filter(date => date.startsWith(`${month}-`));
@@ -165,25 +167,26 @@ export function DayCalendar({
   const visibleHolidays = visibleDates.filter(d => holidays.has(d));
   const firstDow = visibleDates.length ? (new Date(`${visibleDates[0]}T00:00:00Z`).getUTCDay() + 6) % 7 : 0;
   return (
-    <section className="card stack" aria-labelledby="cal-title">
+    <section className="card stack day-calendar" aria-labelledby="cal-title">
       <div className="row-between">
         <h3 id="cal-title">{t('calendar')}</h3>
-        <span className="muted small">
-          {lang === 'sw' ? 'Jumla ya kipindi' : 'Period total'} ·{' '}
-          {num(log.entries.length)} {t('days').toLowerCase()} · {workHours(log.totals.hours)} {t('hours').toLowerCase()}
+        <span className="cal-total">
+          <span className="sr-only">{lang === 'sw' ? 'Jumla ya kipindi' : 'Period total'}: </span>
+          <strong>{num(log.entries.length)}</strong> {t('days').toLowerCase()} · <strong>{workHours(log.totals.hours)}</strong> {t('hours').toLowerCase()}
         </span>
       </div>
       <p className="muted small">{log.can_edit ? t('calendarHint') : log.status === 'DRAFT' && log.period.status === 'CLOSED' ? t('periodClosedDraft') : t('locked')}</p>
-      {chwPayroll && <div className="notice notice-info stack">
-        <strong>{lang === 'sw' ? 'Jaza daftari la mwezi mzima' : `Complete your monthly ${log.cadre.code === 'DATA_CLERK' ? 'Data Clerk' : log.cadre.code} timesheet`}</strong>
-        <p>{lang === 'sw'
-          ? 'Chagua kila tarehe uliyofanya kazi. Jaza viashiria vyote vinavyohitajika, weka 0 ikiwa hakukuwa na shughuli, na nasa mahali ulipo kabla ya kuhifadhi.'
-          : `Choose each date you actually worked. ${log.cadre.code === 'HCP' ? 'Choose your daily activity cascade and complete its indicators.' : 'Complete the required activity groups.'} Enter 0 where no activity occurred, and capture your location before saving.`}</p>
-        <p className="small">{lang === 'sw'
-          ? `Tarehe zilizopita bila rekodi: ${missingDates.length}. Hii haimaanishi ulifanya kazi siku zote.`
-          : `${missingDates.length} past eligible dates have no entry. This does not mean you worked on every date.`}
-          {' '}{lang === 'sw' ? 'Tarehe zijazo hazijafunguliwa.' : 'Future dates remain unavailable.'}
-          {sundayOff && (lang === 'sw' ? ' Jumapili haziruhusiwi.' : ' Sundays are excluded.')}</p>
+      {chwPayroll && <div className="notice notice-info cal-missing">
+        <div className="cal-missing-text">
+          <strong>{lang === 'sw' ? 'Jaza daftari la mwezi mzima' : `Complete your monthly ${log.cadre.code === 'DATA_CLERK' ? 'Data Clerk' : log.cadre.code} timesheet`}</strong>
+          <p>{lang === 'sw'
+            ? 'Chagua kila tarehe uliyofanya kazi. Weka 0 ikiwa hakuna shughuli.'
+            : 'Choose each date you worked. Enter 0 where nothing happened.'}
+            {' '}<span className="cal-missing-count">{lang === 'sw'
+              ? `Tarehe zilizopita bila rekodi: ${missingDates.length}.`
+              : `${missingDates.length} past eligible dates have no entry.`}</span>
+            {sundayOff && (lang === 'sw' ? ' Jumapili haziruhusiwi.' : ' Sundays are excluded.')}</p>
+        </div>
         {log.can_edit && missingDates.length > 0 && <button type="button" className="btn btn-secondary btn-sm" onClick={() => onSelect(missingDates[0])}>
           {lang === 'sw' ? 'Fungua tarehe inayofuata bila rekodi' : 'Open next date without an entry'}
         </button>}
@@ -266,21 +269,21 @@ function SubmitPanel({ log, onSubmitted }: { log: WorkLogDetail; onSubmitted: (l
     }
   };
   return (
-    <form className="card stack" onSubmit={submit}>
+    <form className="card stack submit-panel" onSubmit={submit}>
       <h3>{t('submitTitle')}</h3>
       {!!log.service_targets?.some(row => row.left) && <p className="alert alert-warn">
         {lang === 'sw'
-          ? 'Baadhi ya huduma hazijafikia siku za chini kabisa. Bado unaweza kuwasilisha, na wakaguzi wataona upungufu huu.'
-          : 'Some services are below their minimum days. You can still submit, and your reviewers will see the shortfall.'}
+          ? 'Baadhi ya huduma hazijafikia siku za chini. Bado unaweza kuwasilisha.'
+          : 'Some services are below their minimum days. You can still submit.'}
       </p>}
-      <label className="row" style={{ alignItems: 'flex-start' }}>
+      <label className="row submit-attest" style={{ alignItems: 'flex-start' }}>
         <input type="checkbox" checked={attest} onChange={(e) => setAttest(e.target.checked)} required />
         <span>{t('attest')}</span>
       </label>
-      {gpsOnSubmit && <span className="field-hint">{t(gpsRequired ? 'gpsRequiredHint' : 'gpsHint')}</span>}
+      {gpsOnSubmit && <span className="field-hint">{lang === 'sw' ? 'Mahali ulipo panarekodiwa unapowasilisha.' : 'Your location is recorded when you submit.'}</span>}
       <Alert>{error}</Alert>
       <div className="row">
-        <button className="btn btn-primary" disabled={!attest || busy || log.entries.length === 0}>
+        <button className="btn btn-primary btn-lg submit-button" disabled={!attest || busy || log.entries.length === 0}>
           {busy ? t('submitting') : t('submit')}
         </button>
       </div>
@@ -290,7 +293,7 @@ function SubmitPanel({ log, onSubmitted }: { log: WorkLogDetail; onSubmitted: (l
 
 /** What the log would earn under configured rates; clearly not an approved amount. */
 function PayoutEstimate({ logId, version }: { logId: number; version: string }) {
-  const { t } = useAuth();
+  const { t, lang } = useAuth();
   const { data } = useApi<PayoutEstimateData>(`/worklogs/${logId}/estimate?v=${encodeURIComponent(version)}`);
   if (!data) return null;
   return (
@@ -310,7 +313,7 @@ function PayoutEstimate({ logId, version }: { logId: number; version: string }) 
       ) : (
         <p className="muted">{t('estimateNone')}</p>
       )}
-      <span className="badge badge-warn" style={{ justifySelf: 'start' }}>{t('estimateNote')}</span>
+      <span className="badge badge-warn" style={{ justifySelf: 'start' }}>{lang === 'sw' ? 'Makadirio tu, si malipo yaliyoidhinishwa.' : 'Estimate only, not approved pay.'}</span>
     </section>
   );
 }
@@ -335,9 +338,12 @@ export function WorkLogEditor({ logId, initialDate, initialMonth, onBack }: { lo
   const returned = log.status === 'RETURNED_TO_PROVIDER' ? latestReturn(log) : null;
   const entry = selected ? log.entries.find((e) => e.entry_date === selected) : undefined;
 
+  const dayOpen = Boolean(selected && log.can_edit);
+  const sw = lang === 'sw';
+
   return (
-    <div className="stack-lg">
-      <div className="row-between">
+    <div className="stack-lg editor">
+      <div className="row-between editor-toolbar">
         <button className="btn btn-ghost btn-sm" onClick={onBack}>
           ← {t('back')}
         </button>
@@ -345,40 +351,43 @@ export function WorkLogEditor({ logId, initialDate, initialMonth, onBack }: { lo
           {t('print')}
         </button>
       </div>
-      <header className="stack">
-        <h1>{log.cadre.form_title || log.cadre.name}</h1>
-        <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} technicalReviewer={log.cadre?.technical_reviewer_title} workflowVersion={log.workflow_version} workType={log.work_type} communityOnly={!!log.assignment && !log.assignment.facility} />
-        {log.status === 'REJECTED' && log.can_edit && <Alert kind="warn">
-          This timesheet was rejected. Correct existing days or fill missing dates across the month, then submit again.
-          It will restart CTC, Technical and RM review; previous approval history is retained.
-        </Alert>}
-        {log.status !== 'RETURNED_TO_PROVIDER' && log.review_feedback?.map((feedback, index) =>
-          feedback.comment ? <Alert kind="warn" key={index}>{feedback.comment}</Alert> : null)}
-        <div className="row">
-          <span className="muted">
-            {dateOnly(log.period.start_date)} – {dateOnly(log.period.end_date)} · #{log.id}
-          </span>
-          <StatusBadge kind="log" status={log.status} />
-          {log.claims.map((c) => (
-            <span key={c.id} className="badges">
-              <StatusBadge kind="claim" status={c.status} />
-              <StatusBadge kind="payment" status={c.payment_status} />
-            </span>
-          ))}
+      <header className="card editor-head">
+        <div className="editor-head-top">
+          <div className="editor-head-text">
+            <WorkTypeChip type={log.work_type} />
+            <h2>{log.cadre.form_title || log.cadre.name}</h2>
+            <p className="muted small nowrap">{dateOnly(log.period.start_date)} – {dateOnly(log.period.end_date)} · #{log.id}</p>
+          </div>
+          <div className="badges editor-head-badges">
+            <StatusBadge kind="log" status={log.status} />
+            {log.claims.map((c) => (
+              <span key={c.id} className="badges">
+                <StatusBadge kind="claim" status={c.status} />
+                <StatusBadge kind="payment" status={c.payment_status} />
+              </span>
+            ))}
+          </div>
         </div>
-        {log.available_actions.includes('recall') && (
-          <section className="card stack">
-            <h3>{lang === 'sw' ? 'Unahitaji kurekebisha taarifa hii?' : 'Need to correct this submission?'}</h3>
-            <p className="muted">{lang === 'sw'
-              ? 'Unaweza kuirudisha ili uhariri ikiwa bado inasubiri mapitio ya CTC. Taarifa za kila siku ulizohifadhi zitabaki. Mapitio ya CTC yakianza, mwombe mkaguzi airejeshe.'
-              : 'You can return it to editing while it is still waiting for CTC review. Your saved daily entries will stay in place. After CTC review begins, ask the reviewer to return it.'}</p>
-            <button className="btn btn-secondary" type="button" onClick={() => setRecalling(true)}>
-              {lang === 'sw' ? 'Rudisha ili kuhariri' : 'Return to editing'}
-            </button>
-          </section>
-        )}
-        {log.status === 'APPROVED' && <p className="muted small">{t('approvedNotPaid')}</p>}
+        <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} technicalReviewer={log.cadre?.technical_reviewer_title} workflowVersion={log.workflow_version} workType={log.work_type} communityOnly={!!log.assignment && !log.assignment.facility} />
       </header>
+      {log.status === 'REJECTED' && log.can_edit && <Alert kind="warn">
+        {sw ? 'Jedwali hili limekataliwa. Lirekebishe na uwasilishe tena.' : 'This timesheet was rejected. Correct it and submit again.'}
+      </Alert>}
+      {log.status !== 'RETURNED_TO_PROVIDER' && log.review_feedback?.map((feedback, index) =>
+        feedback.comment ? <Alert kind="warn" key={index}>{feedback.comment}</Alert> : null)}
+      {log.available_actions.includes('recall') && (
+        <section className="card editor-recall">
+          <div>
+            <h3>{sw ? 'Unahitaji kurekebisha taarifa hii?' : 'Need to correct this submission?'}</h3>
+            <p className="muted small">{sw
+              ? 'Unaweza kuihariri tena hadi mapitio ya CTC yaanze.'
+              : 'You can edit it again until CTC review starts.'}</p>
+          </div>
+          <button className="btn btn-secondary" type="button" onClick={() => setRecalling(true)}>
+            {sw ? 'Rudisha ili kuhariri' : 'Return to editing'}
+          </button>
+        </section>
+      )}
 
       {returned && (
         <div className="alert alert-warn" role="status">
@@ -394,46 +403,46 @@ export function WorkLogEditor({ logId, initialDate, initialMonth, onBack }: { lo
 
       {log.awaiting_my_otp && <OtpPanel log={log} onChanged={setData} />}
 
-      {log.work_type !== 'PAYROLL' && <PayoutEstimate logId={log.id} version={log.updated_at} />}
-
       <HeaderForm key={log.id} log={log} onSaved={setData} />
 
-      <DayCalendar log={log} selected={selected} initialMonth={initialMonth} flaggedDates={flaggedDates} onSelect={setSelected} />
-
-      {selected && log.can_edit && (
-        <DayEntryForm
-          key={`${selected}-${entry?.id ?? 'new'}`}
-          log={log}
-          date={selected}
-          entry={entry}
-          flags={flags}
-          captureOnEntry={captureOnEntry}
-          onSaved={(l) => {
-            setData(l);
-            setSelected(null);
-          }}
-          onClose={() => setSelected(null)}
-        />
-      )}
+      <div className={`editor-main${dayOpen ? ' has-day' : ''}`}>
+        <DayCalendar log={log} selected={selected} initialMonth={initialMonth} flaggedDates={flaggedDates} onSelect={setSelected} />
+        <div className="editor-side">
+          {dayOpen && selected && (
+            <DayEntryForm
+              key={`${selected}-${entry?.id ?? 'new'}`}
+              log={log}
+              date={selected}
+              entry={entry}
+              flags={flags}
+              captureOnEntry={captureOnEntry}
+              onSaved={(l) => {
+                setData(l);
+                setSelected(null);
+              }}
+              onClose={() => setSelected(null)}
+            />
+          )}
+          {log.available_actions.includes('submit') && <SubmitPanel log={log} onSubmitted={setData} />}
+          {log.status === 'DRAFT' && log.can_edit && todayLocal() < log.period.end_date && (
+            <p className="notice notice-info editor-submit-date">
+              <Icon name="calendar" size={18} />
+              <span>{sw
+                ? `Unaweza kuwasilisha tarehe ${dateOnly(log.period.end_date)}.`
+                : `You can submit on ${dateOnly(log.period.end_date)}.`}</span>
+            </p>
+          )}
+          <ServiceTargets rows={log.service_targets} lang={lang} endDate={log.period.end_date} />
+          <TotalsPanel log={log} lang={lang} title={t('totals')} />
+          {log.work_type !== 'PAYROLL' && <PayoutEstimate logId={log.id} version={log.updated_at} />}
+        </div>
+      </div>
 
       {log.entries.length > 0 && (!log.can_edit || !selected) && (
         <section className="card stack">
           <h3>{t('dailyEntries')}</h3>
           <EntriesView log={log} lang={lang} flags={flags} />
         </section>
-      )}
-
-      <ServiceTargets rows={log.service_targets} lang={lang} endDate={log.period.end_date} />
-
-      <TotalsPanel log={log} lang={lang} title={t('totals')} />
-
-      {log.available_actions.includes('submit') && <SubmitPanel log={log} onSubmitted={setData} />}
-      {log.status === 'DRAFT' && log.can_edit && todayLocal() < log.period.end_date && (
-        <p className="notice notice-info">
-          {lang === 'sw'
-            ? `Utawasilisha tarehe ${dateOnly(log.period.end_date)}, siku ya mwisho ya mwezi huu wa kazi. Endelea kujaza siku zako hadi wakati huo.`
-            : `You can submit on ${dateOnly(log.period.end_date)}, the last day of this work month. Keep recording your days until then.`}
-        </p>
       )}
 
       {log.available_actions.includes('cancel') && (
@@ -447,8 +456,8 @@ export function WorkLogEditor({ logId, initialDate, initialMonth, onBack }: { lo
         <ReasonDialog
           title={t('cancelLog')}
           description={lang === 'sw'
-            ? 'Huwezi kutendua hili, na huwezi kuanza rekodi mpya ya mwezi huu baadaye. Ikiwa unataka tu kurekebisha, funga dirisha hili.'
-            : 'This cannot be undone, and you cannot start a new record for this month afterwards. If you only want to correct something, close this and edit instead.'}
+            ? 'Huwezi kutendua hili wala kuanza rekodi mpya ya mwezi huu.'
+            : 'This cannot be undone. You cannot start a new record for this month.'}
           required={false}
           danger
           confirmLabel={t('cancelLog')}
@@ -463,8 +472,8 @@ export function WorkLogEditor({ logId, initialDate, initialMonth, onBack }: { lo
         <ReasonDialog
           title={lang === 'sw' ? 'Urudishe jedwali lililowasilishwa ili kuhariri?' : 'Return submitted timesheet to editing?'}
           description={lang === 'sw'
-            ? 'Hii italiondoa kwenye foleni ya CTC, itahifadhi taarifa ulizoweka, na kukuruhusu kurekebisha au kukamilisha mwezi kabla ya kuwasilisha tena.'
-            : 'This withdraws it from the CTC queue, keeps the saved entries, and lets you correct or complete the month before submitting again.'}
+            ? 'Inaondolewa kwenye foleni ya CTC. Taarifa zako zinabaki.'
+            : 'It leaves the CTC queue. Your saved entries stay.'}
           required={false}
           confirmLabel={lang === 'sw' ? 'Rudisha ili kuhariri' : 'Return to editing'}
           onConfirm={async (comment) => {

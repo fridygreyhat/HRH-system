@@ -23,7 +23,7 @@ from ..models import (
     WorkLogMeasure,
 )
 from .activities import ACTIVITIES, CASCADES
-from .work_hours import day_hours_violation, hour_limits
+from .work_hours import day_hours_violation, hour_limits, hours_text
 from .activity_catalog import catalog_for_log, log_fields
 from ..core.settings import get_setting
 
@@ -204,7 +204,7 @@ def review_summary(db: Session, log: WorkLog, current=None) -> dict:
             anomalies.append(violation)
         monday = entry.entry_date - timedelta(days=entry.entry_date.weekday())
         if entry.entry_date.weekday() < 5 and week_hours[monday] > weekly_max:
-            anomalies.append({"date": str(entry.entry_date), "code": "WEEKLY_HOURS", "message": f"{week_hours[monday]} Monday–Friday hours exceeds the {weekly_max}-hour weekday-week limit; Saturday clinics are separate."})
+            anomalies.append({"date": str(entry.entry_date), "code": "WEEKLY_HOURS", "message": f"{hours_text(week_hours[monday])} Monday–Friday hours exceeds the {hours_text(weekly_max)}-hour weekday-week limit; Saturday clinics are separate."})
         cascade = (entry.activity_snapshot or {}).get("cascade_pairs", CASCADES.get(entry.activity_key, []))
         for lower, upper, description in cascade:
             if lower in measures and upper in measures and measures[lower] > measures[upper]:

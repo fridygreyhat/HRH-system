@@ -74,9 +74,6 @@ function RateForm({ lookups, initial, onDone, onCancel }: { lookups: Lookups; in
 
   return (
     <form className="stack" onSubmit={submit}>
-      <p className="notice notice-info">
-        Rates are active as soon as you save; no separate approval is required. Existing claims keep their recorded amounts.
-      </p>
       <div className="grid-2">
         <Field label="Claim category *">
           <select value={form.category_id} onChange={set('category_id')} required>
@@ -122,7 +119,7 @@ function RateForm({ lookups, initial, onDone, onCancel }: { lookups: Lookups; in
           </select>
         </Field>
         {form.unit_type === 'PER_UNIT' && (
-          <Field label="Measure counted *" hint={cadre ? `Fields on the ${cadre.name} form` : 'Choose a cadre to see only its form fields'}>
+          <Field label="Measure counted *" hint={cadre ? `Fields on the ${cadre.name} form` : 'Choose a cadre to filter fields'}>
             <select value={form.measure_key} onChange={set('measure_key')} required>
               <option value="">Choose…</option>
               {measureOptions.map((f, i) => (
@@ -139,7 +136,7 @@ function RateForm({ lookups, initial, onDone, onCancel }: { lookups: Lookups; in
         <Field label="Currency">
           <input value={form.currency} onChange={set('currency')} maxLength={3} />
         </Field>
-        <Field label="Cap amount" hint="Optional maximum for this component per claim">
+        <Field label="Cap amount" hint="Optional maximum per claim">
           <input type="number" min={0} step="any" inputMode="decimal" value={form.cap_amount} onChange={set('cap_amount')} />
         </Field>
         <Field label="Effective from *">
@@ -217,9 +214,7 @@ export function RateRulesSection() {
           </button>
         )}
       </div>
-      <p className="notice notice-info">
-        Saved rates are active immediately and apply within their effective dates. You can edit or delete rates. Existing claims keep their original calculation; deleting a used rate only removes it from future calculations.
-      </p>
+      <p className="notice notice-info">Saved rates are active immediately. Existing claims keep their amounts.</p>
       <Alert kind="success">{notice}</Alert>
       <Alert>{lookupError}</Alert>
       <div className="filters">
@@ -309,7 +304,7 @@ export function RateRulesSection() {
             onCancel={() => setProposing(false)}
             onDone={() => {
               setProposing(false);
-              setNotice('Rate saved and active. No separate approval is required.');
+              setNotice('Rate saved and active.');
               reload();
             }}
           />
@@ -320,7 +315,7 @@ export function RateRulesSection() {
           title={`Delete “${dialog.rule.component_name}”`}
           onClose={() => setDialog(null)}
         >
-          <p>This rate will no longer price new claims. Unused rates are permanently deleted. Rates already linked to claims are kept inactive for history; existing claim amounts do not change.</p>
+          <p>New claims will stop using this rate; existing claim amounts do not change.</p>
           <Alert>{deletion.error}</Alert>
           <div className="row">
             <button className="btn btn-danger" disabled={deletion.busy} onClick={remove}>{deletion.busy ? 'Deleting…' : 'Delete rate'}</button>

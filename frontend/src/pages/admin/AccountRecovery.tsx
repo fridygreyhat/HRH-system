@@ -42,14 +42,13 @@ export function AccountRecovery({ users, onReset }: { users: AdminUser[] | null;
   };
   return <div className="stack card">
     <div className="section-head">
-      <div><h3>Account recovery</h3><p className="muted small">Super Admin only. Manage individual passwords with Manage → Reset password.</p></div>
+      <div><h3>Account recovery</h3></div>
       <button className="btn btn-secondary" disabled={!users || !targets.length} onClick={() => { setNotice(''); setOpen(true); }}>
         Reset all non-Super-Admin passwords
       </button>
     </div>
     <Alert kind="success">{notice}</Alert>
     <h4>Failed sign-ins</h4>
-    <p className="muted small">See incorrect usernames, incorrect passwords, locked accounts and deactivated accounts. Passwords are never recorded.</p>
     <form className="row" onSubmit={event => { event.preventDefault(); setFilter(username.trim()); failures.reload(); }}>
       <Field label="Username"><input value={username} onChange={event => setUsername(event.target.value)} placeholder="All usernames" /></Field>
       <button className="btn btn-secondary" type="submit">Find failures</button>
@@ -64,9 +63,9 @@ export function AccountRecovery({ users, onReset }: { users: AdminUser[] | null;
     {open && <Modal title="Reset non-Super-Admin passwords" onClose={close}>
       <form className="stack" onSubmit={reset}>
         <Alert>{error}</Alert>
-        <p>This will reset <strong>{targets.length} accounts</strong> in <strong>{window.location.hostname}</strong>. All {protectedCount} Super Admin account(s) will remain unchanged. This includes accounts hidden by the table filters.</p>
-        <p>Existing sessions will end and lockouts will clear. Each user must choose a new password at sign-in. Deactivated accounts will remain deactivated.</p>
-        <Alert kind="warn">A shared password is only for temporary recovery. Share it privately with the intended users.</Alert>
+        <p>This will reset <strong>{targets.length} accounts</strong> in <strong>{window.location.hostname}</strong>, including filtered-out ones. All {protectedCount} Super Admin account(s) will remain unchanged.</p>
+        <p>Sessions end; users must choose a new password at sign-in.</p>
+        <Alert kind="warn">Share this temporary password privately.</Alert>
         <Field label="Temporary password"><input type="password" autoComplete="new-password" required minLength={8} maxLength={72} value={password} onChange={event => setPassword(event.target.value)} disabled={busy} /></Field>
         <Field label="Reason for reset"><textarea required minLength={10} maxLength={500} value={reason} onChange={event => setReason(event.target.value)} disabled={busy} /></Field>
         <Field label={`Type ${RESET_CONFIRMATION}`}><input required value={confirmation} onChange={event => setConfirmation(event.target.value)} disabled={busy} autoComplete="off" /></Field>

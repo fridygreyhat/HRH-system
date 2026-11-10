@@ -65,7 +65,7 @@ test('Facility In-Charge opens straight on their cadres, read only, with no wait
   mockRoles = ['FACILITY_IN_CHARGE'];
   const { container, done } = mount([{ id: 7, name: 'Iringa' }], cadres);
   try {
-    expect(container.textContent).toContain('These are the timesheets of the cadres at your facility');
+    expect(container.textContent).toContain('CTC In-Charge verifies these timesheets');
     expect(container.textContent).not.toContain('Waiting on me (');
     expect(useApi.mock.calls.map(([path]) => path).some(path => path && path.includes('queue=true'))).toBe(false);
     expect(Array.from(container.querySelectorAll('label')).some(label => label.textContent.startsWith('Cadre'))).toBe(true);

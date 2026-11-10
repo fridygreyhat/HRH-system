@@ -133,9 +133,9 @@ export function HealthWorkerFields({
 
       {value.mode === 'existing' ? (
         unlinked && unlinked.length === 0 ? (
-          <p className="muted">Every active staff record already has a login. Register a new one instead.</p>
+          <p className="muted">All active staff records already have a login.</p>
         ) : (
-          <Field label="Staff record *" hint="Active staff records from the Staff registry that have no login yet.">
+          <Field label="Staff record *" hint="Active staff without a login.">
             <select value={value.staff_id} onChange={(e) => set({ staff_id: e.target.value })} required>
               <option value="">Choose…</option>
               {(unlinked || []).map((s) => (
@@ -189,9 +189,7 @@ export function HealthWorkerFields({
               <input type="date" value={value.employment_start_date} onChange={text('employment_start_date')} />
             </Field>
           </div>
-          <p className="muted small">
-            The phone number above becomes the verified phone that receives confirmation codes. Payment details can be added later on the Staff page.
-          </p>
+          <p className="muted small">The phone above receives confirmation codes.</p>
           <h4>Placement</h4>
           <AssignmentFields value={value.assignment} onChange={(assignment) => set({ assignment })} showSection={cadre ? cadre.uses_section : true} />
         </>

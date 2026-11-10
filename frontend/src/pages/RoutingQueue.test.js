@@ -30,7 +30,7 @@ test('services queue preserves finance payment review and opens its work-log rev
     act(() => Simulate.change(container.querySelector('select[aria-label="Filter by queue stage"]'), { target: { value: 'PENDING_FINANCE_REVIEW' } }));
     expect(mockQueuePath).toContain('stage=PENDING_FINANCE_REVIEW');
     expect(container.textContent).toContain('Review 2 of 2: Services payment');
-    expect(container.textContent).toContain('TZS 173450');
+    expect(container.textContent).toContain('TZS 173,450');
     expect(container.textContent).toContain('Review amount');
     expect(container.textContent).toContain('Services routing queue');
     expect(container.textContent).toContain('Payroll has no pricing');

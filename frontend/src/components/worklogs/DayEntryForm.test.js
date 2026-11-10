@@ -107,7 +107,7 @@ test('Services can save two activities on one date with one daily hours total', 
     Simulate.change(inputs[1], { target: { value: '3' } });
     Simulate.change(inputs[2], { target: { value: '7' } });
   });
-  expect(container.textContent).toContain('only the highest fixed daily service amount');
+  expect(container.textContent).toContain("Hours stay the day's total");
   await captureGps();
   await submitDay();
   expect(api.put.mock.calls[0][1]).toMatchObject({
@@ -133,7 +133,6 @@ test.each(['HCP', 'DATA_CLERK'])('%s Payroll restores indicators and keeps the e
   if (code === 'HCP') act(() => Simulate.change(container.querySelector('select'), { target: { value: 'opd_screening' } }));
   expect(container.textContent).toContain('Clients served');
   expect(container.textContent).toContain('up to 8 hours per day');
-  expect(container.textContent).toContain('Payroll and Services on the same date');
   expect(container.querySelector('input[type="number"]').max).toBe('8');
 });
 

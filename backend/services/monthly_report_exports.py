@@ -1,12 +1,25 @@
 """Authenticated aggregate exports for the displayed monthly report only."""
 import csv
 import io
+from decimal import Decimal, InvalidOperation
 from html import escape
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+from .work_hours import hours_text  # shared with entry validation, so hours read the same everywhere
+
+
+
+def count_text(value):
+    """Indicator totals are counts: 10.00 prints as 10, and a rare fraction keeps only its real digits."""
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return value
+    return str(int(number)) if number == number.to_integral_value() else format(number.normalize(), "f")
 
 
 def _cell(value):
@@ -22,17 +35,17 @@ def _rows(result, region_name):
             approval["approved_by_name"] if status == "APPROVED" else "",
             approval["approved_at"] if status == "APPROVED" else ""]
     totals = report["totals"]
-    yield base + ["REGION", "", "", "", "", totals["days"], totals["hours"], "Providers", totals["providers"]]
+    yield base + ["REGION", "", "", "", "", totals["days"], hours_text(totals["hours"]), "Providers", totals["providers"]]
     for cadre in report["cadres"]:
-        yield base + ["CADRE", cadre["code"], cadre["name"], "", "", cadre["days"], cadre["hours"], "Providers", cadre["provider_count"]]
+        yield base + ["CADRE", cadre["code"], cadre["name"], "", "", cadre["days"], hours_text(cadre["hours"]), "Providers", cadre["provider_count"]]
         for indicator in cadre["indicators"]:
-            yield base + ["CADRE_INDICATOR", cadre["code"], cadre["name"], "", "", "", "", indicator["label"], indicator["total"]]
+            yield base + ["CADRE_INDICATOR", cadre["code"], cadre["name"], "", "", "", "", indicator["label"], count_text(indicator["total"])]
     for provider in report["providers"]:
         yield base + ["PROVIDER", provider["cadre_code"], provider["cadre_name"], provider["provider_name"],
-                      provider["facility_name"], provider["days"], provider["hours"], "", ""]
+                      provider["facility_name"], provider["days"], hours_text(provider["hours"]), "", ""]
         for indicator in provider["indicators"]:
             yield base + ["PROVIDER_INDICATOR", provider["cadre_code"], provider["cadre_name"], provider["provider_name"],
-                          provider["facility_name"], "", "", indicator["label"], indicator["total"]]
+                          provider["facility_name"], "", "", indicator["label"], count_text(indicator["total"])]
 
 
 def csv_file(result, region_name):
@@ -61,15 +74,15 @@ def pdf_file(result, region_name):
                   if status == "APPROVED" else "No current Regional Finance sign-off"),
                 Spacer(1, 14),
                 p(f"{report['totals']['providers']} providers | {report['totals']['days']} days | "
-                  f"{report['totals']['hours']} hours", styles["Heading2"]), Spacer(1, 10)]
+                  f"{hours_text(report['totals']['hours'])} hours", styles["Heading2"]), Spacer(1, 10)]
     for cadre in report["cadres"]:
         contents.extend([p(cadre["name"], styles["Heading2"]),
-                         p(f"{cadre['provider_count']} providers | {cadre['days']} days | {cadre['hours']} hours")])
+                         p(f"{cadre['provider_count']} providers | {cadre['days']} days | {hours_text(cadre['hours'])} hours")])
         for indicator in cadre["indicators"]:
-            contents.append(p(f"{indicator['label']}: {indicator['total']}"))
+            contents.append(p(f"{indicator['label']}: {count_text(indicator['total'])}"))
         providers = [provider for provider in report["providers"] if provider["cadre_code"] == cadre["code"]]
         table = Table([[p("Provider"), p("Facility"), p("Days"), p("Hours")]] +
-            [[p(provider["provider_name"]), p(provider["facility_name"]), p(provider["days"]), p(provider["hours"])]
+            [[p(provider["provider_name"]), p(provider["facility_name"]), p(provider["days"]), p(hours_text(provider["hours"]))]
              for provider in providers], colWidths=[155, 155, 48, 68], repeatRows=1, hAlign="LEFT")
         table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e7f2ef")),
                                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -78,7 +91,7 @@ def pdf_file(result, region_name):
         for provider in providers:
             if provider["indicators"]:
                 contents.append(p(f"{provider['provider_name']}: " +
-                     ", ".join(f"{i['label']} {i['total']}" for i in provider["indicators"])))
+                     ", ".join(f"{i['label']} {count_text(i['total'])}" for i in provider["indicators"])))
         contents.append(Spacer(1, 14))
     document.build(contents)
     return output.getvalue()

@@ -1,0 +1,101 @@
+/* ==========================================================================================
+   Polish: reviewer screens (timesheet review list, timesheet drawer, print toolbars, backdated access).
+   This file can load before index.css (it is imported from page modules), so each rule is scoped one
+   level deeper than the rule it refines. Colours come from the theme tokens, so light and dark both work.
+   The printed paper and the print CSS are not touched here.
+   ========================================================================================== */
+
+/* ---- Review list: one toolbar row, tabs left, actions right ------------------------------ */
+.review-page .review-toolbar { align-items: center; gap: 0.75rem; }
+.review-page .review-toolbar > h1 { margin: 0; }
+.review-toolbar-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; min-width: 0; }
+.review-toolbar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-left: auto; }
+.review-toolbar-actions .btn { display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
+.review-page .review-note { margin: 0; padding: 0.55rem 0.85rem; font-size: 0.88rem; }
+.review-page .review-filters { padding: 0.75rem 0.9rem; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+
+.review-page .review-table td { padding-top: 0.6rem; padding-bottom: 0.6rem; }
+.review-page .review-table td:first-child { min-width: 13rem; }
+.review-page .review-table .num { font-variant-numeric: tabular-nums; }
+.review-page .review-table .over-48 { color: var(--danger-fg); font-weight: 650; }
+
+@media (max-width: 720px) {
+  .review-toolbar-actions { margin-left: 0; }
+  .review-page .review-table td:first-child { min-width: 0; }
+  .review-toolbar-tabs .segmented { max-width: 100%; overflow-x: auto; }
+}
+
+/* ---- Approval stepper: one line saying where the record is now --------------------------- */
+.stepper-wrap .stepper-now {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.25rem 1rem;
+  margin: 0 0 0.5rem; font-size: 0.88rem; font-weight: 650; color: var(--text);
+}
+.stepper-wrap .stepper-now::before {
+  content: ''; display: inline-block; width: 0.55rem; height: 0.55rem; margin-right: 0.45rem; border-radius: 50%;
+  background: var(--accent); align-self: center; flex: none;
+}
+.stepper-wrap .stepper-now > span:first-of-type { flex: 1 1 auto; min-width: 0; }
+.stepper-wrap .stepper-now-done::before { background: var(--success-fg); }
+.stepper-wrap .stepper-now-warn::before { background: var(--warn-fg); }
+.stepper-wrap .stepper-now-danger::before { background: var(--danger); }
+.stepper-wrap .stepper-now-danger { color: var(--danger-fg); }
+.stepper-wrap .stepper-now-age { font-size: 0.78rem; font-weight: 500; color: var(--muted); }
+
+/* ---- Timesheet drawer -------------------------------------------------------------------- */
+.drawer-header .wl-title { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 0.65rem; }
+.drawer-header .wl-title-month { font-size: 0.9rem; font-weight: 550; color: var(--muted); }
+
+.wl-review .wl-head {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.6rem 1rem;
+  padding: 0.9rem 1.1rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.wl-review .wl-head-main { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.wl-review .wl-head-cadre { font-weight: 700; font-size: 1rem; color: var(--text); }
+.wl-review .wl-head-place { font-size: 0.85rem; color: var(--muted); }
+.wl-review .wl-head-badges { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.wl-review .wl-head-print { grid-column: 2; grid-row: 1; display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
+.wl-review .chip-quiet { gap: 0.3rem; color: var(--text); background: var(--surface-2); border-color: var(--border); }
+
+/* The reviewer's task: quiet when nothing is asked, accented when it is their turn. */
+.wl-review .review-summary { border-left: 4px solid var(--border-strong); }
+.wl-review .review-summary-active { border-left-color: var(--primary); background: color-mix(in srgb, var(--primary-soft) 40%, var(--surface)); }
+.wl-review .review-summary-active .review-task { color: var(--primary); }
+.wl-review .review-summary-flagged dl > div:nth-child(3) dd { color: var(--warn-fg); }
+.wl-review .review-summary .review-task { font-size: 1rem; }
+
+/* The decision: the one place to act, easy to find at the end of the review. */
+.wl-review .wl-decision {
+  border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border)); border-top: 4px solid var(--primary);
+  background: color-mix(in srgb, var(--primary-soft) 30%, var(--surface));
+}
+.wl-review .wl-decision .section-head h3 { color: var(--primary); }
+.wl-review .wl-confirm {
+  align-items: flex-start; gap: 0.6rem; padding: 0.7rem 0.85rem; cursor: pointer;
+  background: var(--surface); border: 1px dashed var(--border-strong); border-radius: 10px;
+}
+.wl-review .wl-confirm input { margin-top: 0.15rem; flex: none; }
+.wl-review .wl-confirm.is-checked { border-style: solid; border-color: var(--success-fg); background: var(--success-bg); }
+.wl-review .wl-actions { gap: 0.5rem; padding-top: 0.25rem; }
+
+@media (max-width: 640px) {
+  .wl-review .wl-head { grid-template-columns: minmax(0, 1fr); padding: 0.8rem 0.9rem; }
+  .wl-review .wl-head-print { grid-column: 1; grid-row: auto; justify-self: start; }
+  .wl-review .wl-actions .btn { flex: 1 1 auto; }
+}
+
+/* ---- Print toolbars (on screen only; hidden when printing) ------------------------------- */
+.print-toolbar.review-print-toolbar {
+  gap: 0.6rem 1rem; padding: 0.65rem 0.9rem; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; box-shadow: var(--shadow);
+}
+.review-print-toolbar .print-month { gap: 0.5rem; align-items: center; }
+.review-print-toolbar .review-print-label { font-size: 0.85rem; font-weight: 600; color: var(--muted); }
+.review-print-toolbar .check-line { font-size: 0.88rem; align-items: center; }
+.review-print-toolbar .review-print-end { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-left: auto; }
+.review-print-toolbar .review-print-summary { font-size: 0.85rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .review-print-toolbar .review-print-end { margin-left: 0; }
+}
+
+/* ---- Backdated access -------------------------------------------------------------------- */
+.card .backdate-grid { display: grid; gap: 0.75rem 1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items: start; }

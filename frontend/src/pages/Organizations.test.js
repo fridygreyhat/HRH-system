@@ -135,7 +135,6 @@ test('active link deactivation confirms payment impact and preserves history', a
   window.confirm = jest.fn(() => true);
   const { container, root } = mount();
   try {
-    expect(container.textContent).toContain('Deactivating a link blocks future payroll routing and budget operations');
     const deactivate = Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Deactivate');
     await act(async () => Simulate.click(deactivate));
     expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('blocks future payroll routing and budget operations'));

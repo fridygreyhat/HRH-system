@@ -76,7 +76,6 @@ test('monthly report keeps pay month, separate work type and cadre aggregates wi
     expect(container.textContent).toContain('Health Care Provider');
     expect(container.textContent).toContain('Home visits');
     expect(container.textContent).toContain('Consultations');
-    expect(container.textContent).toContain('No daily entries');
     expect(container.querySelector('[role="dialog"]')).toBeNull();
     act(() => Simulate.change(container.querySelector('select[aria-label="Work type"]'), { target: { value: 'SERVICES' } }));
     expect(requestedPath).toContain('work_type=SERVICES');

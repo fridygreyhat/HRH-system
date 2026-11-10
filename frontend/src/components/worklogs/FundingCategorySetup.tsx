@@ -24,7 +24,7 @@ export function FundingCategorySetup({ categories, fundingSourceId, canConfigure
   if (!canConfigure) {
     return (
       <p className="notice notice-info" role="status">
-        An active Services category has no funding source yet. Contact Central Finance to link it before reviewing this claim.
+        A Services category has no funding source. Contact Central Finance.
       </p>
     );
   }
@@ -60,7 +60,7 @@ export function FundingCategorySetup({ categories, fundingSourceId, canConfigure
     <section className="notice notice-info stack" aria-label="Initial Services category funding setup">
       <div>
         <strong>Initial category setup</strong>
-        <p className="small">These active Services categories are not linked to a funding source. Link only after confirming the intended programme.</p>
+        <p className="small">Link only after confirming the programme.</p>
       </div>
       <Field label="Unconfigured Services category">
         <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
@@ -68,7 +68,7 @@ export function FundingCategorySetup({ categories, fundingSourceId, canConfigure
           {unconfigured.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
         </select>
       </Field>
-      <Field label="Reason for initial assignment" hint="At least 3 characters. This is recorded with the setup change.">
+      <Field label="Reason for initial assignment" hint="At least 3 characters.">
         <input value={reason} minLength={3} maxLength={500} onChange={(event) => setReason(event.target.value)} />
       </Field>
       {error && <Alert kind="error">{error}</Alert>}
@@ -89,7 +89,7 @@ export function FundingCategorySetup({ categories, fundingSourceId, canConfigure
         <Modal title="Confirm initial funding assignment" onClose={cancel}>
           <div className="stack">
             <p>
-              Link <strong>{selectedCategory.name}</strong> to the selected funding source? This affects other new claims using this category. It does not allocate funds, create a budget, or change existing claims.
+              Link <strong>{selectedCategory.name}</strong> to the selected funding source? This affects all new claims in this category.
             </p>
             <p className="muted small">Reason: {reason.trim()}</p>
             {error && <Alert kind="error">{error}</Alert>}

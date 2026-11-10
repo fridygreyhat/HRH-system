@@ -47,7 +47,9 @@ test('Claims renders Kiswahili headings and statuses when lang is sw', () => {
     expect(container.querySelector('h1').textContent).toBe('Madai ya malipo');
     expect(texts(container, 'th')).toEqual(expect.arrayContaining(['Mtumishi', 'Hali ya dai', 'Hali ya malipo', 'Kiasi']));
     expect(texts(container, '.badge')).toEqual(expect.arrayContaining([' Imeidhinishwa', ' Inahitaji uthibitisho']));
-    expect(container.querySelector('summary strong').textContent).toBe('Jinsi Huduma na Payroll zinavyopita kwenye idhini na malipo');
+    expect(container.textContent).not.toContain('Jinsi Huduma na Payroll zinavyopita kwenye idhini na malipo');
+    expect(container.querySelector('.fin-prf-title').textContent).toBe('Ripoti ya malipo ya Huduma, PRF na uthibitisho wa malipo');
+    expect(texts(container, '.kpi-label')).toEqual(expect.arrayContaining(['Tayari kulipwa', 'Zimelipwa', 'Jumla ya kiasi']));
     expect(container.textContent).toContain('Hakuna njia ya malipo');
     expect(container.textContent).not.toContain('Payment claims');
     expect(container.textContent).not.toContain('No payment route');
@@ -60,7 +62,10 @@ test('Claims keeps the English headings and statuses when lang is en', () => {
     expect(container.querySelector('h1').textContent).toBe('Payment claims');
     expect(texts(container, 'th')).toEqual(expect.arrayContaining(['Staff', 'Claim status', 'Payment status', 'Amount']));
     expect(texts(container, '.badge')).toEqual(expect.arrayContaining([' Approved', ' Proof required']));
-    expect(container.querySelector('summary strong').textContent).toBe('How Services and Payroll move through approval and payment');
+    expect(container.textContent).not.toContain('How Services and Payroll move through approval and payment');
+    expect(container.querySelector('.fin-prf-title').textContent).toBe('Services payment report, PRF and proof of payment');
+    expect(texts(container, '.kpi-label')).toEqual(expect.arrayContaining(['Ready to pay', 'Paid', 'Total amount']));
+    expect(container.querySelector('.kpis').textContent).toContain('1Ready to pay');
     expect(container.textContent).toContain('No payment route');
     expect(container.textContent).not.toContain('Madai ya malipo');
   } finally { close(); }

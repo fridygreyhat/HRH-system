@@ -1,0 +1,170 @@
+/* ==========================================================================================
+   Polish: sign-in, programme overview, navigation shell and the registry / administration pages.
+   This file loads before index.css (it is imported from page modules), so each rule is scoped one
+   level deeper than the rule it refines. Colours come from the theme tokens, except the fixed dark-green
+   brand surfaces (sign-in hero, sidebar) that stay dark in both themes.
+   ========================================================================================== */
+
+/* ---- Brand mark: FHI360 green rather than the old blue gradient --------------------------- */
+svg.brand-mark rect { fill: #1f7a69; }
+.sidebar svg.brand-mark rect, .login-hero svg.brand-mark rect { fill: #2a8a76; }
+svg.brand-mark { border-radius: 11px; box-shadow: 0 6px 18px rgba(10, 40, 36, 0.28); }
+
+/* ---- Sign in ----------------------------------------------------------------------------- */
+main.login { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); min-height: 100dvh; background: var(--bg-accent), var(--bg); }
+main.login .login-hero {
+  display: flex; align-items: center; padding: clamp(2.5rem, 5vw, 4.5rem) clamp(2rem, 5vw, 5rem); color: #eef4ef;
+  background:
+    radial-gradient(640px 360px at 95% -5%, rgba(214, 170, 104, 0.30), transparent 65%),
+    radial-gradient(560px 420px at -5% 105%, rgba(120, 190, 160, 0.26), transparent 65%),
+    linear-gradient(150deg, #17534c 0%, #123c38 55%, #0f2f2d 100%);
+}
+main.login .login-hero::after { opacity: 0.06; background-size: 48px 48px; }
+main.login .login-hero-inner { max-width: 540px; gap: 2rem; }
+main.login .hero-brand { gap: 0.8rem; font-size: 1.3rem; letter-spacing: -0.02em; color: #fff; }
+main.login .hero-copy { display: grid; gap: 0.9rem; }
+main.login .login-hero h1 { max-width: 16ch; color: #fff; font-size: clamp(2.2rem, 3.8vw, 3.3rem); line-height: 1.08; letter-spacing: -0.04em; }
+main.login .hero-accent { color: transparent; background: linear-gradient(90deg, #c7d9ad, #e2bd7c); -webkit-background-clip: text; background-clip: text; }
+main.login .hero-lead { margin: 0; color: #cfe0d6; font-size: 1.02rem; line-height: 1.65; max-width: 44ch; }
+
+/* The approval steps as a quiet vertical timeline: English first, Kiswahili beneath. */
+main.login .hero-pipeline { display: grid; gap: 0; margin: 0; padding: 1rem 1.1rem; border-radius: 16px; background: rgba(255, 255, 255, 0.055); border: 1px solid rgba(255, 255, 255, 0.1); }
+main.login .hero-pipeline li {
+  position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0.85rem;
+  padding: 0.5rem 0; border: 0; border-radius: 0; background: none; color: #f1f5ef; font-size: 0.92rem;
+}
+main.login .hero-pipeline li:not(:last-child)::after {
+  content: ''; position: absolute; left: calc(0.8rem - 1px); top: calc(50% + 0.8rem + 3px); height: calc(100% - 1.6rem - 6px); width: 2px;
+  background: rgba(199, 217, 173, 0.28); border-radius: 2px;
+}
+main.login .hero-step { width: 1.6rem; height: 1.6rem; font-size: 0.75rem; font-weight: 750; color: #123c38; background: #c7d9ad; box-shadow: 0 0 0 4px rgba(199, 217, 173, 0.12); }
+main.login .hero-pipeline li:last-child .hero-step { background: #e2bd7c; box-shadow: 0 0 0 4px rgba(226, 189, 124, 0.14); }
+main.login .hero-step-text { display: flex; flex-direction: column; line-height: 1.3; }
+main.login .hero-step-text > span:first-child { font-weight: 600; }
+main.login .hero-step-sw { font-size: 0.8rem; color: #b9d3c4; }
+
+main.login .login-panel { display: grid; place-items: center; padding: clamp(1.5rem, 4vw, 3rem); }
+main.login .login-card {
+  width: min(440px, 100%); gap: 1.1rem; padding: clamp(1.5rem, 3vw, 2.4rem);
+  border: 1px solid var(--border); border-radius: 22px; background: var(--surface);
+  box-shadow: 0 1px 2px rgba(18, 48, 45, 0.05), 0 24px 60px rgba(18, 48, 45, 0.12);
+}
+main.login .login-welcome { display: grid; gap: 0.3rem; padding-bottom: 0.2rem; }
+main.login .login-welcome h2 { font-size: clamp(1.55rem, 2.6vw, 1.9rem); letter-spacing: -0.03em; }
+main.login .login-welcome p { margin: 0; font-size: 0.92rem; }
+main.login .login-card input { min-height: 2.9rem; font-size: 1rem; }
+main.login .login-card .btn-lg { width: 100%; min-height: 3rem; margin-top: 0.35rem; font-weight: 650; letter-spacing: 0.005em; }
+/* Logos need a light surface in both themes (black lettering on the US mark). */
+main.login .partner-bar {
+  margin-top: 0.4rem; padding: 0.85rem 1.25rem; gap: 1.25rem; justify-content: center;
+  background: #ffffff; border: 1px solid #e3e6df; border-radius: 14px; box-shadow: none;
+}
+main.login .partner-divider { background: #dde2da; }
+main.login .login-version { margin: 0; padding: 0; font-size: 0.75rem; text-align: center; }
+
+@media (max-width: 960px) {
+  /* Phones and tablets: a green brand band on top, the sign-in card overlapping it. */
+  main.login { display: flex; flex-direction: column; background: linear-gradient(160deg, #17534c 0%, #123c38 100%) top / 100% 15.5rem no-repeat, var(--bg); }
+  main.login .login-hero { display: block; padding: 1.6rem 1.25rem 0.75rem; background: none; }
+  main.login .login-hero::after, main.login .hero-lead, main.login .hero-pipeline { display: none; }
+  main.login .login-hero-inner { gap: 0.85rem; max-width: 440px; margin: 0 auto; }
+  main.login .hero-brand { font-size: 1.15rem; }
+  main.login .login-hero h1 { max-width: 20ch; font-size: clamp(1.45rem, 5.6vw, 1.9rem); }
+  main.login .login-panel { place-items: start center; padding: 0.5rem 1rem 2rem; }
+  main.login .login-card { margin: 0 auto; }
+}
+@media (max-width: 420px) {
+  main.login .login-card { padding: 1.25rem 1.1rem; border-radius: 18px; }
+  main.login .partner-bar { gap: 0.8rem; padding: 0.7rem 0.85rem; }
+}
+
+/* ---- Navigation shell -------------------------------------------------------------------- */
+.shell .sidebar-brand { border-bottom: 1px solid rgba(255, 255, 255, 0.06); margin-bottom: 0.25rem; }
+.shell .nav-group-label { opacity: 0.6; letter-spacing: 0.12em; }
+.shell .nav-item { gap: 0.75rem; color: color-mix(in srgb, var(--side-text) 92%, transparent); }
+.shell .nav-item .icon { opacity: 0.85; }
+.shell .nav-item:hover { background: rgba(255, 255, 255, 0.07); }
+.shell .nav-item.active { background: linear-gradient(90deg, rgba(166, 198, 156, 0.22), rgba(166, 198, 156, 0.1)); color: #fff; box-shadow: inset 0 0 0 1px rgba(166, 198, 156, 0.16); }
+.shell .nav-item.active .icon { opacity: 1; }
+.shell .nav-item > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shell .user-chip { gap: 0.55rem; padding: 0.22rem 0.8rem 0.22rem 0.22rem; border: 1px solid var(--border); background: var(--surface); }
+.shell .user-chip .avatar { background: linear-gradient(135deg, #2a8a76, #17534c); box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent); }
+.shell .crumb-page { letter-spacing: -0.01em; }
+@media (max-width: 960px) {
+  .shell .user-chip { padding: 0.18rem; border-color: transparent; background: none; }
+}
+
+/* ---- Programme overview (dashboard) ------------------------------------------------------ */
+.dash .dash-head { align-items: flex-end; padding: 0; }
+.dash .dash-head .eyebrow { margin-bottom: 0.3rem; font-size: 0.76rem; letter-spacing: 0.08em; }
+.dash .dash-head h1 { font-size: clamp(1.6rem, 2.8vw, 2.2rem); letter-spacing: -0.035em; }
+.dash .dash-sub { margin: 0.3rem 0 0; font-size: 0.92rem; }
+.dash .dash-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem; padding: 0.9rem 1rem; border-radius: 16px; }
+.dash .dash-filters .field { flex: 1 1 180px; min-width: 0; }
+.dash .dash-filters .field-label { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+.dash .dash-filters select { width: 100%; }
+.dash .dash-clear { flex: none; }
+.dash .kpis { margin: 0; gap: 0.85rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.dash .kpi { min-height: 0; padding: 1rem 1.1rem; border-radius: 16px; flex-direction: row; align-items: center; }
+.dash .kpi-icon { width: 2.6rem; height: 2.6rem; border-radius: 12px; }
+.dash .kpi-value { font-size: clamp(1.3rem, 1.9vw, 1.6rem); }
+.dash .kpi-note { line-height: 1.35; }
+.dash .grid-charts { gap: 1rem; }
+/* An odd last card (completeness) spans the full row instead of leaving a gap. */
+.dash .grid-charts > .chart-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.dash .chart-card { padding: 1.2rem 1.3rem 1.3rem; border-radius: 16px; gap: 1rem; }
+.dash .chart-head { padding-bottom: 0.75rem; border-bottom: 1px solid var(--border); }
+.dash .chart-head h3 { margin: 0; font-family: var(--font-display); font-size: 1.02rem; letter-spacing: -0.015em; }
+.dash .chart-head p { margin: 0.15rem 0 0; }
+.dash .chart-foot { margin-top: auto; }
+/* Route names are long in Kiswahili: let them wrap beside their letter instead of being cut off. */
+.dash .stacked { --bar-label-w: 13rem; }
+.dash .stacked .bar-label > span:first-child { overflow: visible; }
+.dash .stacked .row-inline { display: flex; flex-wrap: nowrap; align-items: flex-start; gap: 0.45rem; white-space: normal; }
+.dash .stacked .route-dot { flex: none; }
+.dash .ring figcaption span { display: block; max-width: 5.6rem; margin: 0.1rem auto 0; line-height: 1.2; }
+@media (max-width: 720px) {
+  .dash .dash-head { align-items: flex-start; }
+  .dash .dash-filters { padding: 0.8rem; }
+  .dash .dash-filters .field { flex-basis: calc(50% - 0.4rem); }
+  .dash .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.55rem; }
+  .dash .kpi { padding: 0.75rem 0.8rem; flex-direction: column; align-items: flex-start; }
+  .dash .chart-card { padding: 0.95rem; }
+}
+@media (max-width: 640px) { .dash .stacked { --bar-label-w: 7.5rem; } }
+
+/* ---- Registry and administration --------------------------------------------------------- */
+/* KPI tiles: icon beside the figure (an older index.css rule turns .kpi into a centred column). */
+.staff-page .kpi, .admin-page .kpi, .org-page .kpi { min-height: 0; flex-direction: row; align-items: center; }
+.admin-page .subnav, .staff-page .subnav {
+  gap: 0.2rem; padding: 0.25rem; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); width: fit-content; max-width: 100%;
+}
+.admin-page .subnav button, .staff-page .subnav button { padding: 0.42rem 0.85rem; border-radius: 9px; font-weight: 550; white-space: nowrap; }
+.admin-page .subnav button[aria-current='page'], .staff-page .subnav button[aria-current='page'] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.staff-page .toolbar, .admin-page .toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+.staff-page .toolbar .filters, .admin-page .toolbar .filters { flex: 1 1 auto; }
+.staff-page .toolbar .filters .field:first-child, .admin-page .toolbar .filters .field:first-child { flex: 1 1 240px; max-width: 340px; }
+.staff-page .toolbar .filters input[type='search'], .admin-page .toolbar .filters input[type='search'] { width: 100%; }
+.admin-page .check-inline { display: inline-flex; align-items: center; gap: 0.45rem; min-height: 2.6rem; font-size: 0.88rem; color: var(--muted); }
+.admin-page .badges { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.admin-page .scope-list { display: grid; gap: 0.1rem; font-size: 0.8rem; color: var(--muted); }
+.staff-page .table-foot, .admin-page .table-foot { margin: 0; font-size: 0.8rem; color: var(--muted); }
+@media (max-width: 720px) {
+  .admin-page .subnav, .staff-page .subnav { width: 100%; overflow-x: auto; flex-wrap: nowrap; }
+  .staff-page .toolbar .filters .field:first-child, .admin-page .toolbar .filters .field:first-child { max-width: none; }
+  .staff-page .toolbar > .btn, .admin-page .toolbar > .btn { width: 100%; }
+}
+
+/* Organizations: the KPI strip replaces the old summary banner. */
+.org-page .kpis { margin: 0; }
+.org-page .org-panel .row-between h2 { margin: 0; }
+.text-danger { color: var(--danger-fg); }
+.org-page .page-header .btn { margin-left: auto; }
+
+/* Admin tables: long role lists wrap under the name instead of stretching the table. */
+.admin-page .person-cell .cell-sub { white-space: normal; max-width: 22rem; }
+.admin-page nav[aria-label='Configuration tables'] { background: none; border-color: transparent; padding: 0; width: auto; }
+.admin-page nav[aria-label='Configuration tables'] button[aria-current='page'] { background: var(--primary-soft); color: var(--primary); box-shadow: none; }
+.admin-page .section-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+.admin-page .section-head h3 { margin: 0; }
+.admin-page .kpis { margin: 0; }

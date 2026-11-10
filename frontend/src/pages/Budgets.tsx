@@ -99,7 +99,7 @@ export function Budgets({ initialCreate = false }: { initialCreate?: boolean }) 
       </div>
 
       <div className="notice" role="note">
-        Estimates are soft planning thresholds; reaching one warns but does not stop approval. The hard cap is the strict limit. Exposure is committed plus spent, currency totals stay separate, and historic lines with no estimate remain “Not set.” There is no live connection to the FHI360 HQ budget tracker; FHI360 lines are synchronised by file import/export.
+        The hard cap limits approvals; estimates only warn.
       </div>
 
       <Alert kind="success">{notice}</Alert>

@@ -8,6 +8,7 @@ import { SettingsSection } from './admin/SettingsSection';
 import { SmsTemplatesSection } from './admin/SmsTemplatesSection';
 import { SetupTransfer } from './admin/SetupTransfer';
 import { UsersSection } from './admin/UsersSection';
+import './polish-admin.css';
 
 const ADMIN_AREA = ['SYSTEM_ADMIN', 'CENTRAL_ADMIN', 'FHI360_FINANCE', 'CSO_FINANCE', 'RPM', 'OVERSIGHT'];
 
@@ -41,7 +42,7 @@ export function Admin() {
   }
 
   return (
-    <div className="stack-lg">
+    <div className="stack-lg admin-page">
       <div className="page-header">
         <h1>Administration</h1>
       </div>

@@ -66,14 +66,13 @@ export function LedgerDrawer({
                 ['Last synced', line.last_synced_at ? dateTime(line.last_synced_at) : null],
               ]}
             />
-            {line.budget_status === 'HARD_CAP_REACHED' && <Alert kind="warn">Hard cap reached. Additional over-cap claims remain held; a claim exactly at the cap is still permitted.</Alert>}
+            {line.budget_status === 'HARD_CAP_REACHED' && <Alert kind="warn">Hard cap reached. Over-cap claims stay held.</Alert>}
             {(line.estimate_warning || line.budget_status === 'ESTIMATE_REACHED') && line.budget_status !== 'HARD_CAP_REACHED' && (
-              <Alert kind="warn">Estimated spend reached. This is a soft warning, not an approval gate.</Alert>
+              <Alert kind="warn">Estimated spend reached (warning only).</Alert>
             )}
             <div className="row">{actions(line)}</div>
             <section className="stack">
               <h3>Ledger</h3>
-              <p className="muted small">Every allocation, commitment, release, payment and reallocation, oldest first. The ledger cannot be edited.</p>
               {transactions.length === 0 ? (
                 <p className="muted">No transactions.</p>
               ) : (

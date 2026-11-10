@@ -56,7 +56,7 @@ test('CHW calendar covers the full month, opens missing dates and excludes Sunda
   try {
     act(() => root.render(<DayCalendar log={log} selected={null} flaggedDates={new Set()} onSelect={onSelect} />));
     expect(container.textContent).toContain('25 past eligible dates have no entry');
-    expect(container.textContent).toContain('each date you actually worked');
+    expect(container.textContent).toContain('each date you worked');
     expect(container.querySelector('[aria-label*="2026-09-30"]').disabled).toBe(false);
     expect(container.querySelector('[aria-label*="2026-09-06"]').disabled).toBe(true);
     const next = Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Open next date without an entry');

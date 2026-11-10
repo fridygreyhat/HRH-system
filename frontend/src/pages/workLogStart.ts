@@ -1,9 +1,10 @@
 import type { PayPeriod, WorkLogSummary } from '../types';
 import { payMonth, payMonthRange, todayLocal } from '../format';
 
-export function workMonthLabel(month: string): string {
+export function workMonthLabel(month: string, lang?: string): string {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return month;
-  return new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' })
+  const locale = lang === 'sw' ? 'sw-TZ' : lang === 'en' ? 'en-GB' : undefined;
+  return new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' })
     .format(new Date(`${month}-01T12:00:00`));
 }
 

@@ -150,9 +150,7 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
           ))}
         </ol>
         {step === 0 && <>
-          <p className="muted small">
-            One identity per person: if this person already exists (same phone number), rotate their assignment instead of registering them again.
-          </p>
+          <p className="muted small">If this phone already exists, rotate the assignment instead.</p>
           <div className="grid-2">
             <Field label="Cadre (required)">
               <select value={f.cadre_id} onChange={(e) => setF({ ...f, cadre_id: e.target.value, occupation: '', occupation_other: '' })} required>
@@ -198,7 +196,7 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
           </div>
         </>}
         {step === 1 && <>
-          <p className="muted small">Choose a facility for facility staff, or a community area with no facility for community-only providers. Set the CSO, or they will not reach any salary file.</p>
+          <p className="muted small">Set the CSO so this person appears in salary files.</p>
           <AssignmentFields value={assignment} onChange={setAssignment} showSection={cadre ? cadre.uses_section : true} />
         </>}
         {step === 2 && <>
@@ -206,7 +204,7 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
             <strong>{[f.first_name, f.middle_name, f.last_name].filter(Boolean).join(' ')}</strong>
             <span>{cadre?.name} · {f.verified_phone}</span>
           </div>
-          {!assignment.organization_id && <Alert kind="warn">No CSO is set on this placement, so this person will not appear in any salary file. Go back to add one, or continue and set it later.</Alert>}
+          {!assignment.organization_id && <Alert kind="warn">No CSO set; this person will not appear in any salary file.</Alert>}
           <div className="grid-2">
             <Field label="Salary scale" hint="Type it exactly as on Salary amounts">
               <input value={f.salary_scale} onChange={set('salary_scale')} maxLength={50} />
@@ -219,7 +217,6 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
               <input value={f.payment_account} onChange={set('payment_account')} maxLength={100} autoComplete="off" />
             </Field>
           </div>
-          <p className="muted small">Next you can create their login, so they can start recording work.</p>
         </>}
         <Alert>{error}</Alert>
         <div className="row">
@@ -321,12 +318,10 @@ export function EditStaffModal({
     <Modal title={`Edit ${staff.legal_name}`} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
         {onPlacement && <div className="notice notice-info">
-          <p>Facility and placement are separate from identity and payment details.</p>
           <button type="button" className="btn btn-secondary btn-sm" onClick={onPlacement}>Change facility / placement</button>
         </div>}
         <div className="notice notice-info">
-          Changes to payment-critical fields — cadre, salary scale, payment method, provider and account and verified phone — are not applied
-          directly. They become a change request that a different HRH administrator must approve. Name and occupation changes are saved immediately.
+          Fields marked “needs approval” go to another HRH administrator before applying.
         </div>
         <div className="grid-2">
           <Field label="First name">
@@ -360,7 +355,7 @@ export function EditStaffModal({
           <Field label={`Verified phone${lockedNote}`} hint="9–15 digits, optional leading +">
             <input type="tel" value={f.verified_phone} onChange={set('verified_phone')} required pattern={PHONE_PATTERN} />
           </Field>
-          <Field label="Status" hint={csoRequest ? undefined : 'To end employment and close assignments, use “Exit” instead.'}>
+          <Field label="Status" hint={csoRequest ? undefined : 'Use “Exit” to end employment.'}>
             <select value={f.status} onChange={set('status')}>
               <option value="ACTIVE">Active</option>
               <option value="EXITED">Exited</option>
@@ -417,10 +412,7 @@ export function RotateModal({ staff, cadres, onClose, onDone }: { staff: StaffDe
   return (
     <Modal title={`Change facility / placement · ${staff.legal_name}`} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
-        <p className="muted small">
-          Choose the provider’s new facility and the date the change takes effect. The current placement ends the day before
-          and its history is kept. A correction on the original start date is allowed only if that placement has no work logs.
-        </p>
+        <p className="muted small">The current placement ends the day before the effective date.</p>
         <div className="grid-2">
           <Field label="Effective date (required)">
             <input type="date" value={effective} onChange={(e) => setEffective(e.target.value)} required />
@@ -442,7 +434,7 @@ export function ExitDialog({ staff, onClose, onDone }: { staff: StaffDetail; onC
   return (
     <ReasonDialog
       title={`Exit ${staff.legal_name}`}
-      description="The staff member is marked as exited and every open assignment ends on the end date. This cannot be undone here."
+      description="All open assignments end on the end date. This cannot be undone here."
       required
       danger
       confirmLabel="Exit staff member"
@@ -472,7 +464,7 @@ export function LoginModal({ staff, onClose, onDone }: { staff: StaffDetail; onC
   return (
     <Modal title={`Create login for ${staff.legal_name}`} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
-        <p className="muted small">Creates a provider account linked to this staff member. Share the temporary password securely; they should change it at first sign-in.</p>
+        <p className="muted small">Share the temporary password privately.</p>
         <Field label="Username (at least 3 characters)">
           <input value={username} onChange={(e) => setUsername(e.target.value)} required minLength={3} maxLength={100} autoComplete="off" />
         </Field>

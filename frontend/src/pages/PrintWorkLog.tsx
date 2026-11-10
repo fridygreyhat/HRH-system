@@ -4,6 +4,7 @@ import { Alert } from '../components/ui';
 import { dateOnly, dateTime, datesBetween, dayOfMonth, num, payMonth, payMonthDates, periodDateError, timeShort, weekday, workHours } from '../format';
 import { useApi } from '../hooks';
 import { navigate } from '../nav';
+import './polish-review.css';
 import { WorkLogAudit, WorkLogDetail, WorkLogEntry } from '../types';
 
 // Statuses a log only reaches once that stage is finished. Sign-off rows (who signed, when) reach administrators and
@@ -73,25 +74,29 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
   const months = Array.from(new Set(allDates.map(payMonth)));
   const firstWorkedMonth = months.find(value => log?.entries.some(entry => payMonth(entry.entry_date) === value));
   const month = months.includes(selectedMonth) ? selectedMonth : firstWorkedMonth || months[0];
-  const monthLabelText = embedded ? 'Month' : 'Print month';
+  const { lang } = useAuth();
+  const sw = lang === 'sw';
+  const monthLabelText = embedded ? (sw ? 'Mwezi' : 'Month') : sw ? 'Mwezi wa kuchapisha' : 'Print month';
   const toolbar = !embedded || months.length > 1 || error ? (
-    <div className="print-toolbar no-print">
+    <div className={`print-toolbar no-print${embedded ? '' : ' review-print-toolbar'}`}>
       {!embedded && <button className="btn btn-ghost btn-sm" onClick={() => (window.history.length > 1 ? window.history.back() : navigate('home'))}>
-        ← Back
+        ← {sw ? 'Rudi' : 'Back'}
       </button>}
-      {!embedded && <button className="btn btn-primary btn-sm" onClick={() => window.print()} disabled={!log || !!dateError}>
-        Print
-      </button>}
-      {log && !dateError && (!embedded || months.length > 1) && <label className="row">
-        {monthLabelText}
+      {log && !dateError && (!embedded || months.length > 1) && <label className="row print-month">
+        <span className="review-print-label">{monthLabelText}</span>
         <select aria-label={monthLabelText} value={month} onChange={event => setSelectedMonth(event.target.value)}>
           {months.map(value => <option key={value} value={value}>{monthLabel(value)}</option>)}
         </select>
       </label>}
-      {error && <button type="button" className="btn btn-secondary btn-sm" onClick={reload}>Retry</button>}
+      {error && <button type="button" className="btn btn-secondary btn-sm" onClick={reload}>{sw ? 'Jaribu tena' : 'Retry'}</button>}
       {embedded
-        ? months.length > 1 && <span className="muted small">This timesheet covers {months.length} months. Check each one.</span>
-        : <span className="muted small">Landscape A4 is recommended.</span>}
+        ? months.length > 1 && <span className="muted small">{sw ? `Jedwali hili lina miezi ${months.length}. Kagua kila mmoja.` : `This timesheet covers ${months.length} months. Check each one.`}</span>
+        : <span className="review-print-end">
+          <span className="muted small">{sw ? 'A4 kwa ulalo.' : 'Landscape A4.'}</span>
+          <button className="btn btn-primary btn-sm" onClick={() => window.print()} disabled={!log || !!dateError}>
+            {sw ? 'Chapisha' : 'Print'}
+          </button>
+        </span>}
     </div>
   ) : null;
 
@@ -105,7 +110,7 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
       </div>
     );
 
-  if (dateError) return <div>{toolbar}<Alert>{dateError} Contact an administrator to correct the pay period before printing.</Alert></div>;
+  if (dateError) return <div>{toolbar}<Alert>{dateError} Ask an administrator to correct the pay period.</Alert></div>;
 
   return (
     <div>
@@ -287,7 +292,7 @@ export function TimesheetPaper({ log, month, embedded = false }: { log: Printabl
           <SignBox titleSw="Idhini ya RM" titleEn="RM approval" row={signOff(log, 'authorize')} done={AFTER_RM.includes(log.status)} />
         </div>
         <p style={{ marginTop: '0.5rem' }}>
-          Work log #{log.id} · version {log.version} · status {log.status} · printed {dateTime(new Date().toISOString())}. Approval is not payment.
+          Work log #{log.id} · version {log.version} · status {log.status} · printed {dateTime(new Date().toISOString())}.
         </p>
     </article>
   );

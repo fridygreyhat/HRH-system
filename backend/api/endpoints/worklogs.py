@@ -41,7 +41,7 @@ from ...services import print_batch, public_holidays, service_targets
 from ...services import worklog_workflow as wf
 from ...services.forms import assignment_out, cadre_fields, cadre_out, entries_with_measures, review_summary, totals
 from ...services.activities import activity_fields, activity_for
-from ...services.work_hours import day_hours_violation, hour_limits
+from ...services.work_hours import day_hours_violation, hour_limits, hours_text
 from ...services.activity_catalog import resolve_activity, log_fields
 from ...services.forms import log_cadre_out
 from ...core import workflow_policy
@@ -552,7 +552,7 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
         hours if entry_date.weekday() < 5 else Decimal(0),
     )
     if entry_date.weekday() < 5 and weekly_total > limits["weekly_hours"]:
-        raise HTTPException(status_code=422, detail=f"Weekday hours may not exceed {limits['weekly_hours']} from Monday through Friday; Saturday clinics are separate (this entry would total {weekly_total}).")
+        raise HTTPException(status_code=422, detail=f"Weekday hours may not exceed {hours_text(limits['weekly_hours'])} from Monday through Friday; Saturday clinics are separate (this entry would total {hours_text(weekly_total)}).")
 
     capture = requires_entry_gps or "ENTRY" in get_setting(db, "gps_capture_events")
     lat, lon = (body.gps_lat, body.gps_lon) if capture else (None, None)

@@ -96,7 +96,6 @@ test('new direct community claims omit budget-line details and preserve approval
     expect(approve).toBeTruthy();
     act(() => approve.click());
     expect(container.textContent).toContain('No regional budget allocation is required');
-    expect(container.textContent).toContain('payment is recorded separately with proof');
   } finally {
     mockClaim.budget_line_id = 3;
     mockClaim.payment_policy = null;

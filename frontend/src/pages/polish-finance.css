@@ -1,0 +1,40 @@
+/* Finance screens: claims, routing, monthly report, CSO payments, budgets, batches. Tokens only (light and dark). */
+
+/* One-row toolbar: filters on the left, actions on the right */
+.fin-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 0.75rem 1rem; }
+.fin-toolbar > .filters { flex: 1 1 auto; margin: 0; }
+.fin-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem; margin-left: auto; }
+/* Pages whose header is only the title: App's slim header already shows it, so drop the empty row on screen. */
+@media screen { .banded .fin-title-only { display: none; } }
+
+/* Table cells */
+.fin-stack { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; }
+.fin-warn { color: var(--warn-fg); font-weight: 650; }
+td.num .cell-main, td.num .cell-sub, th.num .cell-sub { text-align: right; }
+.fin-wrap .cell-main, .fin-wrap .cell-sub { white-space: normal; }
+.fin-wrap { min-width: 11rem; max-width: 22rem; }
+.fin-claims-table td { padding-top: 0.6rem; padding-bottom: 0.6rem; }
+.fin-pager { justify-content: flex-end; }
+
+/* Services payment report, PRF and proof: one line until opened */
+.fin-prf-panel > summary { flex-wrap: wrap; gap: 0.35rem 0.75rem; }
+.fin-prf-title { font-weight: 650; }
+.fin-prf-meta { font-weight: 500; font-size: 0.86rem; color: var(--muted); }
+.fin-prf-due { color: var(--warn-fg); font-weight: 700; }
+.fin-prf-panel[open] > summary { margin-bottom: 0.85rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border); }
+
+/* Section headers inside finance pages */
+.fin-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.fin-section-head h3, .fin-section-head h4 { margin: 0; }
+.fin-section-head .muted { font-size: 0.82rem; }
+
+/* Region sign-off lines in the salary timesheets */
+.fin-signed-list { display: grid; gap: 0.35rem; margin: 0; padding: 0; list-style: none; }
+.fin-signed-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); font-size: 0.86rem; }
+.fin-signed-list li strong { color: var(--text); }
+.fin-footnote { margin: 0; font-size: 0.8rem; color: var(--muted); }
+
+@media (max-width: 720px) {
+  .fin-actions { margin-left: 0; justify-content: flex-start; width: 100%; }
+  .fin-wrap { max-width: none; }
+}

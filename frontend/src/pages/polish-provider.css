@@ -1,0 +1,159 @@
+/* ==========================================================================================
+   Provider screens and Home: polish layer. Tokens only, so light and dark both work.
+   (The Home greeting card keeps its own fixed brand gradient, so its text stays light in both themes.)
+   ========================================================================================== */
+
+/* ---------- Home ---------- */
+.home .home-hero { align-items: stretch; }
+.home .home-hero-text { display: flex; flex-direction: column; justify-content: center; gap: 0.15rem; min-width: 0; }
+.home .home-lead { margin: 0.45rem 0 0; max-width: 48ch; font-size: 1rem; line-height: 1.45; }
+.home .home-month { align-self: center; }
+.home-cta {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 0.35rem; margin-top: 1rem;
+  padding: 0.6rem 1rem; border-radius: 999px; font-weight: 650; color: #fff;
+  background: rgba(255, 255, 255, 0.14); border: 1px solid rgba(255, 255, 255, 0.28); box-shadow: none;
+}
+.home-cta:hover:not(:disabled) { background: rgba(255, 255, 255, 0.22); color: #fff; }
+.home-cta:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.home .kpis { margin: 0; }
+.home .section-title { margin-top: 0; }
+
+.home-body { display: grid; gap: 1.25rem; align-items: start; }
+@media (min-width: 1100px) {
+  .home-body.has-side { grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr); }
+}
+.home .task-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 0.75rem; }
+.home .task-card { padding: 0.95rem 1rem; gap: 0.8rem; min-height: 4.6rem; }
+.home .task-card.is-clear .task-icon { color: var(--success-fg); background: var(--success-bg); }
+
+.home-list { display: grid; gap: 0.25rem; padding: 1rem 1.1rem 0.6rem; }
+.home-list .section-title { align-items: center; margin-bottom: 0.25rem; }
+.home-rows { display: grid; }
+.home-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; width: 100%;
+  padding: 0.65rem 0.4rem; border: 0; border-top: 1px solid var(--border); border-radius: 0;
+  background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: background 0.14s ease;
+}
+.home-row:first-child { border-top: 0; }
+.home-row:hover { background: color-mix(in srgb, var(--primary-soft) 55%, transparent); }
+.home-row:focus-visible { outline: none; box-shadow: var(--ring); border-radius: 8px; }
+.home-row-main { display: flex; flex-direction: column; min-width: 0; }
+.home-row-main .cell-main, .home-row-main .cell-sub { overflow: hidden; text-overflow: ellipsis; }
+.home-row-side { display: inline-flex; align-items: center; justify-content: flex-end; gap: 0.4rem; flex-wrap: wrap; }
+.home-row-stack { flex-direction: column; align-items: flex-end; gap: 0; }
+.home-age { font-size: 0.82rem; font-weight: 650; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.home-age.is-late { color: var(--warn-fg); }
+
+@media (max-width: 720px) {
+  .home .home-lead { font-size: 0.94rem; }
+  .home-cta { align-self: stretch; justify-content: center; }
+  .home .task-card { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .home .task-card .task-arrow { display: none; }
+  .home-list { padding: 0.85rem 0.85rem 0.4rem; }
+  .home-row { gap: 0.5rem; }
+}
+
+/* ---------- My work logs ---------- */
+.log-grid { display: grid; gap: 0.85rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.my-logs .log-card { display: flex; flex-direction: column; gap: 0.55rem; padding: 1rem 1.1rem; }
+.log-card.needs-fix { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+.log-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.6rem; }
+.log-card-head > span:first-child { display: flex; flex-direction: column; min-width: 0; }
+.log-card-month { font-weight: 700; font-size: 1.02rem; letter-spacing: -0.01em; }
+.log-card-status { display: flex; }
+.log-card .mini-stepper { margin: 0; }
+.log-card-foot { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding-top: 0.6rem; border-top: 1px solid var(--border); }
+.log-card-figures { display: inline-flex; gap: 1rem; font-size: 0.85rem; color: var(--muted); }
+.log-card-figures strong { color: var(--text); font-size: 1rem; font-variant-numeric: tabular-nums; }
+.log-card-action { display: inline-flex; align-items: center; gap: 0.15rem; font-size: 0.86rem; font-weight: 650; color: var(--primary); white-space: nowrap; }
+.log-card-action.is-fix { color: var(--danger); }
+.log-card:hover .log-card-action .icon { transform: translateX(2px); }
+.log-card-action .icon { transition: transform 0.15s ease; }
+
+/* ---------- Timesheet editor ---------- */
+.editor-toolbar { gap: 0.5rem; }
+.editor-head { display: grid; gap: 0.9rem; }
+.editor-head-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+.editor-head-text { display: grid; gap: 0.3rem; justify-items: start; min-width: 0; }
+.editor-head-text h2 { margin: 0; font-size: 1.2rem; letter-spacing: -0.015em; }
+.editor-head-text p { margin: 0; }
+.editor-head-badges { justify-content: flex-end; }
+.editor-recall { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.editor-recall h3 { margin: 0 0 0.15rem; font-size: 1rem; }
+.editor-recall p { margin: 0; }
+.editor-details .facts { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+
+.editor-main { display: grid; gap: 1.25rem; align-items: start; }
+.editor-side { display: flex; flex-direction: column; gap: 1.25rem; min-width: 0; }
+@media (min-width: 1100px) {
+  .editor-main { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+  .editor-main .day-calendar { position: sticky; top: 5rem; }
+}
+.editor-submit-date { display: flex; align-items: center; gap: 0.5rem; margin: 0; }
+
+.cal-total { font-size: 0.84rem; color: var(--muted); white-space: nowrap; padding: 0.2rem 0.65rem; border-radius: 999px; background: var(--surface-2); }
+.cal-total strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.cal-missing { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.cal-missing-text { display: grid; gap: 0.15rem; min-width: 0; flex: 1 1 260px; }
+.cal-missing-text p { margin: 0; font-size: 0.86rem; }
+.cal-missing-count { font-weight: 650; }
+.day-calendar .day { border-radius: 10px; transition: border-color 0.12s ease, transform 0.12s ease; }
+.day-calendar .day:hover:not(:disabled) { transform: translateY(-1px); }
+.day-calendar .calendar-head { padding-bottom: 0.15rem; }
+
+.submit-panel { border-color: color-mix(in srgb, var(--primary) 35%, var(--border)); }
+.submit-panel h3 { margin: 0; }
+.submit-attest { padding: 0.7rem 0.8rem; border-radius: var(--radius-sm); background: var(--surface-2); }
+.submit-attest input { margin-top: 0.2rem; }
+
+/* Day form */
+.day-form { border-color: color-mix(in srgb, var(--primary) 40%, var(--border)); scroll-margin-top: 5rem; }
+.day-form-head h3 { display: grid; gap: 0.05rem; margin: 0; font-size: 1.1rem; }
+.day-form-kicker { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--primary); }
+.day-form-limits { margin: 0; padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); background: var(--surface-2); }
+.day-gps { padding: 0.75rem 0.85rem; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); }
+.day-form-actions { padding-top: 0.85rem; border-top: 1px solid var(--border); }
+.extra-services { padding-top: 0.25rem; }
+.extra-service { background: var(--surface-2); box-shadow: none; }
+.extra-service legend { font-weight: 650; padding: 0 0.3rem; }
+
+.otp-panel { border: 2px solid var(--primary); background: color-mix(in srgb, var(--primary-soft) 40%, var(--surface)); }
+
+@media (max-width: 760px) {
+  .editor-head-badges { justify-content: flex-start; }
+  .editor-recall .btn { width: 100%; }
+  .submit-button { width: 100%; }
+  /* Keep Save under the thumb on long day forms, above the phone bottom bar. */
+  .day-form-actions {
+    position: sticky; bottom: calc(4.4rem + env(safe-area-inset-bottom)); z-index: 5;
+    margin: 0 -1.25rem -1.25rem; padding: 0.75rem 1.25rem; border-radius: 0 0 var(--radius) var(--radius);
+    background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(8px);
+  }
+  .day-form-actions .btn-primary { flex: 1 1 auto; }
+  .cal-missing .btn { width: 100%; }
+}
+
+/* ---------- Payment details ---------- */
+.pay-cards { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); align-items: start; }
+.pay-card { display: grid; gap: 1rem; }
+.pay-card-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; }
+.pay-card-head h3 { margin: 0; font-size: 1.05rem; }
+.pay-card-head p { margin: 0; }
+.pay-card-icon { display: grid; place-items: center; width: 2.6rem; height: 2.6rem; border-radius: 12px; color: var(--primary); background: var(--primary-soft); }
+.pay-facts { display: grid; gap: 0.7rem; margin: 0; padding-top: 0.85rem; border-top: 1px solid var(--border); }
+.pay-facts div { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.pay-facts dt { font-size: 0.82rem; color: var(--muted); }
+.pay-facts dd { margin: 0; font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+.pay-number { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.06em; font-variant-numeric: tabular-nums; }
+.pay-card.is-editing { border-color: color-mix(in srgb, var(--primary) 35%, var(--border)); }
+.pay-actions { align-items: center; }
+.pay-reveal { align-self: flex-start; }
+@media (max-width: 720px) {
+  .pay-facts div { flex-direction: column; gap: 0.1rem; }
+  .pay-facts dd { text-align: left; }
+  .pay-actions .btn-primary { flex: 1 1 100%; }
+}
+
+/* ---------- Provider records (pay period modal) ---------- */
+.period-record-type { gap: 0.35rem; margin-bottom: 0.25rem; flex-wrap: nowrap; }
+.period-record-figures { line-height: 1.9; }

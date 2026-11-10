@@ -10,7 +10,7 @@ const opts = (...values: string[]): Option[] => values.map((v) => ({ value: v, l
 const GEOFENCE_FIELDS: FieldSpec[] = [
   { key: 'geofence_lat', label: 'Geofence latitude', type: 'number', step: '0.00000001', hint: 'Decimal degrees, e.g. -7.77' },
   { key: 'geofence_lon', label: 'Geofence longitude', type: 'number', step: '0.00000001', hint: 'Decimal degrees, e.g. 35.69' },
-  { key: 'geofence_radius_meters', label: 'Geofence radius (m)', type: 'integer', hint: 'Leave all three geofence fields blank for no geofence' },
+  { key: 'geofence_radius_meters', label: 'Geofence radius (m)', type: 'integer', hint: 'Leave all three blank for no geofence' },
 ];
 
 function validateGeofence(p: Row): string | null {
@@ -34,7 +34,7 @@ export const TABLES: TableSpec[] = [
     singular: 'organization',
     path: '/admin/organizations',
     writeRoles: CENTRAL,
-    description: 'Payors, CSOs and partners. A CSO pays CSO facility payroll (route B) and CSO community (route C) claims.',
+    description: 'Payors, CSOs and partners.',
     fields: [
       { key: 'name', label: 'Name', type: 'text', required: true, maxLength: 255 },
       { key: 'code', label: 'Code', type: 'text', maxLength: 50 },
@@ -90,7 +90,7 @@ export const TABLES: TableSpec[] = [
     path: '/admin/facilities',
     writeRoles: CENTRAL,
     extraPaths: ['/admin/districts'],
-    description: 'Facility ownership/type is separate from funding sources and does not change payment routing. The geofence flags entries outside the facility area; it never blocks an entry.',
+    description: 'Facility type does not set funding or payment route.',
     validate: validateGeofence,
     fields: [
       { key: 'name', label: 'Name', type: 'text', required: true, maxLength: 255 },
@@ -105,7 +105,6 @@ export const TABLES: TableSpec[] = [
           { value: 'PNP', label: 'Police and Prison facilities (PnP)' },
         ],
         preserveExistingOption: true,
-        hint: 'Classify the facility here, not under funding sources. Existing type values are preserved when editing.',
       },
       ...GEOFENCE_FIELDS,
       { key: 'is_active', label: 'Active', type: 'bool', defaultValue: true },
@@ -133,7 +132,7 @@ export const TABLES: TableSpec[] = [
     path: '/admin/sections',
     writeRoles: CENTRAL,
     pk: 'code',
-    description: 'Facility sections offered on cadre forms that use a section (CTC, OPD, RCH…).',
+    description: 'Sections offered on cadre forms (CTC, OPD, RCH…).',
     fields: [
       { key: 'code', label: 'Code', type: 'text', required: true, maxLength: 20, immutable: true },
       { key: 'name', label: 'Name', type: 'text', required: true, maxLength: 100 },
@@ -145,7 +144,7 @@ export const TABLES: TableSpec[] = [
     singular: 'funding source',
     path: '/admin/funding-sources',
     writeRoles: FINANCE,
-    description: 'Services funding programmes such as PnP, Supply Chain and EpiC. Funding sources identify the programme supporting a claim; Public, Police and Prison describe facility type, not funding.',
+    description: 'Programmes funding claims, e.g. PnP, Supply Chain, EpiC.',
     fields: [
       { key: 'code', label: 'Code', type: 'text', required: true, maxLength: 50 },
       { key: 'name', label: 'Name', type: 'text', required: true, maxLength: 255 },
@@ -157,8 +156,7 @@ export const TABLES: TableSpec[] = [
     singular: 'claim category',
     path: '/admin/claim-categories',
     writeRoles: FINANCE,
-    description:
-      'A category decides the payment route, payor, budget owner and budget line of its claims. A category without a route is flagged as an exception on every claim.',
+    description: 'Sets each claim\'s route, payor and budget. No route flags an exception.',
     fields: [
       { key: 'name', label: 'Name', type: 'text', required: true, maxLength: 255 },
       { key: 'form_type', label: 'Form type', type: 'text', maxLength: 50, hint: 'e.g. CHW_PNP, HCP_PNP, COORDINATION, SALARY, COMMUNITY_SERVICE' },
@@ -174,7 +172,7 @@ export const TABLES: TableSpec[] = [
         type: 'select',
         ref: { path: '/admin/funding-sources', label: (r) => `${String(r.code)} — ${String(r.name)}` },
       },
-      { key: 'payor_org_id', label: 'Payor organization', type: 'select', ref: { path: '/admin/organizations' }, hint: 'Leave blank for CSO community payments (route C): the assigned CSO pays' },
+      { key: 'payor_org_id', label: 'Payor organization', type: 'select', ref: { path: '/admin/organizations' }, hint: 'Leave blank for route C (assigned CSO pays)' },
       { key: 'budget_owner', label: 'Budget owner', type: 'select', required: true, options: opts('PAYOR', 'EXECUTOR'), defaultValue: 'PAYOR' },
       {
         key: 'origin_channel',

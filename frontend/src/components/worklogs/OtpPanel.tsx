@@ -4,6 +4,7 @@ import { useAuth } from '../../AuthContext';
 import { useAction } from '../../hooks';
 import { WorkLogDetail } from '../../types';
 import { Alert, DevCodeNotice, Field, ReasonDialog } from '../ui';
+import '../../pages/polish-provider.css';
 
 /** Provider confirmation of the frozen, verified version by SMS code (or decline with a reason). */
 export function OtpPanel({ log, onChanged }: { log: WorkLogDetail; onChanged: (log: WorkLogDetail) => void }) {
@@ -40,14 +41,14 @@ export function OtpPanel({ log, onChanged }: { log: WorkLogDetail; onChanged: (l
   };
 
   return (
-    <section className="card stack" aria-labelledby="otp-title" style={{ borderColor: 'var(--primary)', borderWidth: 2 }}>
+    <section className="card stack otp-panel" aria-labelledby="otp-title">
       <h3 id="otp-title">{t('otpTitle')}</h3>
       {!codeRequired ? (
         <form className="stack" onSubmit={submit}>
           <p className="small">
             {lang === 'sw'
-              ? 'Kumbukumbu yako imehakikiwa na Mkuu wa CTC. Hakiki takwimu hapo juu, kisha thibitisha. Namba ya SMS haihitajiki kwa sasa.'
-              : 'Your CTC In-Charge has verified this log. Check the figures above, then confirm them. No SMS code is needed for now.'}
+              ? 'Kagua takwimu hapo juu, kisha thibitisha.'
+              : 'Check the figures above, then confirm.'}
           </p>
           <div>
             <button className="btn btn-primary" disabled={confirm.busy}>

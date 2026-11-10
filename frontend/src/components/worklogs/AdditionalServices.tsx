@@ -14,14 +14,15 @@ export function AdditionalServices({ activities, fields, primaryKey, value, onCh
 }) {
   const update = (index: number, patch: Partial<ServiceDraft>) =>
     onChange(value.map((item, i) => i === index ? { ...item, ...patch } : item));
+  const sw = lang === 'sw';
   const available = activities.filter(activity => activity.key !== primaryKey && !value.some(item => item.activity_key === activity.key));
-  return <section className="stack" aria-label="Additional services">
-    <p className="notice notice-info">Record all services performed on this date. Hours are the total for the day, not repeated for each service. Payment is only the highest fixed daily service amount, not the sum.</p>
+  return <section className="stack extra-services" aria-label="Additional services">
+    <p className="muted small">{sw ? 'Ongeza kila huduma uliyofanya tarehe hii. Masaa yanabaki jumla ya siku.' : "Add each service done on this date. Hours stay the day's total."}</p>
     {value.map((item, index) => {
       const activity = activities.find(candidate => candidate.key === item.activity_key);
-      return <fieldset className="card stack" key={item.activity_key}>
+      return <fieldset className="card stack extra-service" key={item.activity_key}>
         <legend>{activity?.[lang === 'sw' ? 'label_sw' : 'label_en'] || item.activity_key}</legend>
-        {activity?.requires_location && <Field label="Secondary facility name"><input required maxLength={255} value={item.activity_location || ''} onChange={e => update(index, { activity_location: e.target.value })} /></Field>}
+        {activity?.requires_location && <Field label={sw ? 'Jina la kituo kingine' : 'Secondary facility name'}><input required maxLength={255} value={item.activity_location || ''} onChange={e => update(index, { activity_location: e.target.value })} /></Field>}
         {(activity?.fields || []).map(key => {
           const field = fields.find(candidate => candidate.key === key);
           if (!field) return null;
@@ -29,17 +30,17 @@ export function AdditionalServices({ activities, fields, primaryKey, value, onCh
           return <Field key={key} label={field[lang === 'sw' ? 'label_sw' : 'label_en']}>
             {field.field_type === 'BOOLEAN'
               ? <select required={required} value={item.measures[key] === undefined ? '' : String(item.measures[key])} onChange={e => update(index, { measures: { ...item.measures, [key]: e.target.value === '' ? '' : e.target.value === 'true' } })}>
-                <option value="">Choose…</option><option value="true">Yes</option><option value="false">No</option>
+                <option value="">{sw ? 'Chagua…' : 'Choose…'}</option><option value="true">{sw ? 'Ndiyo' : 'Yes'}</option><option value="false">{sw ? 'Hapana' : 'No'}</option>
               </select>
               : <input required={required} type="number" min="0" max="10000" step="1" value={String(item.measures[key] ?? '')} onChange={e => update(index, { measures: { ...item.measures, [key]: e.target.value } })} />}
           </Field>;
         })}
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange(value.filter((_, i) => i !== index))}>Remove this service</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange(value.filter((_, i) => i !== index))}>{sw ? 'Ondoa huduma hii' : 'Remove this service'}</button>
       </fieldset>;
     })}
-    <Field label="Add another service on this date">
+    <Field label={sw ? 'Ongeza huduma nyingine tarehe hii' : 'Add another service on this date'}>
       <select value="" disabled={available.length === 0} onChange={e => { if (e.target.value) onChange([...value, { activity_key: e.target.value, measures: {} }]); }}>
-        <option value="">{available.length ? 'Choose another service…' : 'No other services available'}</option>
+        <option value="">{available.length ? (sw ? 'Chagua huduma nyingine…' : 'Choose another service…') : (sw ? 'Hakuna huduma nyingine' : 'No other services available')}</option>
         {available.map(activity => <option value={activity.key} key={activity.key}>{activity[lang === 'sw' ? 'label_sw' : 'label_en']}</option>)}
       </select>
     </Field>

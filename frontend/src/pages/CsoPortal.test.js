@@ -65,7 +65,6 @@ test('CSO Community claims section shows incoming direct Route C work with exter
     act(() => Simulate.click(routeTab));
     expect(container.textContent).toContain('Awaiting community verification');
     expect(container.textContent).toContain('Neema Juma');
-    expect(container.textContent).toContain('No regional budget allocation or payroll export batch is required');
   } finally {
     mockCommunityClaim = null;
     act(() => root.unmount());
@@ -121,7 +120,7 @@ test('CSO downloads signed salary timesheets as PDF or CSV and is told which reg
   try {
     const tab = Array.from(container.querySelectorAll('.subnav button')).find(button => button.textContent === 'Salary timesheets');
     await act(async () => Simulate.click(tab));
-    expect(container.textContent).toContain('it does not pay anyone or change any record');
+    expect(container.textContent).toContain('does not pay anyone or change any record');
     expect(container.textContent).toContain('signed by Regional Finance Mara');
     expect(container.textContent).toContain("Kagera: not signed yet, so its timesheets are not in the file");
     expect(container.textContent).toContain('320 h 30 min');

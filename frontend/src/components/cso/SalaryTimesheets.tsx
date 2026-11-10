@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { api, qs, saveBlob } from '../../api';
+import { useAuth } from '../../AuthContext';
 import { dateOnly, money, num, payMonth, payMonthDates, previousMonth, todayLocal, workHours } from '../../format';
 import { useAction, useApi } from '../../hooks';
-import { Alert, AsyncState, Empty, Field, Section, StatTile } from '../ui';
+import { Alert, AsyncState, Empty, Field, KpiStrip, Section } from '../ui';
 
 interface RegionStatus {
   id: number;
@@ -38,19 +39,29 @@ interface SalaryTimesheetSummary {
 }
 
 const NAMES_SHOWN = 10;
+/** The server's payment checks and work settings, in Swahili for the screen (files stay as the server writes them). */
+const CHECK_SW: Record<string, string> = {
+  'Bank details missing': 'Taarifa za benki hazipo',
+  'Salary amount missing': 'Kiasi cha mshahara hakipo',
+  'Not signed by provider': 'Mtoa huduma hajasaini',
+};
+const SETTING_SW: Record<string, string> = { Facility: 'Kituo', Community: 'Jamii' };
 const PAGE_SIZE = 20;
 
 /** A first month can flag most providers, so name a few here; the list below marks every one. */
-function nameList(names: string[]): string {
+function nameList(names: string[], sw = false): string {
   const shown = names.slice(0, NAMES_SHOWN).join(', ');
-  return names.length > NAMES_SHOWN ? `${shown} and ${num(names.length - NAMES_SHOWN)} more, all marked in the list below` : shown;
+  if (names.length <= NAMES_SHOWN) return shown;
+  return sw
+    ? `${shown} na wengine ${num(names.length - NAMES_SHOWN)}, wote wamewekewa alama kwenye orodha hapa chini`
+    : `${shown} and ${num(names.length - NAMES_SHOWN)} more, all marked in the list below`;
 }
 
 /** Salaries are worked out after a pay month closes, so start on the one before today's. */
 const lastMonth = (): string => previousMonth(payMonth(todayLocal()));
 
 /** Who is in the file, so a CSO can check one person without downloading. Bank details stay in the file only. */
-function ProviderList({ rows }: { rows: ProviderRow[] }) {
+function ProviderList({ rows, sw }: { rows: ProviderRow[]; sw: boolean }) {
   const [search, setSearch] = useState('');
   const [problemsOnly, setProblemsOnly] = useState(false);
   const [page, setPage] = useState(0);
@@ -65,64 +76,69 @@ function ProviderList({ rows }: { rows: ProviderRow[] }) {
 
   return (
     <div className="stack">
-      <div className="grid-2">
-        <Field label="Find a provider">
-          <input
-            type="search"
-            value={search}
-            placeholder="Name, cadre, facility, community area or region"
-            onChange={(event) => { setSearch(event.target.value); setPage(0); }}
-          />
-        </Field>
-        <label className="row">
-          <input type="checkbox" checked={problemsOnly} onChange={(event) => { setProblemsOnly(event.target.checked); setPage(0); }} />
-          <span>Show only providers that need attention</span>
-        </label>
+      <div className="fin-toolbar">
+        <div className="filters">
+          <Field label={sw ? 'Tafuta mtoa huduma' : 'Find a provider'}>
+            <input
+              type="search"
+              value={search}
+              placeholder={sw ? 'Jina, kada, kituo, eneo la jamii au mkoa' : 'Name, cadre, facility, community area or region'}
+              onChange={(event) => { setSearch(event.target.value); setPage(0); }}
+            />
+          </Field>
+          <label className="check-line small">
+            <input type="checkbox" checked={problemsOnly} onChange={(event) => { setProblemsOnly(event.target.checked); setPage(0); }} />
+            <span>{sw ? 'Onyesha wanaohitaji hatua tu' : 'Show only providers that need attention'}</span>
+          </label>
+        </div>
       </div>
       {shown.length ? (
         <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
-                <th scope="col">Provider</th>
-                <th scope="col">Region</th>
-                <th scope="col">Setting</th>
-                <th scope="col">Facility</th>
-                <th scope="col">Community area</th>
-                <th scope="col">Cadre</th>
-                <th scope="col" className="num">Days signed</th>
-                <th scope="col" className="num">Monthly salary</th>
-                <th scope="col">Check</th>
+                <th scope="col">{sw ? 'Mtoa huduma' : 'Provider'}</th>
+                <th scope="col">{sw ? 'Mahali pa kazi' : 'Placement'}</th>
+                <th scope="col">{sw ? 'Mkoa' : 'Region'}</th>
+                <th scope="col" className="num">{sw ? 'Siku zilizosainiwa' : 'Days signed'}</th>
+                <th scope="col" className="num">{sw ? 'Mshahara wa mwezi' : 'Monthly salary'}</th>
+                <th scope="col">{sw ? 'Ukaguzi' : 'Check'}</th>
               </tr>
             </thead>
             <tbody>
               {shown.slice(first, first + PAGE_SIZE).map((row) => (
                 <tr key={`${row.staff_id}-${row.cadre_name}-${row.region_name}-${row.facility_name}-${row.community_area_name}`}>
-                  <td>{row.provider_name}</td>
-                  <td>{row.region_name}</td>
-                  <td>{row.work_setting}</td>
-                  <td>{row.facility_name}</td>
-                  <td>{row.community_area_name || '—'}</td>
-                  <td>{row.cadre_name}</td>
+                  <td>
+                    <span className="cell-main">{row.provider_name}</span>
+                    <span className="cell-sub">{row.cadre_name}</span>
+                  </td>
+                  <td>
+                    <span className="cell-main">{row.community_area_name || row.facility_name}</span>
+                    <span className="cell-sub">
+                      {(sw && SETTING_SW[row.work_setting]) || row.work_setting}
+                      {row.community_area_name && row.facility_name && row.facility_name !== '—' ? ` · ${row.facility_name}` : ''}
+                    </span>
+                  </td>
+                  <td className="nowrap">{row.region_name}</td>
                   <td className="num">{num(row.days_signed)}</td>
                   <td className="num nowrap">{row.monthly_salary ? money(row.monthly_salary) : '—'}</td>
-                  <td>{row.checks.length ? <span className="badge badge-warn">{row.checks.join('; ')}</span> : <span className="muted">OK</span>}</td>
+                  <td>{row.checks.length ? <span className="badge badge-warn">{row.checks.map((check) => (sw && CHECK_SW[check]) || check).join('; ')}</span> : <span className="badge badge-success">{sw ? 'Sawa' : 'OK'}</span>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : (
-        <Empty>No providers match.</Empty>
+        <Empty>{sw ? 'Hakuna mtoa huduma anayelingana.' : 'No providers match.'}</Empty>
       )}
-      <div className="row">
+      <div className="row fin-pager">
         <span className="muted small" aria-live="polite">
-          {shown.length ? `${num(first + 1)}–${num(Math.min(first + PAGE_SIZE, shown.length))} of ${num(shown.length)}` : '0'} shown · {num(rows.length)} in the file
+          {shown.length ? `${num(first + 1)}–${num(Math.min(first + PAGE_SIZE, shown.length))} ${sw ? 'kati ya' : 'of'} ${num(shown.length)}` : '0'} {sw ? `zinaonyeshwa · ${num(rows.length)} kwenye faili` : `shown · ${num(rows.length)} in the file`}
         </span>
         {pages > 1 && (
           <>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPage(current - 1)} disabled={current === 0}>Previous</button>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPage(current + 1)} disabled={current >= pages - 1}>Next</button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPage(current - 1)} disabled={current === 0}>{sw ? 'Iliyotangulia' : 'Previous'}</button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPage(current + 1)} disabled={current >= pages - 1}>{sw ? 'Inayofuata' : 'Next'}</button>
           </>
         )}
       </div>
@@ -131,6 +147,8 @@ function ProviderList({ rows }: { rows: ProviderRow[] }) {
 }
 
 export function SalaryTimesheets({ csoId, noCso = false }: { csoId: string; noCso?: boolean }) {
+  const { lang } = useAuth();
+  const sw = lang === 'sw';
   const [month, setMonth] = useState(lastMonth);
   const [regionId, setRegionId] = useState('');
   const [setting, setSetting] = useState('');
@@ -138,6 +156,7 @@ export function SalaryTimesheets({ csoId, noCso = false }: { csoId: string; noCs
   const query = { cso_id: csoId, month, region_id: regionId, setting };
   const summary = useApi<SalaryTimesheetSummary>(csoId && month ? `/cso-finance/salary-timesheets${qs(query)}` : null);
   const download = useAction();
+  const title = sw ? 'Majedwali ya mshahara' : 'Salary timesheets';
 
   const save = async (format: 'csv' | 'pdf') => {
     setPreparing(format);
@@ -150,100 +169,122 @@ export function SalaryTimesheets({ csoId, noCso = false }: { csoId: string; noCs
 
   if (noCso) {
     return (
-      <Section title="Salary timesheets">
-        <Empty>No CSO is linked to this account, so there are no timesheets to show. An administrator must add the CSO under Organizations, link it to its regions, and assign it to the CSO Finance user.</Empty>
+      <Section title={title}>
+        <Empty>{sw ? 'Hakuna CSO iliyounganishwa na akaunti hii. Muombe msimamizi aiunganishe.' : 'No CSO is linked to this account. Ask an administrator to link one.'}</Empty>
       </Section>
     );
   }
 
+  const settingName = (name: string) => (sw && SETTING_SW[name]) || name;
+
   return (
-    <Section title="Salary timesheets">
-      <p className="muted">
-        Download the Payroll timesheets Regional Finance has signed for your regions, for facility and community providers, with each provider's monthly salary, bank details and days signed. This creates a file only: it does not pay anyone or change any record.
-      </p>
-      <div className="grid-2">
-        <Field label="Month worked" hint={payMonthDates(month)}>
-          <input type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
-        </Field>
-        {summary.data && summary.data.regions.length > 1 && (
-          <Field label="Region">
-            <select value={regionId} onChange={(event) => setRegionId(event.target.value)}>
-              <option value="">All my regions</option>
-              {summary.data.regions.map((region) => <option key={region.id} value={region.id}>{region.name}</option>)}
+    <Section title={title} actions={<span className="muted small">{sw ? 'Kupakua hakumlipi mtu wala hakubadilishi rekodi yoyote.' : 'Downloading does not pay anyone or change any record.'}</span>}>
+      <div className="fin-toolbar">
+        <div className="filters">
+          <Field label={sw ? 'Mwezi wa kazi' : 'Month worked'} hint={payMonthDates(month)}>
+            <input type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
+          </Field>
+          {summary.data && summary.data.regions.length > 1 && (
+            <Field label={sw ? 'Mkoa' : 'Region'}>
+              <select value={regionId} onChange={(event) => setRegionId(event.target.value)}>
+                <option value="">{sw ? 'Mikoa yangu yote' : 'All my regions'}</option>
+                {summary.data.regions.map((region) => <option key={region.id} value={region.id}>{region.name}</option>)}
+              </select>
+            </Field>
+          )}
+          <Field label={sw ? 'Watoa huduma' : 'Providers'}>
+            <select value={setting} onChange={(event) => setSetting(event.target.value)}>
+              <option value="">{sw ? 'Kituo na jamii' : 'Facility and community'}</option>
+              <option value="Facility">{sw ? 'Kituo tu' : 'Facility only'}</option>
+              <option value="Community">{sw ? 'Jamii tu' : 'Community only'}</option>
             </select>
           </Field>
+        </div>
+        {summary.data && (
+          <div className="fin-actions">
+            <button type="button" className="btn btn-primary" onClick={() => save('pdf')} disabled={download.busy || !summary.data.totals.providers}>
+              {preparing === 'pdf' ? (sw ? 'Inaandaa PDF…' : 'Preparing PDF…') : (sw ? 'Pakua PDF' : 'Download PDF')}
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={() => save('csv')} disabled={download.busy || !summary.data.totals.providers}>
+              {preparing === 'csv' ? (sw ? 'Inaandaa CSV…' : 'Preparing CSV…') : (sw ? 'Pakua CSV' : 'Download CSV')}
+            </button>
+          </div>
         )}
-        <Field label="Providers">
-          <select value={setting} onChange={(event) => setSetting(event.target.value)}>
-            <option value="">Facility and community</option>
-            <option value="Facility">Facility only</option>
-            <option value="Community">Community only</option>
-          </select>
-        </Field>
       </div>
       <AsyncState data={summary.data} error={summary.error} loading={summary.loading}>
         {(data) => (
           <div className="stack">
-            {data.regions.filter((region) => region.included).map((region) => (
-              region.signed ? (
-                <p key={region.id} className="notice notice-info small">
-                  <strong>{region.name}:</strong> signed by {region.approved_by_name} on {dateOnly(region.approved_at)} · {num(region.providers)} providers
+            {data.totals.providers ? (
+              <>
+                <KpiStrip
+                  label={sw ? 'Jumla za majedwali ya mshahara' : 'Salary timesheet totals'}
+                  items={[
+                    { label: sw ? 'Watoa huduma' : 'Providers', value: num(data.totals.providers), icon: 'users' },
+                    { label: sw ? 'Siku zilizosainiwa' : 'Days signed', value: num(data.totals.days_signed), icon: 'calendar', tone: 'info' },
+                    { label: sw ? 'Masaa ya kazi' : 'Hours worked', value: workHours(data.totals.hours), icon: 'clock', tone: 'info' },
+                    { label: sw ? 'Jumla ya mshahara' : 'Total salary', value: money(data.totals.salary), icon: 'wallet', tone: 'success' },
+                  ]}
+                />
+                <p className="fin-footnote">
+                  {data.settings.map((row) => (sw
+                    ? `${settingName(row.name)}: watoa huduma ${num(row.providers)}, ${money(row.salary)}`
+                    : `${row.name}: ${num(row.providers)} ${row.providers === 1 ? 'provider' : 'providers'}, ${money(row.salary)}`)).join(' · ')}
                 </p>
-              ) : (
-                <Alert key={region.id} kind="warn">
-                  <strong>{region.name}:</strong> not signed yet, so its timesheets are not in the file. Regional Finance must sign this month's Payroll report first.
-                </Alert>
-              )
+              </>
+            ) : (
+              <Empty>{setting
+                ? (sw ? `Hakuna watoa huduma wa ${settingName(setting).toLocaleLowerCase()} kwenye majedwali yaliyosainiwa ya mwezi huu.` : `No ${setting.toLocaleLowerCase()} providers in the signed timesheets for this month.`)
+                : (sw ? 'Bado hakuna majedwali yaliyosainiwa kwa mwezi huu.' : 'No signed timesheets for this month yet.')}</Empty>
+            )}
+            {data.regions.some((region) => region.included && region.signed) && (
+              <ul className="fin-signed-list">
+                {data.regions.filter((region) => region.included && region.signed).map((region) => (
+                  <li key={region.id}>
+                    <span className="badge badge-success">{sw ? 'Imesainiwa' : 'Signed'}</span>
+                    <span>
+                      <strong>{region.name}:</strong> {sw
+                        ? `imesainiwa na ${region.approved_by_name} tarehe ${dateOnly(region.approved_at)} · watoa huduma ${num(region.providers)}`
+                        : `signed by ${region.approved_by_name} on ${dateOnly(region.approved_at)} · ${num(region.providers)} providers`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {data.regions.filter((region) => region.included && !region.signed).map((region) => (
+              <Alert key={region.id} kind="warn">
+                <strong>{region.name}:</strong> {sw ? 'bado haijasainiwa, kwa hiyo majedwali yake hayamo kwenye faili.' : 'not signed yet, so its timesheets are not in the file.'}
+              </Alert>
             ))}
             {data.regions.filter((region) => region.included && region.providers_without_cso > 0).map((region) => (
               <Alert key={region.id} kind="warn">
-                <strong>{region.name}:</strong> {num(region.providers_without_cso)} signed {region.providers_without_cso === 1 ? 'provider has' : 'providers have'} no CSO on their placement, so they are not in this file. An administrator must set the CSO on the placement, then Regional Finance must confirm the sign-off again.
+                <strong>{region.name}:</strong> {sw
+                  ? `watoa huduma ${num(region.providers_without_cso)} waliosaini hawana CSO kwenye kituo chao, kwa hiyo hawamo kwenye faili hili. Weka CSO, kisha thibitisha tena idhini.`
+                  : `${num(region.providers_without_cso)} signed ${region.providers_without_cso === 1 ? 'provider has' : 'providers have'} no CSO on their placement, so they are not in this file. Set the CSO, then re-confirm the sign-off.`}
               </Alert>
             ))}
             {data.missing_salary.length > 0 && (
               <Alert kind="warn">
-                <strong>No salary amount ({num(data.missing_salary.length)}):</strong> {nameList(data.missing_salary)}. They stay in the file without an amount and are not in the total. Ask Central Finance to set the amount for their salary scale.
+                <strong>{sw ? 'Hakuna kiasi cha mshahara' : 'No salary amount'} ({num(data.missing_salary.length)}):</strong> {nameList(data.missing_salary, sw)}. {sw ? 'Hakimo kwenye jumla; muombe Fedha Kuu akiweke.' : 'Not in the total; ask Central Finance to set it.'}
               </Alert>
             )}
             {data.missing_bank.length > 0 && (
               <Alert kind="warn">
-                <strong>Bank details missing ({num(data.missing_bank.length)}):</strong> {nameList(data.missing_bank)}. They stay in the file, marked as missing. Get their details before paying.
+                <strong>{sw ? 'Taarifa za benki hazipo' : 'Bank details missing'} ({num(data.missing_bank.length)}):</strong> {nameList(data.missing_bank, sw)}. {sw ? 'Pata taarifa zao kabla ya kulipa.' : 'Get their details before paying.'}
               </Alert>
             )}
             {data.not_signed.length > 0 && (
               <Alert kind="warn">
-                <strong>Not signed by the provider ({num(data.not_signed.length)}):</strong> {nameList(data.not_signed)}. No salary is shown for them.
+                <strong>{sw ? 'Mtoa huduma hajasaini' : 'Not signed by the provider'} ({num(data.not_signed.length)}):</strong> {nameList(data.not_signed, sw)}. {sw ? 'Hakuna mshahara unaoonyeshwa kwao.' : 'No salary is shown for them.'}
               </Alert>
             )}
-            {data.totals.providers ? (
-              <>
-                <div className="grid-4">
-                  <StatTile label="Providers" value={num(data.totals.providers)} />
-                  <StatTile label="Days signed" value={num(data.totals.days_signed)} />
-                  <StatTile label="Hours worked" value={workHours(data.totals.hours)} />
-                  <StatTile label="Total salary" value={money(data.totals.salary)} />
-                </div>
-                <p className="muted small">
-                  {data.settings.map((row) => `${row.name}: ${num(row.providers)} ${row.providers === 1 ? 'provider' : 'providers'}, ${money(row.salary)}`).join(' · ')}
-                </p>
-              </>
-            ) : (
-              <Empty>{setting ? `No ${setting.toLocaleLowerCase()} providers in the signed timesheets for this month.` : 'No signed timesheets for this month yet.'}</Empty>
-            )}
             {data.holidays.length > 0 && (
-              <p className="muted small">Public holidays in this month: {data.holidays.map((day) => `${dateOnly(day.date)} ${day.name_en}`).join(' · ')}</p>
+              <p className="fin-footnote">{sw ? 'Sikukuu za umma mwezi huu' : 'Public holidays in this month'}: {data.holidays.map((day) => `${dateOnly(day.date)} ${day.name_en}`).join(' · ')}</p>
             )}
             <Alert>{download.error}</Alert>
-            <div className="row">
-              <button type="button" className="btn btn-primary" onClick={() => save('pdf')} disabled={download.busy || !data.totals.providers}>
-                {preparing === 'pdf' ? 'Preparing PDF…' : 'Download PDF'}
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={() => save('csv')} disabled={download.busy || !data.totals.providers}>
-                {preparing === 'csv' ? 'Preparing CSV…' : 'Download CSV'}
-              </button>
-            </div>
-            <p className="muted small">PDF: a summary, then one timesheet page per provider, for filing. CSV: one row per provider with salary, bank details and hours for each day. Keep these files private, and open the bank account column as text so spreadsheets do not change the numbers.</p>
-            {data.providers.length > 0 && <ProviderList key={`${month}-${regionId}-${setting}`} rows={data.providers} />}
+            {data.providers.length > 0 && <ProviderList key={`${month}-${regionId}-${setting}`} rows={data.providers} sw={sw} />}
+            <p className="fin-footnote">{sw
+              ? 'PDF: muhtasari, kisha ukurasa mmoja wa jedwali kwa kila mtoa huduma, kwa kuhifadhi. CSV: mstari mmoja kwa kila mtoa huduma wenye mshahara, taarifa za benki na masaa ya kila siku. Hifadhi faili hizi kwa siri, na fungua safu ya namba ya akaunti kama maandishi ili lahajedwali zisibadilishe namba.'
+              : 'PDF: a summary, then one timesheet page per provider, for filing. CSV: one row per provider with salary, bank details and hours for each day. Keep these files private, and open the bank account column as text so spreadsheets do not change the numbers.'}</p>
           </div>
         )}
       </AsyncState>

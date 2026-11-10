@@ -1,12 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../AuthContext';
 import { useApi } from '../../hooks';
-import { dateOnly, humanize } from '../../format';
+import { CADRE_NAMES, cadreName, dateOnly, humanize } from '../../format';
 import { Cadre, Organization, StaffDetail } from '../../types';
 import { Alert, AsyncState, Drawer, Facts, Section, StatusBadge } from '../ui';
 import { EditStaffModal, ExitDialog, LoginModal, RotateModal } from './StaffForms';
 import { StaffStartDateModal } from './StaffStartDateModal';
 import { FacilityNameModal } from './FacilityNameModal';
+
+/** Facility (or community area) first, then ward, district and region: most specific place leads. */
+const placeParts = (a: StaffDetail['assignments'][number]): string[] =>
+  [a.facility, a.community_area, a.ward, a.district, a.region].filter((part): part is string => !!part);
 
 type Dialog = 'edit' | 'start-date' | 'rotate' | 'facility-name' | 'exit' | 'login' | null;
 
@@ -49,7 +53,7 @@ export function StaffDrawer({ staffId, cadres, onClose, onChanged, startLogin = 
             <div className="stack-lg">
               <div className="row">
                 <StatusBadge status={s.status} />
-                <span className="badge badge-neutral">{cadre ? cadre.name : s.cadre}</span>
+                <span className="badge badge-neutral">{CADRE_NAMES[s.cadre] ? cadreName(s.cadre) : cadre ? cadre.name : s.cadre}</span>
               </div>
               <Alert kind="success">{notice}</Alert>
               {(canEdit || canCreateLogin) && (
@@ -132,7 +136,7 @@ export function StaffDrawer({ staffId, cadres, onClose, onChanged, startLogin = 
                       ]}
                     />
                   )}
-                  <p className="muted small">Only payment channels permitted for your role and assignment scope are shown. Viewing these details is recorded in the audit log.</p>
+                  <p className="muted small">Viewing these details is recorded in the audit log.</p>
                 </Section>
               )}
               <Section title="Assignment history">
@@ -143,13 +147,8 @@ export function StaffDrawer({ staffId, cadres, onClose, onChanged, startLogin = 
                     <table>
                       <thead>
                         <tr>
-                          <th>Start</th>
-                          <th>End</th>
-                          <th>Region</th>
-                          <th>District</th>
-                          <th>Ward</th>
-                          <th>Facility</th>
-                          <th>Community area</th>
+                          <th>Period</th>
+                          <th>Place</th>
                           <th>Section</th>
                           <th>Organization</th>
                           <th>End reason</th>
@@ -159,13 +158,14 @@ export function StaffDrawer({ staffId, cadres, onClose, onChanged, startLogin = 
                       <tbody>
                         {s.assignments.map((a) => (
                           <tr key={a.id}>
-                            <td className="nowrap">{dateOnly(a.start_date)}</td>
-                            <td className="nowrap">{a.end_date ? dateOnly(a.end_date) : <span className="badge badge-success">Current</span>}</td>
-                            <td>{a.region || '—'}</td>
-                            <td>{a.district || '—'}</td>
-                            <td>{a.ward || '—'}</td>
-                            <td>{a.facility || '—'}</td>
-                            <td>{a.community_area || '—'}</td>
+                            <td>
+                              <span className="cell-main">{dateOnly(a.start_date)}</span>
+                              <span className="cell-sub">{a.end_date ? `to ${dateOnly(a.end_date)}` : <span className="badge badge-success">Current</span>}</span>
+                            </td>
+                            <td>
+                              <span className="cell-main">{placeParts(a)[0] || '—'}</span>
+                              <span className="cell-sub">{placeParts(a).slice(1).join(' · ')}</span>
+                            </td>
                             <td>{a.section || '—'}</td>
                             <td>{a.organization_id ? orgName.get(a.organization_id) || `#${a.organization_id}` : '—'}</td>
                             <td>{a.end_reason || '—'}</td>

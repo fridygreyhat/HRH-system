@@ -6,8 +6,7 @@ import { useAction, useApi } from '../../hooks';
 import { SmsTemplate } from '../../types';
 import { Alert, AsyncState, Drawer, Field, StatusBadge } from '../../components/ui';
 
-const PROTECTED_TEXT =
-  'The OTP message is protected: it carries a one-time code, so its text cannot be edited here and the code is never stored or shown in the outbox.';
+const PROTECTED_TEXT = 'Protected: the one-time code message cannot be edited.';
 const LANG_LABELS: Record<string, string> = { en: 'English', sw: 'Kiswahili' };
 const MAX_CHARS = 320;
 
@@ -57,13 +56,13 @@ function TemplateEditor({ template, canEdit, onPublished }: { template: SmsTempl
     <div className="stack-lg">
       <div className="stack">
         <p className="muted">
-          Recipient: <strong>{template.recipient}</strong>. Allowed variables (type them in braces):{' '}
+          Recipient: <strong>{template.recipient}</strong>. Variables:{' '}
           {template.variables.map((v) => (
             <code key={v} style={{ marginRight: '0.4rem' }}>{`{${v}}`}</code>
           ))}
         </p>
-        <p className="muted small">SMS never carries patient data, GPS, bank or wallet details, or payment amounts.</p>
-        <Field label={`Message text (${LANG_LABELS[template.language]})`} hint={`${text.length} / ${MAX_CHARS} characters (before variables are filled in)`}>
+        <p className="muted small">Never include patient, GPS, bank, wallet or payment details.</p>
+        <Field label={`Message text (${LANG_LABELS[template.language]})`} hint={`${text.length} / ${MAX_CHARS} characters`}>
           <textarea
             rows={5}
             value={text}
@@ -76,7 +75,7 @@ function TemplateEditor({ template, canEdit, onPublished }: { template: SmsTempl
             }}
           />
         </Field>
-        {!canEdit && <p className="muted small">Read only: SMS texts are published by RM users. You can still preview the current text.</p>}
+        {!canEdit && <p className="muted small">Read only. RM users publish SMS texts.</p>}
         <Alert>{previewAction.error || publishAction.error}</Alert>
         <Alert kind="success">{published}</Alert>
         <div className="row">
@@ -95,7 +94,7 @@ function TemplateEditor({ template, canEdit, onPublished }: { template: SmsTempl
             <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{preview.preview}</p>
             <p className={`small ${preview.segments > 1 ? '' : 'muted'}`}>
               {preview.characters} characters · {preview.segments} SMS segment{preview.segments === 1 ? '' : 's'}
-              {preview.segments > 1 ? ' — longer messages cost more and may arrive split.' : ''}
+              {preview.segments > 1 ? ' — costs more and may arrive split.' : ''}
             </p>
           </div>
         )}
@@ -103,7 +102,7 @@ function TemplateEditor({ template, canEdit, onPublished }: { template: SmsTempl
       <div className="stack">
         <h3>Version history</h3>
         {template.versions.length === 0 ? (
-          <p className="muted">No published versions yet: the built-in default text is in use.</p>
+          <p className="muted">No published versions; default text in use.</p>
         ) : (
           <ol className="stack" style={{ paddingLeft: '1.2rem', margin: 0 }}>
             {template.versions.map((v) => (
@@ -150,10 +149,6 @@ export function SmsTemplatesSection() {
   return (
     <section className="card stack">
       <h3>SMS templates</h3>
-      <p className="muted">
-        One message per event and language. Publishing creates a new version; earlier versions are kept for the record.
-        {!canEdit && ' You can view and preview templates; RM users publish changes.'}
-      </p>
       <div className="filters">
         <Field label="Language">
           <select value={lang} onChange={(e) => setLang(e.target.value)}>

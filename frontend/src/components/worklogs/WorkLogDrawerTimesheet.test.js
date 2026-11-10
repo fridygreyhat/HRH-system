@@ -5,9 +5,10 @@ import { WorkLogDrawer } from './WorkLogDrawer';
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let mockRoles;
 let mockLog;
+let mockLang = 'en';
 jest.mock('../../AuthContext', () => ({
   useAuth: () => ({
-    lang: 'en',
+    lang: mockLang,
     me: { client_settings: { provider_otp_required: false } },
     hasRole: (...roles) => roles.some((role) => mockRoles.includes(role)),
   }),
@@ -216,4 +217,34 @@ test('finished Services steps read as completed when audit rows are hidden', asy
   const step = (title) => [...container.querySelectorAll('.step')].find((item) => item.textContent.includes(title));
   expect(step('CTC verification').querySelector('.step-sub').textContent).toBe('Completed');
   expect(step('Routed to FHI360').querySelector('.step-sub').textContent).toBe('Pending');
+});
+
+test('the drawer header names the cadre and month, and the stepper says where the record is now', async () => {
+  mockRoles = ['RPM'];
+  mockLog = baseLog({ status: 'PENDING_RPM_AUTHORIZATION', available_actions: ['authorize'], cadre: { code: 'DATA_CLERK', name: 'DATA_CLERK', fields: [], activities: [] }, assignment: { facility: 'Clinic', region: 'Njombe' } });
+  await open();
+  const head = container.querySelector('.wl-head').textContent;
+  expect(head).toContain('Data Clerk');
+  expect(head).toContain('Clinic · Njombe');
+  expect(head).toContain('October 2026');
+  expect(container.querySelector('.stepper-now').textContent).toContain('Now: RM authorization');
+  expect(container.querySelector('.wl-decision')).not.toBeNull();
+});
+
+test('a Swahili reader gets the review and decision in Swahili', async () => {
+  mockRoles = ['RPM'];
+  mockLang = 'sw';
+  try {
+    mockLog = baseLog({ status: 'PENDING_RPM_AUTHORIZATION', available_actions: ['authorize'] });
+    await open();
+    const text = container.textContent;
+    expect(text).toContain('Zamu yako: pitia na uamue');
+    expect(text).toContain('Pitia na uamue');
+    expect(text).toContain('Idhinisha (RM)');
+    expect(text).toContain('Sasa: Idhini ya RM');
+    expect(text).not.toContain('Review and decide');
+    expect(text).not.toContain('Monthly provider summary');
+  } finally {
+    mockLang = 'en';
+  }
 });

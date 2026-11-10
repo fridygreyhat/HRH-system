@@ -738,3 +738,24 @@ keeping rates editable and deletable, without rewriting financial history.
 - Keep `backend/tests` in source control for regression checks, but exclude it and `.pytest_cache` from the published bundle through `.replitignore`.
 - Do not copy test fixtures or simulated test behavior into runtime services. The real backend must remain independent of the tests.
 - **Why:** the user chose publishing exclusions instead of deleting the tests, keeping the checks without shipping backend test fixtures.
+
+### Installable app (PWA)
+- `frontend/public/manifest.webmanifest`, icons in `frontend/public/icons/`, and `frontend/public/sw.js`. The worker keeps
+  only the built files, icons and logos; `/api/` requests always go to the network, so no data or sign-in is stored on a
+  shared phone. Offline, a page opens with a short bilingual offline notice. It registers in the built app only.
+- An "Install HRH Pay" offer appears on phones and tablets that support installing (not on desktop); "Later" hides it
+  for 14 days. Bump `VERSION` in `sw.js` only if its caching rules change; built files are content-named.
+- **Why:** the user asked for a better look on phones and tablets.
+
+### Backdated entry ranges
+- A Technical Officer may reopen one date or a range (`entry_date` to `end_date`, at most 31 days, no future dates) for a
+  provider in their area and cadre; one placement must cover the whole range. One revoke closes the whole range.
+  Grants only matter while `backdate_restriction_enabled` is on (the 72-hour limit); while it is off, any past date in an
+  open month can be entered.
+- **Why:** the user asked that backdating cover a range from date X to date Y.
+
+### Hours shown as people write them
+- Hours never print as decimals: `hours_text` in `backend/services/work_hours.py` ("8", "7 h 30 min") is used by hour-limit
+  messages, the monthly report CSV/PDF and salary timesheets; screens use `workHours` in `format.ts`. Indicator totals
+  print as whole counts.
+- **Why:** the user asked that timesheet totals never show decimals.

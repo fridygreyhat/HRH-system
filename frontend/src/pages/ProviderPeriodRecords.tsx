@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../AuthContext';
-import { dateOnly, WORKLOG_STATUS_LABELS_SW } from '../format';
+import { cadreName, dateOnly, num, workHours } from '../format';
 import { useAction, useApi } from '../hooks';
 import { PayPeriod, ProviderPeriodRecord, ProviderPeriodRecordsResponse } from '../types';
-import { Alert, Field, Modal, StatusBadge } from '../components/ui';
+import { Alert, Field, Modal, PersonCell, StatusBadge, WorkTypeChip } from '../components/ui';
+import './polish-provider.css';
 
 export function ProviderPeriodRecords({ period, onClose }: { period: PayPeriod; onClose: () => void }) {
   const { lang } = useAuth();
@@ -26,8 +27,8 @@ export function ProviderPeriodRecords({ period, onClose }: { period: PayPeriod; 
     ));
     if (result) {
       setNotice(sw
-        ? `Rekodi za ${selected.staff_name} zimewekwa upya. Kipindi cha malipo na akaunti vimebaki.`
-        : `${selected.staff_name}'s records were reset. The pay period and account were kept.`);
+        ? `Rekodi za ${selected.staff_name} zimewekwa upya.`
+        : `${selected.staff_name}'s records were reset.`);
       setSelected(null);
       setReason('');
       setConfirmation('');
@@ -42,17 +43,12 @@ export function ProviderPeriodRecords({ period, onClose }: { period: PayPeriod; 
           {dateOnly(period.start_date)} – {dateOnly(period.end_date)}
           {period.region_name ? ` · ${period.region_name}` : (sw ? ' · Ratiba ya jumla' : ' · Global schedule')}
         </p>
-        <div className="notice notice-info">
-          {sw ? (
-            'Kuweka upya kunafuta taarifa za sasa za kila siku za mtoa huduma aliyechaguliwa na kurudisha rekodi zake za kazi kuwa Rasimu. Akaunti, kipindi cha malipo kinachoshirikiwa, na kumbukumbu za idhini na ukaguzi vinabaki. Rekodi zenye madai ya malipo au zilizolipwa zinalindwa.'
-          ) : (
-            <>
-              Reset clears the selected provider’s current daily entries and returns their work records to Draft.
-              The account, shared pay period, and approval/audit snapshots remain. Records with payment claims or paid status are protected.
-            </>
-          )}
-        </div>
-        {period.status === 'CLOSED' && <Alert kind="warn">{sw ? 'Kipindi hiki kimefungwa. Baada ya kuweka upya, kifungue tena ili mtoa huduma aweze kuwasilisha tena.' : 'This period is closed. After a reset, reopen it before the provider can submit again.'}</Alert>}
+        <p className="muted small">
+          {sw
+            ? 'Kuweka upya kunarudisha rekodi kuwa Rasimu; kumbukumbu za idhini/ukaguzi zinabaki.'
+            : 'Reset returns records to Draft; approval/audit snapshots remain.'}
+        </p>
+        {period.status === 'CLOSED' && <Alert kind="warn">{sw ? 'Kipindi hiki kimefungwa. Kifungue baada ya kuweka upya ili mtoa huduma awasilishe.' : 'This period is closed. Reopen it after reset so the provider can submit.'}</Alert>}
         {period.status === 'ARCHIVED' && <Alert kind="warn">{sw ? 'Vipindi vilivyowekwa kwenye kumbukumbu ni vya kusoma tu na haviwezi kuwekwa upya.' : 'Archived periods are read-only and cannot be reset.'}</Alert>}
         <Alert>{records.error || reset.error}</Alert>
         <Alert kind="success">{notice}</Alert>
@@ -62,26 +58,25 @@ export function ProviderPeriodRecords({ period, onClose }: { period: PayPeriod; 
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>{sw ? 'Mtoa huduma' : 'Provider'}</th><th>{sw ? 'Aina za kazi' : 'Work types'}</th><th>{sw ? 'Siku · masaa' : 'Days · hours'}</th><th>{sw ? 'Weka upya' : 'Reset'}</th></tr>
+                <tr><th>{sw ? 'Mtoa huduma' : 'Provider'}</th><th>{sw ? 'Aina za kazi' : 'Work types'}</th><th className="num">{sw ? 'Siku · masaa' : 'Days · hours'}</th><th>{sw ? 'Weka upya' : 'Reset'}</th></tr>
               </thead>
               <tbody>
                 {records.data.providers.map((provider) => (
                   <tr key={provider.staff_id}>
                     <td>
-                      <strong>{provider.staff_name}</strong>
-                      <div className="muted small">{provider.username} · {provider.cadre_code}</div>
+                      <PersonCell name={provider.staff_name} sub={`${provider.username} · ${cadreName(provider.cadre_code, lang, true)}`} />
                     </td>
                     <td>
                       {provider.work_logs.map((log) => (
-                        <div key={log.id} className="row" style={{ gap: '.35rem', marginBottom: '.25rem' }}>
-                          <span>{log.work_type === 'PAYROLL' ? 'Payroll' : log.work_type === 'SERVICES' ? (sw ? 'Huduma' : 'Services') : (sw ? 'Ya zamani' : 'Legacy')}</span>
-                          <StatusBadge status={log.status} label={sw ? WORKLOG_STATUS_LABELS_SW[log.status] : undefined} />
+                        <div key={log.id} className="row period-record-type">
+                          <WorkTypeChip type={log.work_type} />
+                          <StatusBadge kind="log" status={log.status} bare />
                         </div>
                       ))}
                     </td>
-                    <td>
+                    <td className="num">
                       {provider.work_logs.map((log) => (
-                        <div key={log.id}>{sw ? `Siku ${log.entry_count} · masaa ${log.total_hours}` : `${log.entry_count} days · ${log.total_hours} hours`}</div>
+                        <div key={log.id} className="nowrap period-record-figures">{sw ? `Siku ${num(log.entry_count)} · masaa ${workHours(log.total_hours)}` : `${num(log.entry_count)} days · ${workHours(log.total_hours)} h`}</div>
                       ))}
                     </td>
                     <td>
@@ -111,7 +106,6 @@ export function ProviderPeriodRecords({ period, onClose }: { period: PayPeriod; 
         ) : (
           <div className="empty-state">
             <h3>{sw ? 'Hakuna rekodi za watoa huduma katika kipindi hiki' : 'No provider records in this period'}</h3>
-            <p className="muted">{sw ? 'Hakuna rekodi za kazi za Huduma au Payroll za kuweka upya.' : 'There are no Services or Payroll work records to reset.'}</p>
           </div>
         )}
         {records.error && <button type="button" className="btn btn-secondary btn-sm" onClick={records.reload}>{sw ? 'Jaribu tena' : 'Retry'}</button>}
@@ -120,12 +114,11 @@ export function ProviderPeriodRecords({ period, onClose }: { period: PayPeriod; 
             <h3>{sw ? 'Weka upya rekodi za' : 'Reset'} {selected.staff_name}</h3>
             <Alert kind="warn">
               {sw ? (
-                `Hatua hii inafuta taarifa ${selected.work_logs.reduce((sum, log) => sum + log.entry_count, 0)} za kila siku katika rekodi ${selected.work_logs.length} za kazi. Mtoa huduma anaweza kuzijaza tena katika kipindi hicho hicho kikiwa wazi. Kumbukumbu za idhini na matukio ya ukaguzi zinabaki kwa Super Admin.`
+                `Hatua hii inafuta taarifa ${selected.work_logs.reduce((sum, log) => sum + log.entry_count, 0)} za kila siku katika rekodi ${selected.work_logs.length} za kazi.`
               ) : (
                 <>
                   This clears {selected.work_logs.reduce((sum, log) => sum + log.entry_count, 0)} daily entries across
-                  {' '}{selected.work_logs.length} work record(s). The provider can refill them in the same period once it is open.
-                  Approval snapshots and audit events remain available to Super Admin.
+                  {' '}{selected.work_logs.length} work record(s).
                 </>
               )}
             </Alert>

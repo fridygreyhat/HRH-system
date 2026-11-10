@@ -22,7 +22,6 @@ test.each(['SUPERVISOR', 'TECHNICAL_OFFICER', 'RPM'])('%s switches between disti
   try {
     act(() => root.render(<ReviewWorkLogs />));
     expect(useApi.mock.calls.some(([path]) => path?.includes('work_type=SERVICES'))).toBe(true);
-    expect(container.textContent).toContain('Approving one does not approve the other');
     act(() => button('Payroll').click());
     const paths = useApi.mock.calls.map(([path]) => path).filter(path => path?.startsWith('/worklogs'));
     expect(paths.at(-1)).toContain('work_type=PAYROLL');

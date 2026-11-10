@@ -1,8 +1,27 @@
 import React from 'react';
 import { bilingual } from '../../i18n';
-import { dateOnly, num, timeShort, weekday, workHours } from '../../format';
+import { dateOnly, hoursAge, num, timeShort, weekday, workHours } from '../../format';
 import { Cadre, CadreField, Lang, ReturnFlag, WorkLogAudit, WorkLogDetail, WorkLogEntry } from '../../types';
 import { LocationBadge } from '../ui';
+
+/** Work-log action names in Swahili, matching the wording used on claim traces. */
+export const WORKLOG_ACTION_LABELS_SW: Record<string, string> = {
+  create: 'Imeundwa', edit_header: 'Kichwa kimehaririwa', edit_entry: 'Taarifa ya siku imehaririwa', delete_entry: 'Taarifa ya siku imefutwa',
+  submit: 'Wasilisha', recall: 'Uwasilishaji umerudishwa kwa kuhariri', cancel: 'Ghairi kumbukumbu ya kazi', verify: 'Hakiki na idhinisha (CTC)',
+  return: 'Rudisha kwa mtoa huduma', confirm_otp: 'Imethibitishwa kwa namba ya SMS', decline: 'Kataa (ripoti tatizo)',
+  endorse: 'Idhinisha mapitio ya kitaalamu', return_to_reviewer: 'Rudisha kwa mkaguzi aliyetangulia', reject: 'Kataa', authorize: 'Idhinisha (RM)',
+  finance_timesheet_approve: 'Idhinisha jedwali', finance_review: 'Kamilisha mapitio ya Fedha', route_fhi360: 'Tuma FHI360', route_cso: 'Tuma CSO',
+  paid: 'Rekodi imelipwa', hold: 'Zuio la kihistoria', release: 'Ondoa zuio la kihistoria', reopen: 'Fungua tena kwa marekebisho',
+  facility_endorse: 'Idhini ya Mkuu wa Kituo', opened: 'Imefunguliwa kwa mapitio', otp_resend: 'Namba mpya imeombwa', otp_failed: 'Namba isiyo sahihi imewekwa',
+};
+
+/** Time in the current status, in the reader's language: "5 h" / "saa 5", "2 d 3 h" / "siku 2 saa 3". */
+export function ageText(hours: number, lang?: string): string {
+  if (lang !== 'sw') return hoursAge(hours);
+  if (hours < 1) return 'chini ya saa 1';
+  if (hours < 48) return `saa ${Math.round(hours)}`;
+  return `siku ${Math.floor(hours / 24)} saa ${Math.round(hours % 24)}`;
+}
 
 export const FLAG_GENERAL_FIELDS: { key: string; en: string; sw: string }[] = [
   { key: 'hours', en: 'Hours / times', sw: 'Masaa / muda' },
@@ -73,19 +92,21 @@ export function EntriesView({ log, lang, flags = [] }: { log: WorkLogDetail; lan
     const activity = activityFor(key);
     return activity ? activity.fields.flatMap((fieldKey) => cadre.fields.filter((field) => field.key === fieldKey)) : cadre.fields;
   };
-  if (!entries.length) return <p className="muted">No daily entries.</p>;
+  const sw = lang === 'sw';
+  const yesNo = (value: boolean) => (value ? (sw ? 'Ndiyo' : 'Yes') : sw ? 'Hapana' : 'No');
+  if (!entries.length) return <p className="muted">{sw ? 'Hakuna taarifa za siku.' : 'No daily entries.'}</p>;
   return (
     <>
       <div className="table-wrap entries-table">
         <table>
           <thead>
             <tr>
-              <th>Date</th>
-              {startEnd && <th>Start–end</th>}
-              <th className="num">Hours</th>
-              <th>Activity and indicators</th>
-              {showEvidence && <th>Evidence / comment</th>}
-              <th>Location</th>
+              <th>{sw ? 'Tarehe' : 'Date'}</th>
+              {startEnd && <th>{sw ? 'Mwanzo–mwisho' : 'Start–end'}</th>}
+              <th className="num">{sw ? 'Masaa' : 'Hours'}</th>
+              <th>{sw ? 'Shughuli na viashiria' : 'Activity and indicators'}</th>
+              {showEvidence && <th>{sw ? 'Ushahidi / maoni' : 'Evidence / comment'}</th>}
+              <th>{sw ? 'Mahali' : 'Location'}</th>
             </tr>
           </thead>
           <tbody>
@@ -104,7 +125,7 @@ export function EntriesView({ log, lang, flags = [] }: { log: WorkLogDetail; lan
                   <strong>{activityFor(e.activity_key)?.[lang === 'sw' ? 'label_sw' : 'label_en'] || '—'}</strong>
                   {(e.activity_snapshot?.additional_services || []).map(service => <div key={service.activity.key} className="small">
                     <strong>+ {service.activity[lang === 'sw' ? 'label_sw' : 'label_en']}</strong>
-                    {Object.entries(service.measures).map(([key, value]) => <div key={key}>{log.cadre.fields.find(field => field.key === key)?.[lang === 'sw' ? 'label_sw' : 'label_en'] || key}: {typeof value === 'boolean' ? (value ? 'Yes' : 'No') : value}</div>)}
+                    {Object.entries(service.measures).map(([key, value]) => <div key={key}>{log.cadre.fields.find(field => field.key === key)?.[lang === 'sw' ? 'label_sw' : 'label_en'] || key}: {typeof value === 'boolean' ? yesNo(value) : value}</div>)}
                   </div>)}
                    {(() => {
                      const activity = activityFor(e.activity_key);
@@ -158,15 +179,15 @@ export function EntriesView({ log, lang, flags = [] }: { log: WorkLogDetail; lan
             </div>
             <Coordinates entry={e} />
             <dl>
-              <dt>Hours{startEnd ? ` (${timeShort(e.start_time)}–${timeShort(e.end_time)})` : ''}</dt>
+              <dt>{sw ? 'Masaa' : 'Hours'}{startEnd ? ` (${timeShort(e.start_time)}–${timeShort(e.end_time)})` : ''}</dt>
               <dd className={isFlagged(flags, e.entry_date, 'hours') ? 'flagged-field' : undefined}>{workHours(e.hours_worked)}</dd>
               {activityFor(e.activity_key) && (
                 <>
-                  <dt>Activity</dt>
+                  <dt>{sw ? 'Shughuli' : 'Activity'}</dt>
                   <dd>{activityFor(e.activity_key)?.[lang === 'sw' ? 'label_sw' : 'label_en']}</dd>
                   {(e.activity_snapshot?.additional_services || []).map(service => <React.Fragment key={service.activity.key}>
-                    <dt>Additional service</dt><dd><strong>{service.activity[lang === 'sw' ? 'label_sw' : 'label_en']}</strong>
-                      {Object.entries(service.measures).map(([key, value]) => <div key={key}>{log.cadre.fields.find(field => field.key === key)?.[lang === 'sw' ? 'label_sw' : 'label_en'] || key}: {typeof value === 'boolean' ? (value ? 'Yes' : 'No') : value}</div>)}
+                    <dt>{sw ? 'Huduma ya ziada' : 'Additional service'}</dt><dd><strong>{service.activity[lang === 'sw' ? 'label_sw' : 'label_en']}</strong>
+                      {Object.entries(service.measures).map(([key, value]) => <div key={key}>{log.cadre.fields.find(field => field.key === key)?.[lang === 'sw' ? 'label_sw' : 'label_en'] || key}: {typeof value === 'boolean' ? yesNo(value) : value}</div>)}
                     </dd>
                   </React.Fragment>)}
                 </>

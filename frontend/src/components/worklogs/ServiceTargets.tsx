@@ -32,7 +32,7 @@ export function ServiceTargets({ rows, lang, endDate }: { rows?: ServiceTarget[]
           </li>
         ))}
       </ul>
-      {endDate && <p className="muted small">{sw ? `Mwezi wa kazi unaisha ${dateOnly(endDate)}. Siku moja inahesabika kwa kila huduma uliyoifanya siku hiyo.` : `This work month ends on ${dateOnly(endDate)}. A day counts for every service you did that day.`}</p>}
+      {endDate && <p className="muted small">{sw ? `Mwezi wa kazi unaisha ${dateOnly(endDate)}.` : `Work month ends ${dateOnly(endDate)}.`}</p>}
     </section>
   );
 }

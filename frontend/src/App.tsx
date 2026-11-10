@@ -57,14 +57,14 @@ const LABELS_SW: Record<string, string> = {
   'salary-amounts': 'Viwango vya mishahara', cso: 'Malipo ya CSO', 'community-claims': 'Madai ya jamii', staff: 'Daftari la watumishi', organizations: 'Mashirika na mikoa', admin: 'Utawala',
 };
 const DESCRIPTIONS_SW: Record<string, string> = {
-  'my-logs': 'Rekodi kazi zako za kila siku na uwasilishe tarehe 25', 'payment-details': 'Dhibiti akaunti yako ya benki na namba ya simu ya malipo',
-  'backdate-access': 'Toa ruhusa ya muda kufungua tarehe iliyopita', rates: 'Ongeza huduma, viwango vyake vya kila siku na siku za chini kabisa',
+  'my-logs': 'Rekodi na uwasilishe kazi zako za kila siku', 'payment-details': 'Akaunti yako ya benki na simu ya malipo',
+  'backdate-access': 'Ruhusa ya muda kwa tarehe zilizopita', rates: 'Huduma, viwango vya kila siku na siku za chini',
   'pay-periods': 'Ratiba za kazi na malipo za mikoa', 'public-holidays': 'Sikukuu zinazoonekana kwenye kalenda na majedwali',
-  'routing-queue': 'Idhinisha majedwali na malipo, kisha tuma Fedha Kuu', 'finance-monthly': 'Jumla ya kazi zilizoidhinishwa kwa kila mwezi wa kazi',
-  'review-cadres': 'Dhibiti kada na maeneo ya kila mkaguzi', worklogs: 'Soma na uamue majedwali yaliyo katika eneo lako', claims: 'Fuatilia madai kutoka idhini hadi malipo',
-  batches: 'Faili za malipo na stakabadhi', budgets: 'Bajeti za huduma za mikoa na makato yake', 'salary-amounts': 'Mshahara kamili wa kila ngazi',
-  cso: 'Malipo yako, uthibitisho na majedwali ya mishahara', 'community-claims': 'Madai ya jamii na malipo yake', staff: 'Sajili watumishi, vituo vyao na akaunti zao',
-  organizations: 'Mashirika na mikoa yanayohudumia', admin: 'Watumiaji, mipangilio na ukaguzi',
+  'routing-queue': 'Idhinisha na upeleke Huduma', 'finance-monthly': 'Jumla ya kazi zilizoidhinishwa kwa mwezi',
+  'review-cadres': 'Kada na maeneo ya wakaguzi', worklogs: 'Amua majedwali ya eneo lako', claims: 'Andaa, idhinisha na ufuatilie madai',
+  batches: 'Faili za malipo, makabidhiano na stakabadhi', budgets: 'Bajeti za Huduma za mikoa kwa mwezi', 'salary-amounts': 'Mshahara wa mwezi kwa kila ngazi',
+  cso: 'Malipo, uthibitisho na majedwali ya mishahara', 'community-claims': 'Madai ya jamii na malipo yake', staff: 'Watumishi, vituo vyao na mizunguko',
+  organizations: 'Mashirika na mikoa yao', admin: 'Watumiaji, mipangilio na ukaguzi',
 };
 const GROUPS_SW: Record<string, string> = { Overview: 'Muhtasari', Work: 'Kazi', Finance: 'Fedha', Registry: 'Daftari', System: 'Mfumo' };
 /** The bottom bar on phones: the pages a role opens most, in order. */
@@ -75,29 +75,29 @@ const PHONE_LABELS: Record<string, { en: string; sw: string }> = {
 const PHONE_PAGES = ['my-logs', 'worklogs', 'routing-queue', 'cso', 'claims', 'staff', 'community-claims', 'dashboard'];
 
 export const PAGES: Page[] = [
-  { key: 'home', label: 'Home', description: 'What is waiting for you today', icon: 'home', group: 'Overview', roles: EVERY_ROLE, render: () => <Home /> },
+  { key: 'home', label: 'Home', description: 'Your work today', icon: 'home', group: 'Overview', roles: EVERY_ROLE, render: () => <Home /> },
   {
     key: 'dashboard',
     label: 'Dashboard',
-    description: 'Work approvals, claims and payment progress at a glance',
+    description: 'Approvals, claims and payment progress',
     icon: 'dashboard',
     group: 'Overview',
     roles: ['OVERSIGHT', 'RPM', 'REGIONAL_FINANCE', 'TECHNICAL_OFFICER', 'CSO_TECHNICAL_OFFICER', 'SUPERVISOR', 'FHI360_FINANCE', 'CSO_FINANCE', 'CENTRAL_ADMIN', 'REGIONAL_ADMIN'],
     render: () => <Dashboard />,
   },
-  { key: 'my-logs', label: 'My work logs', description: 'Record your daily work and confirm verified logs', icon: 'calendar', group: 'Work', roles: ['PROVIDER'], render: () => <MyWorkLogs /> },
-  { key: 'payment-details', label: 'Payment details', description: 'Manage your payroll bank account and service mobile wallet', icon: 'wallet', group: 'Work', roles: ['PROVIDER'], render: () => <ProviderPaymentDetails /> },
-  { key: 'backdate-access', label: 'Backdated entry access', description: 'Grant time-limited access to reopen a date-specific work log', icon: 'calendar', group: 'Work', roles: ['TECHNICAL_OFFICER', 'SUPER_ADMIN'], render: () => <BackdateAccess /> },
-  { key: 'rates', label: 'Service amounts', description: 'Add services, their daily amounts and minimum days', icon: 'receipt', group: 'Finance', roles: ['TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'OVERSIGHT', 'SUPER_ADMIN'], render: () => <Rates /> },
-  { key: 'pay-periods', label: 'Pay periods', description: 'Set regional work and pay schedules', icon: 'calendar', group: 'Finance', roles: ['TECHNICAL_OFFICER', 'CENTRAL_ADMIN', 'FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <PayPeriods /> },
+  { key: 'my-logs', label: 'My work logs', description: 'Record and submit your daily work', icon: 'calendar', group: 'Work', roles: ['PROVIDER'], render: () => <MyWorkLogs /> },
+  { key: 'payment-details', label: 'Payment details', description: 'Your bank account and mobile wallet', icon: 'wallet', group: 'Work', roles: ['PROVIDER'], render: () => <ProviderPaymentDetails /> },
+  { key: 'backdate-access', label: 'Backdated entry access', description: 'Temporary access to past dates', icon: 'calendar', group: 'Work', roles: ['TECHNICAL_OFFICER', 'SUPER_ADMIN'], render: () => <BackdateAccess /> },
+  { key: 'rates', label: 'Service amounts', description: 'Services, daily amounts and minimum days', icon: 'receipt', group: 'Finance', roles: ['TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'OVERSIGHT', 'SUPER_ADMIN'], render: () => <Rates /> },
+  { key: 'pay-periods', label: 'Pay periods', description: 'Regional work and pay schedules', icon: 'calendar', group: 'Finance', roles: ['TECHNICAL_OFFICER', 'CENTRAL_ADMIN', 'FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <PayPeriods /> },
   { key: 'public-holidays', label: 'Public holidays', description: 'Holidays shown on calendars and timesheets', icon: 'calendar', group: 'System', roles: ['CENTRAL_ADMIN', 'SYSTEM_ADMIN', 'SUPER_ADMIN'], render: () => <PublicHolidays /> },
-  { key: 'routing-queue', label: 'Services to review', description: 'Verify the assignment, then choose the organization that should pay', icon: 'route', group: 'Finance', roles: ['REGIONAL_FINANCE', 'SUPER_ADMIN'], render: () => <RoutingQueue /> },
-  { key: 'finance-monthly', label: 'Monthly work report', description: 'Pay-month approved work totals and activity indicators across cadres', icon: 'calendar', group: 'Finance', roles: ['REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'SUPER_ADMIN'], render: () => <FinanceMonthlyReport /> },
-  { key: 'review-cadres', label: 'Review assignments', description: 'Manage reviewer cadre and geographic scope', icon: 'users', group: 'System', roles: ['SYSTEM_ADMIN', 'SUPER_ADMIN'], render: () => <ReviewCadres /> },
+  { key: 'routing-queue', label: 'Services to review', description: 'Approve and route Services', icon: 'route', group: 'Finance', roles: ['REGIONAL_FINANCE', 'SUPER_ADMIN'], render: () => <RoutingQueue /> },
+  { key: 'finance-monthly', label: 'Monthly work report', description: 'Approved work totals by pay month', icon: 'calendar', group: 'Finance', roles: ['REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'SUPER_ADMIN'], render: () => <FinanceMonthlyReport /> },
+  { key: 'review-cadres', label: 'Review assignments', description: 'Reviewer cadres and areas', icon: 'users', group: 'System', roles: ['SYSTEM_ADMIN', 'SUPER_ADMIN'], render: () => <ReviewCadres /> },
   {
     key: 'worklogs',
     label: 'Timesheet reviews',
-    description: 'Read and decide the timesheets in your scope',
+    description: 'Decide timesheets in your scope',
     icon: 'clipboard',
     group: 'Work',
     roles: [...REVIEWERS, 'OVERSIGHT', 'FHI360_FINANCE'],
@@ -106,21 +106,21 @@ export const PAGES: Page[] = [
   {
     key: 'claims',
     label: 'Payment claims',
-    description: 'Prepare, approve and track claims across routes A, B and C',
+    description: 'Prepare, approve and track claims',
     icon: 'receipt',
     group: 'Finance',
     roles: ['FHI360_FINANCE', 'CSO_FINANCE', 'REGIONAL_FINANCE', 'RPM', 'OVERSIGHT', 'COMMUNITY_VERIFIER', 'PROVIDER'],
     render: () => <Claims />,
   },
-  { key: 'batches', label: 'Payment batches', description: 'Payment exports, older FHI360 → CSO handoffs and receipts', icon: 'layers', group: 'Finance', roles: ['FHI360_FINANCE', 'CSO_FINANCE', 'OVERSIGHT'], render: () => <Batches /> },
-  { key: 'budgets', label: 'Service budgets', description: 'Monthly regional Services budgets and submission deductions', icon: 'wallet', group: 'Finance', roles: ['REGIONAL_FINANCE', 'FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <MonthlyServicesBudgets /> },
-  { key: 'salary-amounts', label: 'Salary amounts', description: 'Full monthly salary for each salary scale', icon: 'wallet', group: 'Finance', roles: ['FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <SalaryAmounts /> },
-  { key: 'cso', label: 'CSO payments', description: 'Your pending payments, proof, reconciliation and salary timesheets', icon: 'wallet', group: 'Finance', roles: ['CSO_FINANCE'], render: (target) => <CsoPortal initialSection={target === 'salary' ? 'export' : undefined} /> },
-  { key: 'community-claims', label: 'Community claims', description: 'Period-based community claims and direct payment', icon: 'users', group: 'Finance', roles: ['PROVIDER', 'COMMUNITY_VERIFIER', 'TECHNICAL_OFFICER', 'CSO_FINANCE', 'OVERSIGHT', 'SUPER_ADMIN'], render: () => <CommunityClaims /> },
+  { key: 'batches', label: 'Payment batches', description: 'Payment exports, handoffs and receipts', icon: 'layers', group: 'Finance', roles: ['FHI360_FINANCE', 'CSO_FINANCE', 'OVERSIGHT'], render: () => <Batches /> },
+  { key: 'budgets', label: 'Service budgets', description: 'Monthly regional Services budgets', icon: 'wallet', group: 'Finance', roles: ['REGIONAL_FINANCE', 'FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <MonthlyServicesBudgets /> },
+  { key: 'salary-amounts', label: 'Salary amounts', description: 'Monthly salary for each scale', icon: 'wallet', group: 'Finance', roles: ['FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <SalaryAmounts /> },
+  { key: 'cso', label: 'CSO payments', description: 'Payments, proof and salary timesheets', icon: 'wallet', group: 'Finance', roles: ['CSO_FINANCE'], render: (target) => <CsoPortal initialSection={target === 'salary' ? 'export' : undefined} /> },
+  { key: 'community-claims', label: 'Community claims', description: 'Community claims and direct payment', icon: 'users', group: 'Finance', roles: ['PROVIDER', 'COMMUNITY_VERIFIER', 'TECHNICAL_OFFICER', 'CSO_FINANCE', 'OVERSIGHT', 'SUPER_ADMIN'], render: () => <CommunityClaims /> },
   {
     key: 'staff',
     label: 'Staff registry',
-    description: 'One identity per person, assignments and rotations',
+    description: 'Staff, placements and rotations',
     icon: 'users',
     group: 'Registry',
     roles: ['CENTRAL_ADMIN', 'REGIONAL_ADMIN', 'CSO_FINANCE', 'SYSTEM_ADMIN', 'FHI360_FINANCE', 'OVERSIGHT'],
@@ -129,7 +129,7 @@ export const PAGES: Page[] = [
   {
     key: 'organizations',
     label: 'Organizations / CSO regions',
-    description: 'Govern organization access to regional allocations',
+    description: 'Organizations and their regions',
     icon: 'route',
     group: 'Registry',
     roles: ['CENTRAL_ADMIN', 'FHI360_FINANCE', 'CSO_FINANCE', 'RPM', 'OVERSIGHT', 'REGIONAL_FINANCE', 'SUPER_ADMIN'],
@@ -262,7 +262,7 @@ function App() {
           <BrandMark />
           <div>
             <div className="brand-name">HRH Pay</div>
-            <div className="brand-sub">Work logs · Claims · Payroll</div>
+            <div className="brand-sub">{lang === 'sw' ? 'Kazi · Madai · Malipo' : 'Work logs · Claims · Payroll'}</div>
           </div>
           <button type="button" className="icon-btn sidebar-close" onClick={() => setMenuOpen(false)} aria-label="Close menu">
             <Icon name="close" />
@@ -295,10 +295,6 @@ function App() {
             );
           })}
         </nav>
-        <div className="sidebar-foot">
-          <Icon name="shield" size={16} />
-          <span>{lang === 'sw' ? 'Malipo hufanyika nje ya mfumo huu na hurekodiwa kwa uthibitisho.' : 'Payments are executed outside this system and recorded with proof.'}</span>
-        </div>
       </aside>
       <button type="button" className="sidebar-scrim" aria-label="Close menu" tabIndex={-1} onClick={() => setMenuOpen(false)} />
 

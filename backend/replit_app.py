@@ -1,5 +1,6 @@
 """Serve the existing API and compiled React app from one Replit preview URL."""
 
+import mimetypes
 import time
 from collections import defaultdict, deque
 from pathlib import Path
@@ -10,6 +11,10 @@ from fastapi.staticfiles import StaticFiles
 
 from .core import config
 from .main import app as api
+
+# Installable web app files: browsers expect these exact types.
+mimetypes.add_type("application/manifest+json", ".webmanifest")
+mimetypes.add_type("text/javascript", ".js")
 
 BUILD_DIR = Path(__file__).resolve().parent.parent / "frontend" / "build"
 HTML_HEADERS = {

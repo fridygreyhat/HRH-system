@@ -21,8 +21,7 @@ export function FacilityNameModal({ facilityId, initialName, onClose, onSaved }:
     <Modal title="Edit facility name" onClose={onClose}>
       <form className="stack" onSubmit={submit}>
         <div className="notice notice-warn">
-          This renames the shared facility for all linked staff. It does not move this provider or change the facility’s ward,
-          ownership or location settings. To move one provider, use Change facility / placement instead.
+          Renames this facility for all linked staff. To move one provider, use Change facility / placement.
         </div>
         <Field label="Facility name">
           <input required maxLength={255} value={name} onChange={event => setName(event.target.value)} />
@@ -30,7 +29,6 @@ export function FacilityNameModal({ facilityId, initialName, onClose, onSaved }:
         <Field label="Reason for correction">
           <textarea required minLength={3} maxLength={1000} value={reason} onChange={event => setReason(event.target.value)} />
         </Field>
-        <p className="muted small">For ward, ownership/type or geofence settings, use Administration → Configuration → Facilities.</p>
         <Alert>{error}</Alert>
         <div className="row">
           <button className="btn btn-primary" disabled={busy || !name.trim() || reason.trim().length < 3}>

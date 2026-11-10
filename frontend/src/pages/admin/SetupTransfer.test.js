@@ -92,7 +92,7 @@ test('reviews imported setup, requires explicit selection and sends confirmation
     expect(container.textContent).toContain('Type APPLY MISSING SETUP exactly in the confirmation field above.');
     act(() => Simulate.change(fields[1], { target: { value: 'APPLY MISSING SETUP' } }));
     expect(apply().disabled).toBe(false);
-    expect(container.textContent).toContain('Ready to apply 1 selected item. No changes have been applied yet.');
+    expect(container.textContent).toContain('Ready to apply 1 selected item.');
 
     api.post.mockResolvedValueOnce({
       applied: 1, skipped: 0,

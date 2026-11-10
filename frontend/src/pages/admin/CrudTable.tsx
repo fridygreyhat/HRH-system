@@ -72,7 +72,7 @@ function optionsFor(f: FieldSpec, lists: Record<string, Row[]>): Option[] {
 }
 
 function display(f: FieldSpec, value: unknown, refMaps: Record<string, Map<string, string>>): React.ReactNode {
-  if (f.type === 'bool') return value ? 'Yes' : 'No';
+  if (f.type === 'bool') return value ? <span className="badge badge-success">Yes</span> : <span className="muted">No</span>;
   if (value === null || value === undefined || value === '') return <span className="muted">—</span>;
   if (f.ref) return refName(refMaps[f.key], value);
   if (f.badge) return <StatusBadge status={String(value)} />;
@@ -145,7 +145,7 @@ function FieldInput({
     );
   }
   const label = `${f.label}${f.required ? ' *' : ''}`;
-  const hint = disabled && f.immutable ? `${f.hint ? `${f.hint} ` : ''}This is the record's key and cannot be changed.` : f.hint;
+  const hint = disabled && f.immutable ? `${f.hint ? `${f.hint} ` : ''}Cannot be changed.` : f.hint;
   if (f.type === 'select') {
     return (
       <Field label={label} hint={hint}>
@@ -239,7 +239,6 @@ function CrudForm({
           ))}
         </fieldset>
       )}
-      {row && <p className="muted small">Saving replaces every field of this record with the values above.</p>}
       <Alert>{error}</Alert>
       <div className="row">
         <button className="btn btn-primary" disabled={busy}>
@@ -307,10 +306,13 @@ export function CrudTable({ spec }: { spec: TableSpec }) {
       )}
       <Alert kind="success">{notice}</Alert>
       <Alert>{lookupError}</Alert>
-      <div className="filters">
-        <Field label="Search">
-          <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter rows" />
-        </Field>
+      <div className="toolbar">
+        <div className="filters">
+          <Field label="Search">
+            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter rows" />
+          </Field>
+        </div>
+        {data && <span className="muted small">{rows.length === data.length ? `${data.length} records` : `${rows.length} of ${data.length} records`}</span>}
       </div>
       <AsyncState data={data} error={error} loading={loading} empty="No records yet.">
         {() =>

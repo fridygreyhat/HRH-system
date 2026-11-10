@@ -97,8 +97,7 @@ export function SettingsSection() {
   return (
     <section className="card stack">
       <h3>Settings</h3>
-      <p className="muted">Operational policy stored in the database. Every change is recorded in the audit log with its reason.</p>
-      {!canEdit && <p className="notice notice-info">Read only. Settings can be changed by a System Admin.</p>}
+      {!canEdit && <p className="notice notice-info">Read only. A System Admin can change settings.</p>}
       <Alert kind="success">{notice}</Alert>
       <AsyncState data={data} error={error} loading={loading} empty="No settings.">
         {(settings) => (

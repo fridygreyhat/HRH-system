@@ -2,10 +2,10 @@ import React, { useMemo, useState } from 'react';
 import { AccountRecovery } from './AccountRecovery';
 import { api } from '../../api';
 import { useAuth } from '../../AuthContext';
-import { dateTime, roleLabel } from '../../format';
+import { dateTime, num, roleLabel } from '../../format';
 import { useAction, useApi } from '../../hooks';
 import { AdminUser, Cadre, RoleInfo, UserScope } from '../../types';
-import { Alert, AsyncState, Drawer, Facts, Field, StatusBadge, Tabs } from '../../components/ui';
+import { Alert, AsyncState, Drawer, Facts, Field, KpiStrip, PersonCell, StatusBadge, Tabs } from '../../components/ui';
 import { Row, matches, nameMap, refName, useLookups } from './common';
 import { StaffRecordAccess } from './StaffRecordAccess';
 import { StaffDrawer } from '../../components/staff/StaffDrawer';
@@ -85,10 +85,7 @@ function ScopeEditor({
   return (
     <fieldset className="stack">
       <legend>Scopes</legend>
-      <p className="muted small">
-        Scopes limit which regions, clusters, facilities, community areas or organizations a user can see and act on. Leave empty for roles
-        with a global view.
-      </p>
+      <p className="muted small">Leave empty for a global view.</p>
       {scopes.length === 0 && <p className="muted">No scopes.</p>}
       {scopes.map((s, i) => {
         const set = DIMS.filter((d) => s[d.key] !== null);
@@ -156,9 +153,7 @@ function TechnicalArea({ value, onChange, disabled }: { value: number[]; onChang
   return (
     <fieldset className="stack">
       <legend>Review cadre scope</legend>
-      <p className="muted small">
-        Technical and finance access is limited to the selected cadres and the user's geographic or organization scopes. RM approval covers all cadres within its regional scope.
-      </p>
+      <p className="muted small">Technical and finance review is limited to the selected cadres.</p>
       <Alert>{cadres.error}</Alert>
       {(cadres.data || []).map((c) => (
         <label key={c.id} className="row" style={{ alignItems: 'flex-start' }}>
@@ -290,16 +285,12 @@ function CreateUser({ roles, onDone, onCancel }: { roles: RoleInfo[] | null; onD
           ]}
         />
       </Field>
-      <p className="muted small">
-        {isWorker
-          ? 'Health workers record their own work logs. The account gets the Provider role and is linked to a staff record with their cadre and placement.'
-          : 'Supervisors, reviewers, finance, administrators and oversight. Choose the roles and the areas they cover.'}
-      </p>
+      {isWorker && <p className="muted small">Gets the Provider role and a linked staff record.</p>}
       <div className="grid-2">
         <Field label="Username *">
           <input value={form.username} onChange={set('username')} required minLength={3} maxLength={100} autoComplete="off" />
         </Field>
-        <Field label="Initial password *" hint="At least 8 characters. Share it with the user securely.">
+        <Field label="Initial password *" hint="At least 8 characters.">
           <input type="password" value={form.password} onChange={set('password')} required minLength={8} maxLength={72} autoComplete="new-password" />
         </Field>
         {!isWorker && (
@@ -307,7 +298,7 @@ function CreateUser({ roles, onDone, onCancel }: { roles: RoleInfo[] | null; onD
             <input value={form.full_name} onChange={set('full_name')} required maxLength={255} />
           </Field>
         )}
-        <Field label="Phone *" hint={isWorker ? 'Receives the confirmation codes, e.g. +255712345678' : 'e.g. +255712345678'}>
+        <Field label="Phone *" hint={isWorker ? 'Receives SMS codes, e.g. +255712345678' : 'e.g. +255712345678'}>
           <input type="tel" value={form.phone} onChange={set('phone')} required pattern="\+?\d{9,15}" />
         </Field>
         <Field label="Email">
@@ -371,8 +362,7 @@ function LinkStaff({ user, onChanged }: { user: AdminUser; onChanged: (u: AdminU
     <form className="stack card" onSubmit={submit}>
       <h3>Health-worker record</h3>
       <Alert kind="warn">
-        This account is not linked to a staff record, so it cannot start work logs. If this person is a CHW, Data Clerk or HCP, register or link their
-        staff record here. The Provider role is added automatically.
+        No staff record linked, so this account cannot start work logs. Linking adds the Provider role.
       </Alert>
       <Alert>{unlinked.error}</Alert>
       <HealthWorkerFields value={worker} onChange={setWorker} unlinked={unlinked.data} disabled={busy} />
@@ -458,7 +448,7 @@ function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleIn
     });
     if (ok) {
       setPassword('');
-      setDone({ part: 'password', msg: `Temporary password set for ${user.username}. Their sessions were ended and they must choose their own password at next sign-in. Share it securely.` });
+      setDone({ part: 'password', msg: `Temporary password set for ${user.username}. They must choose a new one at next sign-in.` });
     }
     return undefined;
   };
@@ -516,7 +506,7 @@ function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleIn
       </StaffRecordAccess>
       {!!user.staff_id && canManageStaff && <section className="card stack">
         <h3>Provider staff record and facility</h3>
-        <p>Change staff details, start date or facility placement here. Account roles and access scopes below do not move a provider to a different facility.</p>
+        <p>Roles and scopes below do not change facility placement.</p>
         <button type="button" className="btn btn-secondary" onClick={() => setEditingStaff(true)}>Edit provider / facility placement</button>
         <Alert>{staffCadres.error}</Alert>
       </section>}
@@ -605,7 +595,7 @@ function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleIn
       {user.is_active && !isMe && (
         <div className="stack card">
           <h3>Deactivate</h3>
-          <p className="muted">The user can no longer sign in. Their history and audit trail are kept.</p>
+          <p className="muted">The user can no longer sign in; history is kept.</p>
           <Alert>{deactivateAction.error}</Alert>
           <div>
             <button className="btn btn-danger" onClick={deactivate} disabled={deactivateAction.busy}>
@@ -631,6 +621,10 @@ export function UsersSection() {
   const [notice, setNotice] = useState<string | null>(null);
   const selected = data?.find((u) => u.id === selectedId) || null;
 
+  const active = (data || []).filter((u) => u.is_active).length;
+  const locked = (data || []).filter((u) => u.is_locked).length;
+  const neverSignedIn = (data || []).filter((u) => u.is_active && !u.last_login_at).length;
+  const linked = (data || []).filter((u) => u.staff_id).length;
   const rows = (data || []).filter(
     (u) =>
       (showInactive || u.is_active) &&
@@ -655,6 +649,17 @@ export function UsersSection() {
       <Alert kind="success">{notice}</Alert>
       <Alert>{rolesError}</Alert>
       {hasRole(SUPER_ADMIN) && <AccountRecovery users={data} onReset={() => reload()} />}
+      {data && (
+        <KpiStrip
+          label="User summary"
+          items={[
+            { icon: 'users', label: 'Active users', value: num(active), note: `${num(data.length - active)} deactivated` },
+            { icon: 'shield', tone: locked ? 'danger' : 'success', label: 'Locked accounts', value: num(locked) },
+            { icon: 'clock', tone: neverSignedIn ? 'warn' : 'success', label: 'Active, never signed in', value: num(neverSignedIn) },
+            { icon: 'clipboard', tone: 'info', label: 'Linked to a staff record', value: num(linked) },
+          ]}
+        />
+      )}
       <div className="filters">
         <Field label="Search">
           <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name, username, phone" />
@@ -669,7 +674,7 @@ export function UsersSection() {
             ))}
           </select>
         </Field>
-        <label className="row-inline">
+        <label className="row-inline check-inline">
           <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} /> Show deactivated users
         </label>
       </div>
@@ -682,9 +687,7 @@ export function UsersSection() {
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Username</th>
-                    <th>Full name</th>
-                    <th>Phone</th>
+                    <th>User</th>
                     <th>Roles</th>
                     <th>Scopes</th>
                     <th>Status</th>
@@ -696,9 +699,9 @@ export function UsersSection() {
                 <tbody>
                   {rows.map((u) => (
                     <tr key={u.id}>
-                      <td className="nowrap">{u.username}</td>
-                      <td>{u.full_name}</td>
-                      <td className="nowrap">{u.phone || '—'}</td>
+                      <td>
+                        <PersonCell name={u.full_name} sub={[u.username, u.phone].filter(Boolean).join(' · ')} />
+                      </td>
                       <td>
                         <span className="badges">
                           {u.roles.map((r) => (
@@ -708,14 +711,24 @@ export function UsersSection() {
                           ))}
                         </span>
                       </td>
-                      <td className="small">
-                        {u.scopes.length ? u.scopes.map((s, i) => <div key={s.id ?? i}>{scopeText(s, maps)}</div>) : <span className="muted">All</span>}
+                      <td>
+                        {u.scopes.length ? (
+                          <span className="scope-list">
+                            {u.scopes.map((s, i) => (
+                              <span key={s.id ?? i}>{scopeText(s, maps)}</span>
+                            ))}
+                          </span>
+                        ) : (
+                          <span className="muted">All</span>
+                        )}
                       </td>
                       <td>
-                        <StatusBadge status={u.is_active ? 'ACTIVE' : 'INACTIVE'} />
-                        {u.is_locked && <span className="badge badge-danger">Locked</span>}
+                        <span className="badges">
+                          <StatusBadge status={u.is_active ? 'ACTIVE' : 'INACTIVE'} />
+                          {u.is_locked && <span className="badge badge-danger">Locked</span>}
+                        </span>
                       </td>
-                      <td className="nowrap">{dateTime(u.last_login_at)}</td>
+                      <td className="nowrap">{u.last_login_at ? dateTime(u.last_login_at) : <span className="muted">Never</span>}</td>
                       <td>{u.staff_id ? `#${u.staff_id}` : '—'}</td>
                       <td>
                         <button

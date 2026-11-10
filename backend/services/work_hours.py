@@ -1,6 +1,6 @@
 """Shared weekday/weekend policy for entry validation and reviewer warnings."""
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy.orm import Session
 
@@ -8,6 +8,13 @@ from ..core.settings import get_setting
 
 
 HOUR_POLICY_CODES = {"DAILY_HOURS", "WEEKLY_HOURS", "SATURDAY_HOURS", "SUNDAY_WORK"}
+
+
+def hours_text(value) -> str:
+    """Hours as people write them: 8, 7 h 30 min, 41 h 40 min. Never 8.0 or 8.333333."""
+    minutes = int((Decimal(str(value)) * 60).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+    hours, remainder = divmod(minutes, 60)
+    return f"{hours} h {remainder} min" if remainder else str(hours)
 
 
 def hour_limits(db: Session, work_type: str = "SERVICES") -> dict[str, Decimal]:
@@ -33,9 +40,9 @@ def day_hours_violation(day: date, total: Decimal, limits: dict[str, Decimal]) -
         minimum, maximum = limits["saturday_min_hours"], limits["saturday_max_hours"]
         if minimum <= total <= maximum:
             return None
-        code, message = "SATURDAY_HOURS", f"Saturday weekend clinics require {minimum}–{maximum} total hours (this date would total {total})."
+        code, message = "SATURDAY_HOURS", f"Saturday weekend clinics require {hours_text(minimum)}–{hours_text(maximum)} total hours (this date would total {hours_text(total)})."
     elif total > limits["daily_hours"]:
-        code, message = "DAILY_HOURS", f"Weekday hours may not exceed {limits['daily_hours']} per day (this date would total {total})."
+        code, message = "DAILY_HOURS", f"Weekday hours may not exceed {hours_text(limits['daily_hours'])} per day (this date would total {hours_text(total)})."
     else:
         return None
     return {"date": str(day), "code": code, "message": message}

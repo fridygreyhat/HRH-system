@@ -100,7 +100,7 @@ export function SetupTransfer() {
     setNotice('');
     try {
       saveBlob(await api.blob('/admin/setup-transfer/export', 'GET', 'hrh-pay-setup.json'));
-      setNotice('Setup export downloaded. Keep the file secure while moving it to the live environment.');
+      setNotice('Setup export downloaded. Keep the file secure.');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The setup export could not be downloaded.');
     } finally {
@@ -177,9 +177,8 @@ export function SetupTransfer() {
     <div className="stack-lg setup-transfer">
       <header className="setup-transfer-heading">
         <div>
-          <p className="setup-transfer-kicker">Super Admin · controlled configuration</p>
           <h2>Setup transfer</h2>
-          <p className="muted">Move approved system setup from Preview into Live with a fresh review before any change.</p>
+          <p className="muted">Copy approved setup from Preview to Live.</p>
           <p className="muted small">Current website: {window.location.origin}</p>
         </div>
         <span className="setup-transfer-version">DOCUMENT / 01</span>
@@ -189,15 +188,13 @@ export function SetupTransfer() {
         <div className="setup-transfer-callout-mark" aria-hidden="true">P → L</div>
         <div>
           <strong>Preview and Live use separate databases.</strong>
-          <p>This tool transfers setup only. Export from Preview, then upload and review the file on Live. It does not connect to a remote environment.</p>
         </div>
       </section>
 
       <div className="setup-transfer-flow">
         <section className="card stack setup-transfer-step">
-          <div className="setup-transfer-stephead"><span>01</span><div><h3>Export from Preview</h3><p>Download a portable setup document from the environment you are viewing.</p></div></div>
+          <div className="setup-transfer-stephead"><span>01</span><div><h3>Export from Preview</h3></div></div>
           <div className="setup-transfer-export">
-            <p className="muted small">Included records are limited to configuration and setup. Work, approvals, financial records, passwords and bank or mobile payment data are excluded.</p>
             <button type="button" className="btn btn-secondary" onClick={exportSetup} disabled={!!busy}>
               {busy === 'export' ? 'Preparing export…' : 'Download setup file'}
             </button>
@@ -205,7 +202,7 @@ export function SetupTransfer() {
         </section>
 
         <section className="card stack setup-transfer-step">
-          <div className="setup-transfer-stephead"><span>02</span><div><h3>Review on Live</h3><p>Upload the Preview file in Live and inspect every proposed record.</p></div></div>
+          <div className="setup-transfer-stephead"><span>02</span><div><h3>Review on Live</h3></div></div>
           <Field label="Setup export file" hint="JSON · maximum 1 MiB">
             <input ref={fileRef} type="file" accept=".json,application/json" aria-label="Setup export file" disabled={!!busy} onChange={(event) => void chooseFile(event.target.files?.[0])} />
           </Field>
@@ -233,7 +230,7 @@ export function SetupTransfer() {
       {review && (
         <section className="card stack setup-transfer-review" aria-labelledby="setup-review-title">
           <div className="section-head">
-            <div><p className="setup-transfer-kicker">Target snapshot</p><h3 id="setup-review-title">Review results</h3></div>
+            <div><h3 id="setup-review-title">Review results</h3></div>
             <span className="setup-transfer-count">{review.items.length} records</span>
           </div>
           {!reviewIsCurrent && <Alert kind="warn">This review is no longer current. Run Review setup again before applying changes.</Alert>}
@@ -244,13 +241,13 @@ export function SetupTransfer() {
             </div>
           )}
           <div className="setup-transfer-guidance">
-            <p><strong>Dependencies matter.</strong> Select missing dependencies together; partial setup can leave a feature incomplete.</p>
-            <p><strong>Conflicts are not applied.</strong> Resolve them manually in the target, then review again.</p>
-            <p><strong>User setup is sensitive.</strong> Review the full user setup data, including roles and scopes, before selecting the record as a group. Applying setup never activates a new account or supplies a known password. A Super Admin must activate it and use the existing password-reset process before sign-in. Existing passwords and privileges are never removed.</p>
+            <p>Select missing dependencies together.</p>
+            <p>Conflicts are not applied; resolve them in the target.</p>
+            <p>New user accounts stay inactive until a Super Admin activates them and resets the password.</p>
           </div>
           {missing.length > 0 && reviewIsCurrent && (
             <div className="setup-transfer-selection">
-              <span>{selected.size} selected · inspect each record before it can be selected</span>
+              <span>{selected.size} selected · inspect a record to select it</span>
               <div className="row">
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelected(new Set(missing.filter((item) => inspected.has(item.id)).map((item) => item.id)))} disabled={!!busy || !missing.some((item) => inspected.has(item.id))}>Select inspected missing</button>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelected(new Set())} disabled={!!busy}>Clear selection</button>
@@ -314,34 +311,33 @@ export function SetupTransfer() {
               <div className="setup-transfer-apply-intro">
                 <span>03 / APPLY SELECTED ONLY</span>
                 <h4>Confirm the target changes</h4>
-                <p>Only selected MISSING records will be sent. Existing records and conflicts remain untouched.</p>
+                <p>Only selected missing records are applied.</p>
               </div>
               <div className="grid-2">
                 <Field label="Reason for this transfer" hint="At least 3 characters; recorded with the change">
                   <textarea rows={3} value={reason} maxLength={1000} disabled={!!busy} onChange={(event) => setReason(event.target.value)} placeholder="For example: align Live setup with approved Preview changes" />
                 </Field>
-                <Field label={`Type ${APPLY_PHRASE} to confirm`} hint="This confirmation is required for every apply operation.">
+                <Field label={`Type ${APPLY_PHRASE} to confirm`}>
                   <input value={confirmation} disabled={!!busy} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" spellCheck={false} />
                 </Field>
               </div>
               <div id="setup-apply-requirements" role="status" aria-live="polite">
-                {busy === 'apply' ? <p>Applying the selected setup. Please wait; do not submit again.</p> :
+                {busy === 'apply' ? <p>Applying… do not submit again.</p> :
                   applyRequirements.length > 0 ? (
                     <Alert kind="info">
                       <strong>Before Apply becomes available:</strong>
                       <ul>{applyRequirements.map((requirement) => <li key={requirement}>{requirement}</li>)}</ul>
                     </Alert>
-                  ) : <p>Ready to apply {selected.size} selected item{selected.size === 1 ? '' : 's'}. No changes have been applied yet.</p>}
+                  ) : <p>Ready to apply {selected.size} selected item{selected.size === 1 ? '' : 's'}.</p>}
               </div>
               <button type="button" className="btn btn-primary" onClick={applySetup} disabled={!canApply} aria-describedby="setup-apply-requirements">
                 {busy === 'apply' ? 'Applying selected setup…' : `Apply ${selected.size} selected item${selected.size === 1 ? '' : 's'}`}
               </button>
             </div>
           )}
-          {reviewIsCurrent && missing.length === 0 && <Alert kind="info">No missing setup is available to apply. Existing records are preserved; conflicts require manual resolution.</Alert>}
+          {reviewIsCurrent && missing.length === 0 && <Alert kind="info">No missing setup to apply.</Alert>}
         </section>
       )}
-      <p className="setup-transfer-footnote">A successful review is a snapshot, not a lock. If the target changes after review, Live rejects the stale token; review again before proceeding.</p>
     </div>
   );
 }

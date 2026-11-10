@@ -4,7 +4,7 @@ import { useAuth } from '../../AuthContext';
 import { dateTime, humanize, roleLabel } from '../../format';
 import { useApi } from '../../hooks';
 import { AuditEvent, SmsOutboxRow } from '../../types';
-import { AsyncState, Field, StatusBadge } from '../../components/ui';
+import { AsyncState, Field, PersonCell, StatusBadge } from '../../components/ui';
 
 const LIMITS = [50, 200, 500, 1000];
 const OUTBOX_STATUSES = ['PENDING', 'SENT', 'FAILED', 'SUPPRESSED'];
@@ -23,11 +23,7 @@ export function OutboxSection() {
           {loading ? 'Refreshing…' : 'Refresh'}
         </button>
       </div>
-      <p className="muted">
-        Messages queued for the SMS gateway, newest first. Suppressed messages were not sent because the record changed before delivery.
-        One-time codes are never stored here.
-        {!hasRole('SYSTEM_ADMIN') && ' Phone numbers are partly hidden for your role.'}
-      </p>
+      {!hasRole('SYSTEM_ADMIN') && <p className="muted">Phone numbers are partly hidden for your role.</p>}
       <div className="filters">
         <Field label="Status">
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -57,23 +53,26 @@ export function OutboxSection() {
                 <tr>
                   <th>Created</th>
                   <th>Event</th>
-                  <th>Phone</th>
-                  <th>Language</th>
+                  <th>Recipient</th>
                   <th>Status</th>
                   <th className="num">Attempts</th>
                   <th>Last error</th>
                   <th>Related record</th>
-                  <th>Sent</th>
                   <th>Message</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id}>
-                    <td className="nowrap">{dateTime(r.created_at)}</td>
+                    <td>
+                      <span className="cell-main">{dateTime(r.created_at)}</span>
+                      <span className="cell-sub">{r.sent_at ? `Sent ${dateTime(r.sent_at)}` : 'Not sent'}</span>
+                    </td>
                     <td className="nowrap">{humanize(r.event_name)}</td>
-                    <td className="nowrap">{r.destination_phone}</td>
-                    <td>{r.language || '—'}</td>
+                    <td>
+                      <span className="cell-main">{r.destination_phone}</span>
+                      <span className="cell-sub">{r.language ? `Language: ${r.language}` : 'Language: —'}</span>
+                    </td>
                     <td>
                       <StatusBadge status={r.status} />
                     </td>
@@ -89,7 +88,6 @@ export function OutboxSection() {
                         '—'
                       )}
                     </td>
-                    <td className="nowrap">{dateTime(r.sent_at)}</td>
                     <td className="small" style={{ minWidth: '16rem' }}>
                       {r.message_body}
                     </td>
@@ -158,7 +156,6 @@ export function AuditSection() {
           {loading ? 'Refreshing…' : 'Refresh'}
         </button>
       </div>
-      <p className="muted">Append-only record of configuration, account and finance changes, newest first.</p>
       <div className="filters">
         <Field label="Record type">
           <select value={entityType} onChange={(e) => setEntityType(e.target.value)}>
@@ -188,7 +185,6 @@ export function AuditSection() {
                 <tr>
                   <th>When</th>
                   <th>Actor</th>
-                  <th>Roles</th>
                   <th>Record</th>
                   <th>Action</th>
                   <th>Reason</th>
@@ -203,14 +199,11 @@ export function AuditSection() {
                     <React.Fragment key={a.id}>
                       <tr>
                         <td className="nowrap">{dateTime(a.created_at)}</td>
-                        <td>{a.actor_name || 'System'}</td>
-                        <td className="small">
-                          {a.actor_roles
-                            ? a.actor_roles
-                                .split(',')
-                                .map((r) => roleLabel(r.trim()))
-                                .join(', ')
-                            : '—'}
+                        <td>
+                          <PersonCell
+                            name={a.actor_name || 'System'}
+                            sub={a.actor_roles ? a.actor_roles.split(',').map((r) => roleLabel(r.trim())).join(', ') : undefined}
+                          />
                         </td>
                         <td className="nowrap">
                           {humanize(a.entity_type.replace(/-/g, '_'))}
@@ -230,7 +223,7 @@ export function AuditSection() {
                       </tr>
                       {expanded && (
                         <tr>
-                          <td colSpan={7}>
+                          <td colSpan={6}>
                             <div className="grid-2">
                               <div className="stack">
                                 <strong className="small">Before</strong>
