@@ -57,7 +57,7 @@ def monthly_summary(db, current, month, region_id, work_type, organization_id=No
         for measure in db.query(WorkLogMeasure).filter(WorkLogMeasure.entry_id.in_([r[0].id for r in rows])):
             measures.setdefault(measure.entry_id, {})[measure.field_key] = measure.value
     labels = {
-        c.id: {f.key: f.label_en for f in cadre_fields(db, c.id)}
+        c.id: {f.key: f.label_en for f in cadre_fields(db, c.id, include_inactive=True)}  # hidden questions keep their labels
         for c in {row[3].id: row[3] for row in rows}.values()
     }
     providers, cadres, log_ids = {}, {}, set()

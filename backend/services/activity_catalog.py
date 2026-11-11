@@ -8,7 +8,7 @@ from fastapi.encoders import jsonable_encoder
 from ..models import ActivityRate, Cadre, CadreFormField, StaffAssignment, WorkLogEntry, PayPeriod
 from .activities import ACTIVITIES, CASCADES, activity_for
 from .chw_forms import CHW_GROUPS, chw_builtins
-from .data_clerk_forms import DATA_CLERK_KEYS, clerk_metadata, data_clerk_builtins
+from .data_clerk_forms import DATA_CLERK_KEYS, DATA_CLERK_RETIRED_FIELDS, clerk_metadata, data_clerk_builtins
 
 HCP_DAILY_CASCADES = {"opd_screening", "ctc_art_refills", "laboratory"}
 
@@ -225,7 +225,11 @@ def _resolve_activity(db, log, key: str, day, existing=None) -> dict:
 
 def log_fields(db, log):
     if log.workflow_version < 2:
-        return db.query(CadreFormField).filter(CadreFormField.cadre_id == log.cadre_id, CadreFormField.is_active.is_(True)).all()
+        # A first-generation timesheet keeps the questions it was designed with, including those the current
+        # Data Clerk form retired, so an old draft can still be corrected. New timesheets never use this path.
+        fields = db.query(CadreFormField).filter(CadreFormField.cadre_id == log.cadre_id).all()
+        retired = DATA_CLERK_RETIRED_FIELDS if db.get(Cadre, log.cadre_id).code == "DATA_CLERK" else frozenset()
+        return [f for f in fields if f.is_active or f.key in retired]
     fields = {}
     for activity in catalog_for_log(db, log):
         for index, field in enumerate(activity.get("field_definitions", [])):

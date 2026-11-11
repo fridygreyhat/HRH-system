@@ -26,6 +26,13 @@ DATA_CLERK_GROUPS = [
      "fields": ["ctc_eligible_lists_shared", "ctc_hvl_eid_results_shared"]},
 ]
 DATA_CLERK_REQUIRED = [key for group in DATA_CLERK_GROUPS[:4] for key in group["fields"]]
+# Questions from the first Data Clerk form that the groups above replaced: the combined HVL/EID counts (now separate
+# HVL and EID questions), the dataset upload (now "Backups and reporting") and the secondary-facility Yes/No (now its
+# own form with a location). Created hidden on new installations; migration f4b1c8e2d937 hides them on existing ones.
+# Kept, not deleted, so values recorded under the first form keep their labels.
+DATA_CLERK_RETIRED_FIELDS = frozenset({
+    "ctc_hts_dataset_uploaded", "ctc_hvl_eid_requests", "ctc_hvl_eid_results_received", "ctc_secondary_facility",
+})
 DATA_CLERK_KEYS = {"data_clerk_daily_timesheet", "data_clerk_secondary_facility", "data_clerk_weekend_clinic"}
 DATA_CLERK_CASCADES = [
     ("ctc_tpt_initiated", "ctc_tpt_eligible", "TPT initiations exceed eligible clients"),
