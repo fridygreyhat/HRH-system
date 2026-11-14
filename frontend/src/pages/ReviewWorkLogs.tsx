@@ -41,7 +41,7 @@ function LogTable({ rows, queue, sw, onOpen }: { rows: WorkLogSummary[]; queue: 
             return (
               <tr
                 key={l.id}
-                className={overdue ? 'row-over-48' : undefined}
+                className={[overdue ? 'row-over-48' : '', l.work_type ? `row-type-${l.work_type.toLowerCase()}` : ''].filter(Boolean).join(' ') || undefined}
                 tabIndex={0}
                 onClick={() => onOpen(l.id)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(l.id); } }}

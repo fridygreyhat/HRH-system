@@ -9,7 +9,7 @@ def _outbox(db, log_id, event):
     return db.execute(text("select id, status, user_id from sms_outbox where related_id = :i and event_name = :e order by id"), {"i": log_id, "e": event}).all()
 
 
-def test_stage_notifications_are_queued_and_delivered_by_the_worker(api, period, db):
+def test_stage_notifications_are_queued_and_delivered_by_the_worker(api, period, db, each_timesheet_sms):
     from backend.worker import process_outbox
 
     log = submit_and_verify(api, "clerk1", period)
@@ -36,7 +36,7 @@ def test_stage_notifications_are_queued_and_delivered_by_the_worker(api, period,
     assert "TZS" not in body
 
 
-def test_reminders_after_24_hours_without_duplicates(api, period, db, monkeypatch):
+def test_reminders_after_24_hours_without_duplicates(api, period, db, each_timesheet_sms, monkeypatch):
     from datetime import timedelta
     from backend import worker
     from backend.models import utcnow
@@ -109,7 +109,7 @@ def test_reminder_queue_and_dashboard_use_same_deadline(api, period, db, monkeyp
     assert queue["over_threshold"] == int(overdue)
 
 
-def test_sms_failure_never_changes_workflow_state(api, period, db, monkeypatch):
+def test_sms_failure_never_changes_workflow_state(api, period, db, each_timesheet_sms, monkeypatch):
     from backend import worker
     from backend.services import sms_gateway
 

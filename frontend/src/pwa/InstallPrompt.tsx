@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useAuth } from '../AuthContext';
+import { Icon } from '../components/Icon';
+import { pageLang } from '../components/ui';
 import './pwa.css';
 
 interface InstallEvent extends Event {
@@ -8,55 +9,71 @@ interface InstallEvent extends Event {
 }
 
 const DISMISSED = 'hrh_install_dismissed';
+/** After "Later", the offer stays away this long. */
+const QUIET_DAYS = 30;
 /** Phones and tablets only: on a desktop the browser's own install icon is enough. */
 const HANDHELD = '(max-width: 1100px), (pointer: coarse)';
 
 function dismissedRecently(): boolean {
   try {
     const at = Number(localStorage.getItem(DISMISSED) || 0);
-    return Date.now() - at < 14 * 24 * 3600 * 1000;
+    return Date.now() - at < QUIET_DAYS * 24 * 3600 * 1000;
   } catch {
     return false;
   }
 }
 
-/** Offers "Install HRH Pay" on phones and tablets whose browser supports installing; hidden once installed or dismissed. */
-export function InstallPrompt() {
-  const { lang } = useAuth();
-  const [event, setEvent] = useState<InstallEvent | null>(null);
+// The browser makes its install offer once, soon after the page loads, often before Home is on screen. Keep it here
+// so the Home page can show the bar whenever it opens.
+let offer: InstallEvent | null = null;
+const listeners = new Set<() => void>();
+const changed = () => listeners.forEach((listener) => listener());
+
+/** Called once at start-up: holds the browser's install offer until the Home page shows it. */
+export function captureInstallOffer() {
+  window.addEventListener('beforeinstallprompt', (e: Event) => {
+    e.preventDefault();
+    offer = e as InstallEvent;
+    changed();
+  });
+  window.addEventListener('appinstalled', () => {
+    offer = null;
+    changed();
+  });
+}
+
+/**
+ * "Install HRH Pay" as a slim one-line bar inside the Home page, on phones and tablets whose browser can install it.
+ * It sits in the page, so it never covers a form, dialog or the menu. Hidden once installed, or for 30 days after "Later".
+ */
+export function InstallBar() {
+  const [, rerender] = useState(0);
   useEffect(() => {
-    const offer = (e: Event) => {
-      e.preventDefault();
-      if (!dismissedRecently() && window.matchMedia?.(HANDHELD).matches) setEvent(e as InstallEvent);
-    };
-    const installed = () => setEvent(null);
-    window.addEventListener('beforeinstallprompt', offer);
-    window.addEventListener('appinstalled', installed);
-    return () => {
-      window.removeEventListener('beforeinstallprompt', offer);
-      window.removeEventListener('appinstalled', installed);
-    };
+    const listener = () => rerender((n) => n + 1);
+    listeners.add(listener);
+    return () => { listeners.delete(listener); };
   }, []);
-  if (!event) return null;
-  const sw = lang === 'sw';
+  if (!offer || dismissedRecently() || !window.matchMedia?.(HANDHELD).matches) return null;
+  const event = offer;
+  const sw = pageLang() === 'sw';
   const install = async () => {
     await event.prompt();
     await event.userChoice.catch(() => undefined);
-    setEvent(null);
+    offer = null;
+    changed();
   };
   const later = () => {
     try { localStorage.setItem(DISMISSED, String(Date.now())); } catch { /* private mode: just hide */ }
-    setEvent(null);
+    changed();
   };
   return (
-    <div className="install-prompt" role="dialog" aria-label={sw ? 'Sakinisha HRH Pay' : 'Install HRH Pay'}>
-      <img src="/icons/icon-192.png" alt="" width={40} height={40} />
-      <div className="install-text">
-        <strong>{sw ? 'Sakinisha HRH Pay' : 'Install HRH Pay'}</strong>
-        <span>{sw ? 'Ifungue kama programu kwenye simu au tablet.' : 'Open it like an app on this phone or tablet.'}</span>
-      </div>
+    <div className="install-bar no-print" role="region" aria-label={sw ? 'Sakinisha HRH Pay' : 'Install HRH Pay'}>
+      <img src="/icons/icon-192.png" alt="" width={24} height={24} />
+      <span className="install-bar-text">{sw ? 'Weka kwenye simu' : 'Add to this phone'}</span>
       <button type="button" className="btn btn-primary btn-sm" onClick={install}>{sw ? 'Sakinisha' : 'Install'}</button>
-      <button type="button" className="btn btn-ghost btn-sm" onClick={later}>{sw ? 'Baadaye' : 'Later'}</button>
+      <button type="button" className="icon-btn install-bar-later" onClick={later} aria-label={sw ? 'Baadaye' : 'Later'} title={sw ? 'Baadaye' : 'Later'}>
+        <Icon name="close" size={16} />
+      </button>
     </div>
   );
 }

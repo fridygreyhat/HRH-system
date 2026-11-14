@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../AuthContext';
+import { phoneCheckText } from '../../phones';
 import { useApi } from '../../hooks';
 import { CADRE_NAMES, cadreName, dateOnly, humanize } from '../../format';
 import { Cadre, Organization, StaffDetail } from '../../types';
@@ -97,6 +98,7 @@ export function StaffDrawer({ staffId, cadres, onClose, onChanged, startLogin = 
                     ['Middle name', s.middle_name],
                     ['Last name', s.last_name],
                     ['Verified phone', s.verified_phone],
+                    ['SMS to this number', phoneCheckText(s.phone_check)?.text],
                     ['Cadre', cadre ? `${cadre.name} (${s.cadre})` : s.cadre],
                     ['Occupation', s.occupation && s.occupation_other ? `${s.occupation}: ${s.occupation_other}` : s.occupation],
                     ['Salary scale', s.salary_scale],

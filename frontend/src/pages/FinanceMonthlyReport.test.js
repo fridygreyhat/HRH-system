@@ -87,7 +87,7 @@ test('monthly report keeps pay month, separate work type and cadre aggregates wi
 test('regional report requires an explicit review confirmation before document sign-off', async () => {
   const { container, unmount } = mountReport();
   try {
-    const approve = Array.from(container.querySelectorAll('button')).find(button => button.textContent.includes('Sign off report'));
+    const approve = Array.from(container.querySelectorAll('button')).find(button => button.textContent.includes('Sign and send to CSO'));
     expect(approve).toBeTruthy();
     expect(approve.disabled).toBe(true);
     const region = container.querySelector('select[aria-label="Region"]');
@@ -95,7 +95,7 @@ test('regional report requires an explicit review confirmation before document s
     reviewPreview(container);
     const checkbox = container.querySelector('.finance-confirm-check input');
     act(() => Simulate.change(checkbox, { target: { checked: true } }));
-    const button = Array.from(container.querySelectorAll('button')).find(item => item.textContent.includes('Sign off report'));
+    const button = Array.from(container.querySelectorAll('button')).find(item => item.textContent.includes('Sign and send to CSO'));
     await act(async () => { Simulate.click(button); });
     expect(api.post).toHaveBeenCalledWith('/finance/monthly-report/approve', expect.objectContaining({
       month: expect.any(String), region_id: 7, work_type: 'PAYROLL', review_confirmed: true, expected_digest: 'digest-1',
@@ -140,7 +140,7 @@ test('stale sign-off conflict refreshes the report and keeps a visible error', a
     reviewPreview(container);
     const checkbox = container.querySelector('.finance-confirm-check input');
     act(() => Simulate.change(checkbox, { target: { checked: true } }));
-    const button = Array.from(container.querySelectorAll('button')).find(item => item.textContent.includes('Sign off report'));
+    const button = Array.from(container.querySelectorAll('button')).find(item => item.textContent.includes('Sign and send to CSO'));
     await act(async () => { Simulate.click(button); });
     expect(container.textContent).toContain('Report changed; refresh and review again.');
     expect(reload).toHaveBeenCalled();
@@ -240,6 +240,57 @@ test('a Swahili reader gets the page, cadre names and known indicator names in S
     expect(container.querySelector('[role="dialog"]').textContent).toContain('Mtoa Huduma za Afya');
   } finally {
     unmount();
+    envelopeOverrides = {};
+  }
+});
+
+test('Regional Finance sees which reports wait for signing and opens one in a click', () => {
+  const status = [
+    { month: '2026-10', region_id: 7, region_name: 'Mara', work_type: 'PAYROLL', state: 'NOT_SIGNED', providers: 3, approved_at: null, approved_by_name: null, can_approve: true },
+    { month: '2026-10', region_id: 7, region_name: 'Mara', work_type: 'SERVICES', state: 'SIGNED', providers: 2, approved_at: '2026-11-13T16:32:48+03:00', approved_by_name: 'Jonas Abel', can_approve: true },
+  ];
+  const envelope = useApi.getMockImplementation();
+  useApi.mockImplementation(path => (path === '/finance/monthly-report/status' ? { data: status, error: null, loading: false, reload } : envelope(path)));
+  const { container, unmount } = mountReport();
+  try {
+    const list = container.querySelector('.signoff-checklist');
+    expect(list.textContent).toContain('1 waiting');
+    expect(list.textContent).toContain('October 2026 · Payroll · Mara');
+    expect(list.textContent).toContain('goes to the CSO');
+    expect(list.textContent).toContain('Not signed');
+    expect(list.textContent).toContain('Signed by Jonas Abel');
+    act(() => Simulate.change(container.querySelector('select[aria-label="Work type"]'), { target: { value: 'SERVICES' } }));
+    act(() => list.querySelector('button').click());
+    expect(container.querySelector('select[aria-label="Work type"]').value).toBe('PAYROLL');
+    expect(requestedPath).toContain('month=2026-10');
+    expect(requestedPath).toContain('region_id=7');
+    expect(requestedPath).toContain('work_type=PAYROLL');
+  } finally {
+    unmount();
+  }
+});
+
+test('CSO Finance is told the report waits for Regional Finance, and gets no sign-off list', () => {
+  roleNames = ['CSO_FINANCE'];
+  envelopeOverrides = { can_approve: false, digest: null };
+  const asked = [];
+  const envelope = useApi.getMockImplementation();
+  useApi.mockImplementation(path => { asked.push(path); return envelope(path); });
+  const { container, unmount } = mountReport();
+  try {
+    expect(container.textContent).toContain('Regional Finance has not signed the');
+    expect(container.textContent).toContain('Payroll report yet');
+    expect(container.textContent).not.toContain('Choose one region to sign off');
+    expect(asked).not.toContain('/finance/monthly-report/status');
+    // The CSO receives Payroll only: the work type cannot be switched to Services.
+    const type = container.querySelector('select[aria-label="Work type"]');
+    expect(type.disabled).toBe(true);
+    expect([...type.options].map((option) => option.value)).toEqual(['PAYROLL']);
+    expect(container.textContent).toContain('Services are paid by FHI360 Central Finance');
+    expect(container.querySelector('.signoff-checklist')).toBeNull();
+  } finally {
+    unmount();
+    roleNames = ['REGIONAL_FINANCE'];
     envelopeOverrides = {};
   }
 });

@@ -112,8 +112,10 @@ async function send(method: string, path: string, body?: Payload, options?: Send
 const GATEWAY_STATUSES = [502, 503, 504];
 export const RETRY_DELAY_MS = { value: 1500 };
 /** A read whose answer has not started by then is abandoned and tried again. A port-forwarding tunnel sometimes
- *  drops a request without answering; a save is never abandoned, as the server may already have applied it. */
-export const READ_TIMEOUT_MS = { value: 20000 };
+ *  drops a request without answering; a save is never abandoned, as the server may already have applied it.
+ *  The server answers in well under a second, so 10 seconds of silence means a lost request, even on a slow phone
+ *  line (only the wait for the answer to start is limited, not its download). */
+export const READ_TIMEOUT_MS = { value: 10000 };
 
 /** A read that hits a dropped connection, a stalled tunnel or a gateway timeout is tried once more; saves never are. */
 async function sendRetrying(method: string, path: string, body?: Payload, options?: { signal?: AbortSignal }): Promise<Response> {

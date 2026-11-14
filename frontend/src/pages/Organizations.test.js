@@ -131,16 +131,20 @@ test('active link deactivation confirms payment impact and preserves history', a
     can_manage: true,
   };
   api.post.mockResolvedValue({ id: 5 });
-  const originalConfirm = window.confirm;
-  window.confirm = jest.fn(() => true);
   const { container, root } = mount();
   try {
     const deactivate = Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Deactivate');
     await act(async () => Simulate.click(deactivate));
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('blocks future payroll routing and budget operations'));
+    // The app's own confirmation box (not the browser's) explains the impact; nothing is sent until it is confirmed.
+    const dialog = document.querySelector('.confirm-host [role="dialog"]');
+    expect(dialog.textContent).toContain('blocks future payroll routing and budget operations');
+    expect(api.post).not.toHaveBeenCalled();
+    const confirm = Array.from(dialog.querySelectorAll('button')).find(button => button.textContent === 'Deactivate');
+    expect(confirm.className).toContain('btn-danger');
+    await act(async () => Simulate.click(confirm));
     expect(api.post).toHaveBeenCalledWith('/organizations/assign-cso-region', { organization_id: 1, region_id: 8, is_active: false });
+    expect(document.querySelector('.confirm-host')).toBeNull();
   } finally {
-    window.confirm = originalConfirm;
     act(() => root.unmount());
     container.remove();
   }

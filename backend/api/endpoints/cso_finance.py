@@ -15,7 +15,7 @@ from ...core.serialize import to_dict
 from ...db.session import get_db
 from ...models import BudgetLine, Organization, PayPeriod, PaymentClaim, Staff, StaffAssignment
 from ...services import batches as bt, budgets as bg, payments as pay
-from ...services import claims as cl, salary_timesheets as timesheets
+from ...services import claims as cl, payment_forms, salary_timesheets as timesheets
 from ...services import monthly_report_approval as monthly_reports
 from ...services.provider_payment_details import details
 from ...services.scope import claim_visibility
@@ -57,6 +57,12 @@ def scoped_claims(db, current, cso_id):
     return db.query(PaymentClaim).filter(
         PaymentClaim.executor_org_id == cso_id, claim_visibility(current), bt.finance_claim_condition(current),
     )
+
+
+@router.get("/payroll-status")
+def payroll_status(db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(CSO_FINANCE))):
+    """Which recent Payroll months Regional Finance has sent to this CSO, and which still wait for its signature."""
+    return monthly_reports.cso_payroll_status(db, current)
 
 
 @router.get("/dashboard/{cso_id}")
@@ -109,6 +115,11 @@ def export_salary_timesheets(cso_id: int, month: str = Query(pattern=MONTH), reg
     result = timesheets.signed(db, current, org, month, region_id, setting)
     if not result["providers"]:
         raise HTTPException(404, "No signed Payroll timesheets are available for this month.")
+    if format == "pdf" and len(result["providers"]) > timesheets.MAX_PDF_PROVIDERS:
+        # One page per provider: thousands of pages take minutes and too much memory. The CSV has everyone.
+        raise HTTPException(422, f"This PDF would have {len(result['providers']):,} timesheet pages. Choose a region, or "
+                                 f"Facility or Community, to keep it under {timesheets.MAX_PDF_PROVIDERS:,} providers. "
+                                 "The CSV and the payment form include everyone.")
     payload = timesheets.csv_file(result) if format == "csv" else timesheets.pdf_file(result)
     system_audit.record(db, current, "organization", org.id, "download_salary_timesheets",
                         after={"month": month, "region_id": region_id, "work_setting": setting, "format": format, "bank_details": True,
@@ -116,6 +127,41 @@ def export_salary_timesheets(cso_id: int, month: str = Query(pattern=MONTH), reg
     db.commit()
     return Response(payload, media_type="text/csv; charset=utf-8" if format == "csv" else "application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="salary-timesheets-{month}-cso-{org.id}.{format}"',
+                             "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+
+def masked(account):
+    """The screen shows the last four digits; the full number is only in the downloaded, audited file."""
+    account = str(account or "")
+    return ("•••• " + account[-4:]) if len(account) > 4 else account
+
+
+@router.get("/payment-form")
+def payment_form(cso_id: int, month: str = Query(pattern=MONTH), region_id: int | None = Query(default=None, gt=0),
+                 setting: Setting | None = None, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(CSO_FINANCE))):
+    """The signed Payroll as the payment form: one row per person, salary and bank."""
+    form = payment_forms.payroll_form(timesheets.signed(db, current, organization(db, current, cso_id), month, region_id, setting))
+    for row in form["rows"]:
+        row["bank_account_number"] = masked(row["bank_account_number"])
+    return form
+
+
+@router.get("/payment-form/export")
+def export_payment_form(cso_id: int, month: str = Query(pattern=MONTH), region_id: int | None = Query(default=None, gt=0),
+                        setting: Setting | None = None, format: Literal["pdf", "xlsx"] = "pdf",
+                        db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(CSO_FINANCE))):
+    org = organization(db, current, cso_id)
+    form = payment_forms.payroll_form(timesheets.signed(db, current, org, month, region_id, setting))
+    if not form["rows"]:
+        raise HTTPException(404, "No signed Payroll is available for this month. Regional Finance signs the Payroll report first.")
+    payload = payment_forms.pdf_file(form) if format == "pdf" else payment_forms.xlsx_file(form)
+    system_audit.record(db, current, "organization", org.id, "download_payment_form",
+                        after={"month": month, "region_id": region_id, "work_setting": setting, "format": format, "bank_details": True,
+                               "rows": len(form["rows"]), "totals": form["totals"]})
+    db.commit()
+    media = "application/pdf" if format == "pdf" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    return Response(payload, media_type=media,
+                    headers={"Content-Disposition": f'attachment; filename="payroll-payment-form-{month}-cso-{org.id}.{format}"',
                              "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
 

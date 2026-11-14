@@ -87,10 +87,14 @@ def test_regional_finance_acts_only_on_the_cadres_granted_to_them(api, db, route
 
 
 @pytest.mark.parametrize("provider", PROVIDERS)
-def test_payroll_ends_at_rm_with_nothing_waiting_on_finance(api, route, provider):
+def test_rm_approved_payroll_waits_for_regional_finance_approval(api, route, provider):
+    # RM's approval ends the reviewers' steps; Regional Finance then approves each Payroll timesheet (or returns it)
+    # before signing the region's month and sending it to the CSO. There is still no payment review: Payroll is no claim.
     log = route["log"](provider, "PAYROLL", "APPROVED")
-    assert not in_queue(api, route["finance"], log)
-    assert not [name for name in actions(api, route["finance"], log) if name.startswith("finance")]
+    assert in_queue(api, route["finance"], log)
+    finance_actions = actions(api, route["finance"], log)
+    assert "finance_timesheet_approve" in finance_actions and "return" in finance_actions
+    assert "finance_review" not in finance_actions and not [a for a in finance_actions if a.startswith("route_")]
 
 
 def test_a_technical_officer_sees_only_their_own_cadre(api, db, route, temporary):

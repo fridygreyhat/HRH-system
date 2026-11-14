@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...core import audit as system_audit, config
-from ...core.roles import PROVIDER
+from ...core.roles import CSO_FINANCE, FHI360_FINANCE, PROVIDER, REGIONAL_FINANCE
 from ...core.security import CurrentUser, get_current_user, require_roles
 from ...core.serialize import to_dict
 from ...core.settings import get_setting
@@ -165,6 +165,27 @@ def _summary(db: Session, log: WorkLog) -> dict:
     }
 
 
+SALARY_VIEWERS = (REGIONAL_FINANCE, FHI360_FINANCE, CSO_FINANCE)
+
+
+def payroll_pay(db, log, staff, period, current):
+    """What a Payroll timesheet means in pay: the monthly salary of the provider's scale, paid by the CSO.
+
+    Only Finance sees the amount. CTC, Technical, RM and the provider approve or read the timesheet without it,
+    so the amount is never sent to them."""
+    if log.work_type != "PAYROLL":
+        return None
+    if not (current.unrestricted or current.has_any(*SALARY_VIEWERS)):
+        return {"amount_visible": False, "salary_scale": (staff.salary_scale or "").strip() or None}
+    from ...core.period_dates import pay_month_of
+    from ...services.salary_amounts import amounts_for
+    month = pay_month_of(period.end_date)
+    scale = (staff.salary_scale or "").strip()
+    amount = amounts_for(db, month).get(scale) if scale else None
+    return {"amount_visible": True, "month": month, "salary_scale": scale or None,
+            "monthly_salary": str(amount) if amount is not None else None, "currency": "TZS"}
+
+
 def _detail(db: Session, current: CurrentUser, log: WorkLog) -> dict:
     staff = db.get(Staff, log.staff_id)
     period = db.get(PayPeriod, log.period_id)
@@ -199,6 +220,7 @@ def _detail(db: Session, current: CurrentUser, log: WorkLog) -> dict:
                   "last_name": staff.last_name, "salary_scale": staff.salary_scale},
         "cadre": log_cadre_out(db, log),
         "financial_preview": finance_gate.preview(db, log) if log.workflow_version >= 2 and log.work_type != "PAYROLL" else None,
+        "payroll_pay": payroll_pay(db, log, staff, period, current),
         "assignment": assignment_out(db, db.get(StaffAssignment, log.assignment_id)),
         "period": {**to_dict(period), "holidays": public_holidays.for_period(db, period)},
         "service_targets": service_targets.progress(db, log),

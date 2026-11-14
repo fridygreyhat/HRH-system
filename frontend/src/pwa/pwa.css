@@ -1,18 +1,13 @@
-/* Install offer: a small card above the phone navigation, centred on larger screens. */
-.install-prompt {
-  position: fixed; z-index: 45; left: 50%; transform: translateX(-50%); bottom: calc(1rem + env(safe-area-inset-bottom));
-  display: flex; align-items: center; gap: 0.75rem; width: min(30rem, calc(100% - 1.5rem)); padding: 0.75rem 0.9rem;
-  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow-lg);
-  animation: install-in 0.25s ease-out;
+/* Install offer: one slim line inside the Home page (never floating over forms, dialogs or the menu). */
+.install-bar {
+  display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0.5rem 0.4rem 0.75rem;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 12px;
 }
-.install-prompt img { flex: none; border-radius: 10px; }
-.install-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.install-text strong { font-size: 0.92rem; }
-.install-text span { font-size: 0.8rem; color: var(--muted); }
-@keyframes install-in { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
-@media (max-width: 900px) { .install-prompt { bottom: calc(5.2rem + env(safe-area-inset-bottom)); } }
-@media (prefers-reduced-motion: reduce) { .install-prompt { animation: none; } }
-@media print { .install-prompt { display: none; } }
+.install-bar img { flex: none; border-radius: 6px; }
+.install-bar-text { flex: 1; min-width: 0; font-size: 0.88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.install-bar .btn, .install-bar-later { flex: none; }
+@media (max-width: 360px) { .install-bar img { display: none; } }
+@media print { .install-bar { display: none; } }
 
 /* Installed (standalone): keep content clear of the phone's status bar and notch. */
 @media (display-mode: standalone) {

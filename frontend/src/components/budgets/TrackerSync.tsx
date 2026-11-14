@@ -3,7 +3,8 @@ import { api, qs, saveBlob } from '../../api';
 import { useAction, useApi } from '../../hooks';
 import { dateTime, humanize, num } from '../../format';
 import { BudgetSyncLog } from '../../types';
-import { Alert, AsyncState, Field, Section, StatusBadge } from '../ui';
+import { Alert, AsyncState, Field, pageLang, Section, StatusBadge } from '../ui';
+import { confirmAction } from '../ConfirmDialog';
 
 export const TRACKER_COLUMNS = ['code', 'name', 'category', 'period_start', 'region', 'estimated_amount', 'allocated_amount', 'external_ref'];
 const REQUIRED = new Set(['code', 'name', 'category', 'period_start', 'allocated_amount']);
@@ -57,8 +58,15 @@ export function TrackerPanel({ periodId, onChanged }: { periodId: string; onChan
   };
 
   const doExport = async () => {
-    const scope = periodId ? 'the selected period' : 'all periods';
-    if (!window.confirm(`Export FHI360 lines for ${scope}? Exported lines are marked “Exported” until they are reconciled.`)) return;
+    const sw = pageLang() === 'sw';
+    const scope = periodId ? (sw ? 'kipindi kilichochaguliwa' : 'the selected period') : (sw ? 'vipindi vyote' : 'all periods');
+    if (!(await confirmAction({
+      title: sw ? `Hamisha mistari ya FHI360 ya ${scope}?` : `Export FHI360 lines for ${scope}?`,
+      message: sw
+        ? 'Mistari iliyohamishwa inawekwa alama “Imehamishwa” hadi itakapolinganishwa.'
+        : 'Exported lines are marked “Exported” until they are reconciled.',
+      confirmLabel: sw ? 'Hamisha' : 'Export',
+    }))) return;
     setExported(null);
     const file = await exp.run(() => api.blob(`/budgets/tracker/export${qs({ period_id: periodId })}`, 'POST', 'fhi360-tracker-export.csv'));
     if (file) {

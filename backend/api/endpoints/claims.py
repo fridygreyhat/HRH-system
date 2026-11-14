@@ -227,7 +227,11 @@ def _context(db: Session, current: CurrentUser, body: ClaimCreate):
 @router.post("/preview")
 def preview(body: ClaimCreate, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(FHI360_FINANCE, CSO_FINANCE))):
     """Show route, payor, executor, formula and components before anything is created."""
+    from ...core import workflow_policy
     category, staff, period, assignment, log = _context(db, current, body)
+    # The same gate as creating: never show an amount for a claim that cannot be made by hand.
+    if (log and log.workflow_version >= 2) or (not log and workflow_policy.NEW_RECORD_WORKFLOW_VERSION >= 2):
+        raise HTTPException(409, "New claims must be created by the Regional Finance review and channel-routing gate")
     r = cl.resolve(db, category, staff, period, assignment, log, body.declared_units)
     return {
         "route_code": r.route_code,

@@ -9,7 +9,9 @@ import {
 import { useApi } from '../hooks';
 import { navigate } from '../nav';
 import { ClaimSummary, Me, PayPeriod, RoutingQueueItem, WorkLogSummary } from '../types';
+import { signoffTarget, SignoffItem } from '../signoffs';
 import { workMonthLabel } from './workLogStart';
+import { InstallBar } from '../pwa/InstallPrompt';
 import './polish-provider.css';
 
 type Lang = 'en' | 'sw';
@@ -44,6 +46,9 @@ const ROUTING = '/finance/pending-routing?work_type=SERVICES';
 const CLAIMS = '/claims';
 const COMMUNITY = '/claims?work_type=COMMUNITY';
 const CHANGES = '/staff/change-requests';
+const SIGNOFFS = '/finance/monthly-report/status';
+const PAYROLL_STATUS = '/cso-finance/payroll-status';
+const unsigned = (rows: any[]) => rows.filter(row => row.state !== 'SIGNED');
 
 /** Ordered by what a person most needs to do. Each one opens the exact place to do it, in one click. */
 const TASKS: Task[] = [
@@ -82,9 +87,10 @@ const TASKS: Task[] = [
     count: { path: ROUTING },
   },
   {
-    key: 'finance-report', page: 'finance-monthly', icon: 'pie', roles: ['REGIONAL_FINANCE'],
-    title: { en: 'Monthly report to sign', sw: 'Ripoti ya mwezi ya kusaini' },
-    hint: { en: 'Sign the Payroll report', sw: 'Saini ripoti ya Payroll' },
+    key: 'finance-report', page: 'payroll-to-cso', icon: 'wallet', roles: ['REGIONAL_FINANCE'],
+    title: { en: 'Send Payroll to the CSO', sw: 'Tuma Mshahara kwa CSO' },
+    hint: { en: 'Sign each region\u2019s Payroll report: the CSO pays from it', sw: 'Saini ripoti ya Mshahara ya kila mkoa: CSO hulipa kutoka kwayo' },
+    count: { path: SIGNOFFS, pick: rows => unsigned(rows).filter(row => row.work_type === 'PAYROLL').length },
   },
   {
     key: 'central-prf', page: 'claims', icon: 'wallet', roles: ['FHI360_FINANCE'],
@@ -99,8 +105,9 @@ const TASKS: Task[] = [
   },
   {
     key: 'salary-files', page: 'cso', target: 'salary', icon: 'wallet', roles: ['CSO_FINANCE'],
-    title: { en: 'Salary timesheets', sw: 'Majedwali ya mishahara' },
-    hint: { en: 'Download signed salary files', sw: 'Pakua mishahara iliyosainiwa' },
+    title: { en: 'Payroll from Regional Finance', sw: 'Mshahara kutoka Fedha ya Mkoa' },
+    hint: { en: 'Salary timesheets and payment form to pay', sw: 'Majedwali ya mshahara na fomu ya malipo' },
+    count: { path: PAYROLL_STATUS, pick: rows => rows.filter(row => row.state === 'SIGNED').reduce((total, row) => total + row.signed_providers, 0) },
   },
   {
     key: 'cso-payments', page: 'cso', icon: 'receipt', roles: ['CSO_FINANCE'],
@@ -387,6 +394,38 @@ function summaries(rows: Rows, me: Me, has: (...roles: string[]) => boolean, lan
     });
   }
 
+  const signoffs = rows[SIGNOFFS] as SignoffItem[] | null;
+  if (has('REGIONAL_FINANCE') && signoffs) {
+    const waiting = unsigned(signoffs) as SignoffItem[];
+    const payroll = waiting.filter(item => item.work_type === 'PAYROLL');
+    const reportMonth = (month: string) => new Intl.DateTimeFormat(sw ? 'sw-TZ' : 'en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${month}-01T00:00:00Z`));
+    out.push({
+      kpiLabel: sw ? 'Muhtasari wa ripoti za mwezi' : 'Monthly reports at a glance',
+      // Only a reminder when something waits; otherwise the Services summary below leads.
+      lead: payroll.length
+        ? (sw ? `Ripoti ${num(payroll.length)} za Mshahara hazijasainiwa, kwa hiyo CSO haijapokea majedwali ya mishahara.`
+          : `${num(payroll.length)} Payroll ${payroll.length === 1 ? 'report is' : 'reports are'} not signed, so the CSO has no salary timesheets yet.`)
+        : waiting.length ? (sw ? `Ripoti ${num(waiting.length)} za mwezi zinasubiri saini yako.` : `${num(waiting.length)} monthly ${waiting.length === 1 ? 'report waits' : 'reports wait'} for your signature.`) : undefined,
+      kpis: [],
+      list: waiting.length ? {
+        title: sw ? 'Ripoti za kusaini' : 'Reports to sign',
+        more: { label: sw ? 'Zote' : 'See all', page: 'finance-monthly' },
+        items: waiting.slice(0, 5).map(item => (
+          <button type="button" className="home-row" key={signoffTarget(item)} onClick={() => navigate('finance-monthly', signoffTarget(item))}>
+            <span className="home-row-main home-row-stack">
+              <span className="cell-main">{item.region_name}</span>
+              <span className="cell-sub">{reportMonth(item.month)} · {sw ? `watoa huduma ${num(item.providers)}` : `${num(item.providers)} ${item.providers === 1 ? 'provider' : 'providers'}`}</span>
+            </span>
+            <span className="home-row-side home-row-stack">
+              <span className="cell-main">{item.work_type === 'PAYROLL' ? (sw ? 'Mshahara' : 'Payroll') : (sw ? 'Huduma' : 'Services')}</span>
+              <span className="cell-sub">{item.state === 'CHANGED' ? (sw ? 'Imebadilika: saini tena' : 'Changed: sign again') : (sw ? 'Haijasainiwa' : 'Not signed')}</span>
+            </span>
+          </button>
+        )),
+      } : undefined,
+    });
+  }
+
   const routing = rows[ROUTING] as RoutingQueueItem[] | null;
   if (has('REGIONAL_FINANCE') && routing) {
     const timesheets = routing.filter(item => item.next_action === 'REVIEW_TIMESHEET');
@@ -450,6 +489,42 @@ function summaries(rows: Rows, me: Me, has: (...roles: string[]) => boolean, lan
       } : undefined,
     });
   }
+  const csoPayroll = rows[PAYROLL_STATUS] as any[] | null;
+  if (has('CSO_FINANCE') && csoPayroll) {
+    const payroll = csoPayroll;
+    const received = payroll.filter(row => row.state === 'SIGNED');
+    const waiting = payroll.filter(row => row.state === 'WAITING');
+    const reportMonth = (month: string) => new Intl.DateTimeFormat(sw ? 'sw-TZ' : 'en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${month}-01T00:00:00Z`));
+    const people = (n: number) => (sw ? `watoa huduma ${num(n)}` : `${num(n)} ${n === 1 ? 'provider' : 'providers'}`);
+    const places = (list: any[]) => list.map(row => row.region_name).join(', ');
+    out.push({
+      kpiLabel: sw ? 'Muhtasari wa mshahara' : 'Payroll at a glance',
+      lead: received.length
+        ? (sw ? `Mshahara wa ${reportMonth(received[0].month)} umepokelewa kutoka Fedha ya Mkoa: ${people(received.filter(r => r.month === received[0].month).reduce((t, r) => t + r.signed_providers, 0))} (${places(received.filter(r => r.month === received[0].month))}).`
+          : `${reportMonth(received[0].month)} payroll received from Regional Finance: ${people(received.filter(r => r.month === received[0].month).reduce((t, r) => t + r.signed_providers, 0))} (${places(received.filter(r => r.month === received[0].month))}).`)
+        : waiting.length
+          ? (sw ? `Unasubiri Fedha ya Mkoa isaini mshahara wa ${reportMonth(waiting[0].month)} (${places(waiting.filter(r => r.month === waiting[0].month))}).`
+            : `Waiting for Regional Finance to sign ${reportMonth(waiting[0].month)} payroll (${places(waiting.filter(r => r.month === waiting[0].month))}).`)
+          : undefined,
+      kpis: [],
+      list: payroll.length ? {
+        title: sw ? 'Mshahara kutoka Fedha ya Mkoa' : 'Payroll from Regional Finance',
+        more: { label: sw ? 'Fungua' : 'Open', page: 'cso' },
+        items: payroll.slice(0, 6).map(row => (
+          <button type="button" className="home-row" key={`${row.month}-${row.region_id}`} onClick={() => navigate('cso', 'salary')}>
+            <span className="home-row-main home-row-stack">
+              <span className="cell-main">{row.region_name}</span>
+              <span className="cell-sub">{reportMonth(row.month)} · {people(row.state === 'SIGNED' ? row.signed_providers : row.approved_providers)}</span>
+            </span>
+            <span className="home-row-side home-row-stack">
+              <span className="cell-main">{row.state === 'SIGNED' ? (sw ? 'Imepokelewa' : 'Received') : (sw ? 'Inasubiri' : 'Waiting')}</span>
+              <span className="cell-sub">{row.state === 'SIGNED' ? (sw ? `Imesainiwa na ${row.approved_by_name}` : `Signed by ${row.approved_by_name}`) : (sw ? 'Fedha ya Mkoa haijasaini' : 'Regional Finance has not signed')}</span>
+            </span>
+          </button>
+        )),
+      } : undefined,
+    });
+  }
   if (has('CSO_FINANCE') && claims) {
     const pending = claims.filter(csoPending);
     const proof = claims.filter(row => row.payment_status === 'PROOF_REQUIRED');
@@ -507,6 +582,8 @@ export function Home() {
     [CLAIMS]: useApi<any[]>(path(CLAIMS)).data,
     [COMMUNITY]: useApi<any[]>(path(COMMUNITY)).data,
     [CHANGES]: useApi<any[]>(path(CHANGES)).data,
+    [SIGNOFFS]: useApi<any[]>(path(SIGNOFFS)).data,
+    [PAYROLL_STATUS]: useApi<any[]>(path(PAYROLL_STATUS)).data,
   };
   if (!me) return null;
   const setup = SETUP.filter(step => hasRole(...step.roles));
@@ -516,7 +593,12 @@ export function Home() {
   const firstName = me.staff ? me.full_name.split(/\s+/).find(part => part !== 'DEMO') || me.full_name : me.full_name.replace(/^DEMO\s+/, '');
   const blocks = summaries(rows, me, has, language, monthName);
   const lead = blocks.find(block => block.lead)?.lead;
-  const primary = tasks[0];
+  // The big button opens the first task with work waiting, so it never points at a list that is all clear.
+  const waitingIn = (task: Task) => {
+    const data = task.count ? rows[task.count.path] : null;
+    return task.count && data ? (task.count.pick ? task.count.pick(data, me) : data.length) : 0;
+  };
+  const primary = tasks.find(task => waitingIn(task) > 0) || tasks[0];
   const lists = blocks.filter(block => block.list);
   return (
     <div className="stack-lg home">
@@ -547,6 +629,7 @@ export function Home() {
           </p>
         </div>
       </section>
+      <InstallBar />
       {blocks.map(block => block.kpis.length > 0 && <KpiStrip key={block.kpiLabel} items={block.kpis} label={block.kpiLabel} />)}
       {setup.length > 0 && <SetupChecklist lang={language} steps={setup} />}
       <div className={`home-body${lists.length ? ' has-side' : ''}`}>

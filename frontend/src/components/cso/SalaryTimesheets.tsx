@@ -4,6 +4,7 @@ import { useAuth } from '../../AuthContext';
 import { dateOnly, money, num, payMonth, payMonthDates, previousMonth, todayLocal, workHours } from '../../format';
 import { useAction, useApi } from '../../hooks';
 import { Alert, AsyncState, Empty, Field, KpiStrip, Section } from '../ui';
+import { PaymentForm, PaymentFormView } from '../finance/PaymentFormView';
 
 interface RegionStatus {
   id: number;
@@ -152,17 +153,19 @@ export function SalaryTimesheets({ csoId, noCso = false }: { csoId: string; noCs
   const [month, setMonth] = useState(lastMonth);
   const [regionId, setRegionId] = useState('');
   const [setting, setSetting] = useState('');
-  const [preparing, setPreparing] = useState<'csv' | 'pdf' | null>(null);
+  const [preparing, setPreparing] = useState<'csv' | 'pdf' | 'form-pdf' | 'form-xlsx' | null>(null);
   const query = { cso_id: csoId, month, region_id: regionId, setting };
   const summary = useApi<SalaryTimesheetSummary>(csoId && month ? `/cso-finance/salary-timesheets${qs(query)}` : null);
   const download = useAction();
+  const [showForm, setShowForm] = useState(false);
+  const form = useApi<PaymentForm>(showForm && csoId && month ? `/cso-finance/payment-form${qs(query)}` : null);
   const title = sw ? 'Majedwali ya mshahara' : 'Salary timesheets';
 
-  const save = async (format: 'csv' | 'pdf') => {
+  const save = async (format: 'csv' | 'pdf' | 'form-pdf' | 'form-xlsx') => {
     setPreparing(format);
-    const file = await download.run(() =>
-      api.blob(`/cso-finance/salary-timesheets/export${qs({ ...query, format })}`, 'GET', `salary-timesheets-${month}.${format}`),
-    );
+    const file = await download.run(() => (format.startsWith('form-')
+      ? api.blob(`/cso-finance/payment-form/export${qs({ ...query, format: format.slice(5) })}`, 'GET', `payroll-payment-form-${month}.${format.slice(5)}`)
+      : api.blob(`/cso-finance/salary-timesheets/export${qs({ ...query, format })}`, 'GET', `salary-timesheets-${month}.${format}`)));
     setPreparing(null);
     if (file) saveBlob(file);
   };
@@ -203,7 +206,7 @@ export function SalaryTimesheets({ csoId, noCso = false }: { csoId: string; noCs
         {summary.data && (
           <div className="fin-actions">
             <button type="button" className="btn btn-primary" onClick={() => save('pdf')} disabled={download.busy || !summary.data.totals.providers}>
-              {preparing === 'pdf' ? (sw ? 'Inaandaa PDF…' : 'Preparing PDF…') : (sw ? 'Pakua PDF' : 'Download PDF')}
+              {preparing === 'pdf' ? (sw ? 'Inaandaa PDF…' : 'Preparing PDF…') : (sw ? 'Majedwali + fomu ya malipo (PDF)' : 'Timesheets + payment form (PDF)')}
             </button>
             <button type="button" className="btn btn-secondary" onClick={() => save('csv')} disabled={download.busy || !summary.data.totals.providers}>
               {preparing === 'csv' ? (sw ? 'Inaandaa CSV…' : 'Preparing CSV…') : (sw ? 'Pakua CSV' : 'Download CSV')}
@@ -225,6 +228,26 @@ export function SalaryTimesheets({ csoId, noCso = false }: { csoId: string; noCs
                     { label: sw ? 'Jumla ya mshahara' : 'Total salary', value: money(data.totals.salary), icon: 'wallet', tone: 'success' },
                   ]}
                 />
+                <section className="cso-payment-form stack" aria-label={sw ? 'Fomu ya malipo ya mshahara' : 'Payroll payment form'}>
+                  <div className="row">
+                    <h3>{sw ? 'Fomu ya malipo' : 'Payment form'}</h3>
+                    <button type="button" className="btn btn-primary btn-sm" onClick={() => save('form-pdf')} disabled={download.busy}>
+                      {preparing === 'form-pdf' ? (sw ? 'Inaandaa PDF…' : 'Preparing PDF…') : (sw ? 'Fomu ya malipo (PDF)' : 'Payment form (PDF)')}
+                    </button>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => save('form-xlsx')} disabled={download.busy}>
+                      {preparing === 'form-xlsx' ? (sw ? 'Inaandaa Excel…' : 'Preparing Excel…') : (sw ? 'Fomu ya malipo (Excel)' : 'Payment form (Excel)')}
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-sm" aria-expanded={showForm} onClick={() => setShowForm(!showForm)}>
+                      {showForm ? (sw ? 'Ficha fomu' : 'Hide payment form') : (sw ? 'Onyesha fomu' : 'Show payment form')}
+                    </button>
+                  </div>
+                  {showForm && (form.error
+                    ? <Alert kind="warn">{form.error}</Alert>
+                    : form.data ? <PaymentFormView form={form.data} sw={sw} /> : <p className="muted">{sw ? 'Inapakia…' : 'Loading…'}</p>)}
+                  {showForm && form.data && <p className="fin-footnote">{sw
+                    ? 'Skrini inaonyesha tarakimu nne za mwisho za akaunti. Namba kamili zipo kwenye PDF na Excel.'
+                    : 'The screen shows the last four digits of each account. The full numbers are in the PDF and Excel files.'}</p>}
+                </section>
                 <p className="fin-footnote">
                   {data.settings.map((row) => (sw
                     ? `${settingName(row.name)}: watoa huduma ${num(row.providers)}, ${money(row.salary)}`
@@ -252,7 +275,7 @@ export function SalaryTimesheets({ csoId, noCso = false }: { csoId: string; noCs
             )}
             {data.regions.filter((region) => region.included && !region.signed).map((region) => (
               <Alert key={region.id} kind="warn">
-                <strong>{region.name}:</strong> {sw ? 'bado haijasainiwa, kwa hiyo majedwali yake hayamo kwenye faili.' : 'not signed yet, so its timesheets are not in the file.'}
+                <strong>{region.name}:</strong> {sw ? 'Fedha ya Mkoa bado haijasaini ripoti ya Mshahara, kwa hiyo majedwali yake hayamo kwenye faili.' : 'Regional Finance has not signed the Payroll report yet, so its timesheets are not in the file.'}
               </Alert>
             ))}
             {data.regions.filter((region) => region.included && region.providers_without_cso > 0).map((region) => (
@@ -283,8 +306,8 @@ export function SalaryTimesheets({ csoId, noCso = false }: { csoId: string; noCs
             <Alert>{download.error}</Alert>
             {data.providers.length > 0 && <ProviderList key={`${month}-${regionId}-${setting}`} rows={data.providers} sw={sw} />}
             <p className="fin-footnote">{sw
-              ? 'PDF: muhtasari, kisha ukurasa mmoja wa jedwali kwa kila mtoa huduma, kwa kuhifadhi. CSV: mstari mmoja kwa kila mtoa huduma wenye mshahara, taarifa za benki na masaa ya kila siku. Hifadhi faili hizi kwa siri, na fungua safu ya namba ya akaunti kama maandishi ili lahajedwali zisibadilishe namba.'
-              : 'PDF: a summary, then one timesheet page per provider, for filing. CSV: one row per provider with salary, bank details and hours for each day. Keep these files private, and open the bank account column as text so spreadsheets do not change the numbers.'}</p>
+              ? 'PDF: ukurasa mmoja wa jedwali kwa kila mtoa huduma (mahudhurio na jumla za shughuli za mwezi), kisha fomu ya malipo mwishoni. CSV: mstari mmoja kwa kila mtoa huduma wenye mshahara, taarifa za benki na masaa ya kila siku. Hifadhi faili hizi kwa siri, na fungua safu ya namba ya akaunti kama maandishi ili lahajedwali zisibadilishe namba.'
+              : 'PDF: one timesheet page per provider (attendance and the month\'s activity totals), then the payment form as the last pages. CSV: one row per provider with salary, bank details and hours for each day. Keep these files private, and open the bank account column as text so spreadsheets do not change the numbers.'}</p>
           </div>
         )}
       </AsyncState>

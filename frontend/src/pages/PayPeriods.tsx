@@ -6,6 +6,7 @@ import { useAction, useApi } from '../hooks';
 import { Named, PayPeriod } from '../types';
 import { Alert, Field, Modal, StatusBadge } from '../components/ui';
 import { ProviderPeriodRecords } from './ProviderPeriodRecords';
+import { confirmAction } from '../components/ConfirmDialog';
 
 interface PayPeriodPayload {
   start_date: string;
@@ -133,9 +134,14 @@ export function PayPeriods() {
   };
   const removePeriod = async (period: PayPeriod) => {
     const name = period.period_label || `${period.start_date} – ${period.end_date}`;
-    if (!window.confirm(sw
-      ? `Futa ${name}? Hili haliwezi kutenduliwa. Vipindi vyenye kumbukumbu za kazi, madai au mistari ya bajeti haviwezi kufutwa.`
-      : `Delete ${name}? This cannot be undone. Periods with work logs, claims or budget lines cannot be deleted.`)) return;
+    if (!(await confirmAction({
+      title: sw ? `Futa ${name}?` : `Delete ${name}?`,
+      message: sw
+        ? 'Kipindi hiki kitaondolewa kabisa. Hili haliwezi kutenduliwa.'
+        : 'This pay period is removed for good. This cannot be undone.',
+      confirmLabel: sw ? 'Futa kipindi' : 'Delete period',
+      danger: true,
+    }))) return;
     const result = await deletion.run(() => api.del(`/admin/pay-periods/${period.id}`));
     if (result) { setNotice(sw ? 'Kipindi kisichotumika kimefutwa.' : 'Unused pay period deleted.'); await periods.reload(); }
   };
@@ -201,7 +207,7 @@ export function PayPeriods() {
                       {hasRole('SUPER_ADMIN') && <button type="button" className="btn btn-secondary btn-sm"
                         onClick={() => setRecordsPeriod(period)}>{sw ? 'Kumbukumbu za watoa huduma' : 'Provider records'}</button>}
                       {period.can_manage && <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setNotice(null); setEditing(period); }}>{sw ? 'Hariri' : 'Edit'}</button>}
-                      {hasRole('SUPER_ADMIN') && <button type="button" className="btn btn-danger btn-sm" disabled={!period.can_delete || deletion.busy} title={period.can_delete ? (sw ? 'Futa kipindi kisichotumika' : 'Delete unused period') : (sw ? 'Kinatumika: hifadhi vipindi visivyolipwa ili kuanza upya bila kupoteza historia' : 'In use: archive unpaid periods to restart while retaining history')} onClick={() => removePeriod(period)}>{sw ? 'Futa' : 'Delete'}</button>}
+                      {hasRole('SUPER_ADMIN') && <button type="button" className="btn btn-danger btn-sm" disabled={!period.can_delete || deletion.busy} onClick={() => removePeriod(period)}>{sw ? 'Futa' : 'Delete'}</button>}
                       {hasRole('SUPER_ADMIN') && period.status !== 'ARCHIVED' && <>
                         <button type="button" className="btn btn-secondary btn-sm" disabled={!period.can_archive || deletion.busy}
                           title={period.archive_block_reason || (sw ? 'Hifadhi historia na uruhusu kipindi kipya kwa tarehe hizi' : 'Preserve history and allow a fresh period for these dates')}
@@ -214,6 +220,11 @@ export function PayPeriods() {
               </tbody>
             </table>
           </div>
+          {hasRole('SUPER_ADMIN') && sortedPeriods.some((period) => !period.can_delete) && <p className="muted small table-note">
+            {sw
+              ? 'Futa inafanya kazi kwa kipindi kisicho na kumbukumbu za kazi, madai wala mistari ya bajeti tu. Kuanza upya kipindi kinachotumika, tumia “Hifadhi / anza upya”: historia inabaki.'
+              : 'Delete works only for a period with no work logs, claims or budget lines. To restart a period in use, use “Archive / restart”: its history is kept.'}
+          </p>}
         </section>
       )}
       {editing !== undefined && (

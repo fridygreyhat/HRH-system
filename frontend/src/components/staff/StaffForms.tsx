@@ -6,8 +6,8 @@ import { Cadre, StaffDetail, StaffSummary } from '../../types';
 import { Alert, Field, Modal, ReasonDialog } from '../ui';
 import { AssignmentFields, AssignmentValue, EMPTY_ASSIGNMENT, assignmentPayload, assignmentValueFrom } from './AssignmentFields';
 
-export const PHONE_PATTERN = '^\\+?\\d{9,15}$';
-const PHONE_RE = new RegExp(PHONE_PATTERN);
+export { TZ_MOBILE_INPUT_PATTERN as PHONE_PATTERN } from '../../phones';
+import { normalizeTzMobile, TZ_MOBILE_HINT, TZ_MOBILE_INPUT_PATTERN, TZ_MOBILE_MESSAGE } from '../../phones';
 export const PAYMENT_METHODS = ['MOBILE_WALLET', 'BANK'];
 export const ENROLLMENT_SOURCES = ['MANUAL', 'ROSTER_IMPORT', 'ENGAGEMENT_LIST'];
 export const PAYMENT_CRITICAL = ['cadre_id', 'salary_scale', 'payment_method', 'payment_provider', 'payment_account', 'verified_phone', 'status'];
@@ -178,8 +178,8 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
             <Field label="Last name (required)">
               <input value={f.last_name} onChange={set('last_name')} required maxLength={100} autoComplete="off" />
             </Field>
-            <Field label="Verified phone (required)" hint="9–15 digits, optional leading +, e.g. +255712345678">
-              <input type="tel" value={f.verified_phone} onChange={set('verified_phone')} required pattern={PHONE_PATTERN} autoComplete="off" />
+            <Field label="Mobile phone (required)" hint={TZ_MOBILE_HINT}>
+              <input type="tel" value={f.verified_phone} onChange={set('verified_phone')} required pattern={TZ_MOBILE_INPUT_PATTERN} autoComplete="off" />
             </Field>
             <Field label="Employment start date (required)">
               <input type="date" value={f.employment_start_date} onChange={set('employment_start_date')} required />
@@ -294,8 +294,8 @@ export function EditStaffModal({
       setError('Nothing has changed.');
       return;
     }
-    if (changed.includes('verified_phone') && !PHONE_RE.test(f.verified_phone.trim())) {
-      setError('Phone must be 9–15 digits with an optional leading +.');
+    if (changed.includes('verified_phone') && !normalizeTzMobile(f.verified_phone)) {
+      setError(TZ_MOBILE_MESSAGE);
       return;
     }
     const changes: Record<string, string | number | null> = {};
@@ -353,7 +353,7 @@ export function EditStaffModal({
             <input value={f.salary_scale} onChange={set('salary_scale')} maxLength={50} />
           </Field>
           <Field label={`Verified phone${lockedNote}`} hint="9–15 digits, optional leading +">
-            <input type="tel" value={f.verified_phone} onChange={set('verified_phone')} required pattern={PHONE_PATTERN} />
+            <input type="tel" value={f.verified_phone} onChange={set('verified_phone')} required pattern={TZ_MOBILE_INPUT_PATTERN} />
           </Field>
           <Field label="Status" hint={csoRequest ? undefined : 'Use “Exit” to end employment.'}>
             <select value={f.status} onChange={set('status')}>

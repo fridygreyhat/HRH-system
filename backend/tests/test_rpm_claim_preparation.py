@@ -15,7 +15,7 @@ def remove_rpm_cadre_limits(db):
 
 
 @pytest.mark.parametrize("provider", ["chw1", "clerk1", "hcp1"])
-def test_rpm_reviews_all_regional_cadres_without_cadre_grants(api, db, period, v22, provider):
+def test_rpm_reviews_all_regional_cadres_without_cadre_grants(api, db, period, v22, provider, each_timesheet_sms):
     from backend.models import Staff, User, SMSOutbox
     actor_id = remove_rpm_cadre_limits(db)
     staff = db.query(Staff).join(User, Staff.user_id == User.id).filter(User.username == provider).one()

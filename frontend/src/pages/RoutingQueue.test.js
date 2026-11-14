@@ -16,8 +16,10 @@ const mockItem = {
 jest.mock('../hooks', () => ({
   useApi: path => {
     if (path && path.startsWith('/finance/pending-routing')) mockQueuePath = path;
+    if (!path || path.startsWith('/finance/services-month')) return { data: null, error: null, loading: false, reload: jest.fn() };
     return { data: path === '/finance/regions' ? [] : [mockItem], error: null, loading: false, reload: jest.fn() };
   },
+  useAction: () => ({ busy: false, error: null, run: async (fn) => fn() }),
 }));
 jest.mock('../components/worklogs/WorkLogDrawer', () => ({ WorkLogDrawer: ({ logId }) => <div role="dialog">Review work log #{logId}</div> }));
 
@@ -33,7 +35,7 @@ test('services queue preserves finance payment review and opens its work-log rev
     expect(container.textContent).toContain('TZS 173,450');
     expect(container.textContent).toContain('Review amount');
     expect(container.textContent).toContain('Services routing queue');
-    expect(container.textContent).toContain('Payroll has no pricing');
+    expect(container.textContent).toContain('Payroll is not routed here: it goes to the CSO when you sign the monthly Payroll report');
     expect(mockQueuePath).toContain('work_type=SERVICES');
     act(() => Simulate.click(Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Review amount')));
     expect(container.textContent).toContain('Review work log #92');

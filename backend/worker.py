@@ -1,4 +1,5 @@
-"""Background worker: delivers the SMS outbox and checks the 24-hour reminder policy hourly.
+"""Background worker: delivers the SMS outbox; hourly, sends reviewer summaries and reminders and the monthly
+reminder to providers who have not submitted.
 
 Run: python -m backend.worker            (loop)
      python -m backend.worker --once     (one pass of each job; used by tests)
@@ -71,6 +72,15 @@ def process_outbox(db: Session, limit: int = 50) -> int:
 
 
 def run_reminders(db: Session) -> int:
+    """Reviewer summaries and reminders, then the monthly reminder to providers who have not submitted."""
+    from .services import reminders
+    queued = reminders.run_submit_reminders(db)
+    if not get_setting(db, "reviewer_sms_each_timesheet"):
+        return queued + reminders.run_reviewer_sms(db)
+    return queued + run_each_timesheet_reminders(db)
+
+
+def run_each_timesheet_reminders(db: Session) -> int:
     """Remind the currently assigned reviewer about logs pending > N hours, at most once per M hours each."""
     after = get_setting(db, "reminder_after_hours")
     repeat = get_setting(db, "reminder_repeat_hours")

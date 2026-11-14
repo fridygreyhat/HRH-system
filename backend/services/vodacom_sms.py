@@ -27,9 +27,11 @@ class VodacomSMSGateway:
         if not all((key, token, sender)):
             logger.error("Vodacom SMS configuration is incomplete")
             return None
-        phone = to.strip()
-        if phone.startswith("+"):
-            phone = phone[1:]
+        try:  # older records keep 07…; Vodacom needs 2557…
+            from ..core.phones import tz_mobile
+            phone = tz_mobile(to)[1:]
+        except ValueError:
+            phone = ""
         if not re.fullmatch(r"255[67]\d{8}", phone):
             logger.error("Vodacom SMS requires a Tanzanian mobile number in +255 format")
             return None

@@ -7,6 +7,7 @@ import { Batch } from '../types';
 import { BatchDrawer, PaymentProgress } from '../components/batches/BatchDrawer';
 import { Alert, AsyncState, KpiStrip, RouteBadge, StatusBadge } from '../components/ui';
 import './polish-finance.css';
+import { confirmAction } from '../components/ConfirmDialog';
 
 const BATCH_STATUS_SW: Record<string, string> = {
   DRAFT: 'Rasimu', EXPORTED: 'Imepakuliwa', HANDED_OFF: 'Imekabidhiwa CSO', RECEIVED: 'Imepokelewa', REVERSED: 'Imebatilishwa',
@@ -24,13 +25,21 @@ export function Batches() {
   const [notice, setNotice] = useState<string | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
 
-  const routes = [...(hasRole('FHI360_FINANCE') ? ['A', 'B'] : []), ...(hasRole('CSO_FINANCE') ? ['C'] : [])];
+  // Offer a batch only where claims are ready for one: today Services are paid from the payment form and PRF,
+  // and Payroll by the CSO from the signed report, so there is usually nothing to batch.
+  const ready = useApi<Record<string, number>>('/batches/ready');
+  const routes = [...(hasRole('FHI360_FINANCE') ? ['A', 'B'] : []), ...(hasRole('CSO_FINANCE') ? ['C'] : [])]
+    .filter((route) => (ready.data?.[route] || 0) > 0);
 
   const createBatches = async (route: string) => {
     const name = routeLabel(route, lang);
-    if (!window.confirm(sw
-      ? `Unda makundi ya ${name} kutoka kila dai la ${name} lililo "Tayari kwa malipo"?`
-      : `Create ${name} batches from every ${name} claim marked "Ready for payment"?`)) return;
+    if (!(await confirmAction({
+      title: sw ? `Unda makundi ya ${name}?` : `Create ${name} batches?`,
+      message: sw
+        ? `Kila dai la ${name} lililo "Tayari kwa malipo" litawekwa kwenye kundi la malipo.`
+        : `Every ${name} claim marked "Ready for payment" is put into a payment batch.`,
+      confirmLabel: sw ? 'Unda makundi' : 'Create batches',
+    }))) return;
     setNotice(null);
     const created = await create.run(() => api.post<Batch[]>('/batches', { route_code: route }));
     if (created) {
@@ -41,6 +50,7 @@ export function Batches() {
         ? `Makundi ${created.length} yameundwa: ${detail}.`
         : `Created ${created.length} batch${created.length === 1 ? '' : 'es'}: ${detail}.`);
       list.reload();
+      ready.reload();
     }
   };
 
@@ -77,15 +87,24 @@ export function Batches() {
         <div className="fin-actions">
           {routes.map((r) => (
             <button key={r} type="button" className="btn btn-primary" onClick={() => createBatches(r)} disabled={create.busy}>
-              {create.busy ? (sw ? 'Inafanya kazi…' : 'Working…') : (sw ? `Unda makundi ya ${routeLabel(r, lang)}` : `Create ${routeLabel(r, lang)} batches`)}
+              {create.busy ? (sw ? 'Inafanya kazi…' : 'Working…') : (sw
+                ? `Unda makundi ya ${routeLabel(r, lang)} (${num(ready.data?.[r] || 0)} tayari)`
+                : `Create ${routeLabel(r, lang)} batches (${num(ready.data?.[r] || 0)} ready)`)}
             </button>
           ))}
-          <button type="button" className="btn btn-ghost" onClick={list.reload} disabled={list.loading}>
+          <button type="button" className="btn btn-ghost" onClick={() => { list.reload(); ready.reload(); }} disabled={list.loading}>
             {sw ? 'Pakia upya' : 'Refresh'}
           </button>
         </div>
       </div>
 
+      {ready.data && routes.length === 0 && (hasRole('FHI360_FINANCE') || hasRole('CSO_FINANCE')) && (
+        <p className="notice notice-info batches-none">
+          {sw
+            ? 'Hakuna madai ya kuweka kwenye kundi. Huduma hulipwa kupitia fomu ya malipo, PRF na uthibitisho (Madai ya malipo). Mshahara hulipwa na CSO kutoka ripoti ya Mshahara iliyosainiwa (Malipo ya CSO).'
+            : 'Nothing to batch. Services are paid from the payment form, PRF and proof of payment (Payment claims). Payroll is paid by the CSO from the signed Payroll report (CSO payments).'}
+        </p>
+      )}
       <Alert kind="success">{notice}</Alert>
       <Alert>{create.error}</Alert>
 

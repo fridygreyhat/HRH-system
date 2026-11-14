@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { api } from '../../api';
+import { api, saveBlob } from '../../api';
 import { useAction, useApi } from '../../hooks';
 import { dateTime, humanize, num } from '../../format';
 import { RosterImport as RosterImportRow } from '../../types';
@@ -21,6 +21,7 @@ export function RosterImport() {
   const [result, setResult] = useState<RosterImportRow | null>(null);
   const [open, setOpen] = useState<number | null>(null);
   const { busy, error, run } = useAction();
+  const download = useAction();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,13 +59,28 @@ export function RosterImport() {
               <p className="muted small">
                 <code>cadre</code> is a code (e.g. CHW); place names must match exactly; <code>start_date</code> is YYYY-MM-DD. Existing phones update that person.
               </p>
+              <div className="row">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={download.busy}
+                  onClick={() => download.run(async () => saveBlob(await api.blob('/staff/import-template.xlsx', 'GET', 'hrh-roster-template.xlsx')))}
+                >
+                  {download.busy ? 'Preparing…' : 'Download Excel template'}
+                </button>
+              </div>
+              <p className="muted small">
+                The template has these columns, dropdowns for cadre, region, section and organization, a How to fill sheet and the accepted
+                place names for your regions. Upload the filled workbook as it is; there is no need to save it as CSV.
+              </p>
+              <Alert>{download.error}</Alert>
             </div>
           )}
         </AsyncState>
         <form className="stack" onSubmit={submit}>
           <div className="grid-2">
-            <Field label="Roster CSV file">
-              <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={(e) => setFile(e.target.files?.[0] || null)} required />
+            <Field label="Roster file (Excel or CSV)">
+              <input ref={fileRef} type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => setFile(e.target.files?.[0] || null)} required />
             </Field>
             <Field label="Enrollment source">
               <select value={source} onChange={(e) => setSource(e.target.value)}>

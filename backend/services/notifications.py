@@ -120,3 +120,43 @@ def send_protected_now(db: Session, event_name: str, user: Optional[User], phone
     )
     db.add(row)
     return row
+
+
+def welcome(db: Session, user: Optional[User], phone: Optional[str], name: str) -> Optional[SMSOutbox]:
+    """Welcome SMS at registration: proves the number reaches a phone. A failed delivery shows on the person's record."""
+    return enqueue(db, "WELCOME", user, phone, name=(name or "").split(" ")[0] or name)
+
+
+def _check(row) -> dict:
+    if row is None:
+        return {"status": "NONE", "at": None, "event": None}
+    at = row.sent_at or row.created_at
+    return {"status": row.status, "at": at.isoformat() if at else None, "event": row.event_name}
+
+
+def phone_checks(db: Session, phones) -> dict:
+    """{phone: latest SMS sent to it (delivered, waiting or failed for a wrong or inactive number)}, in one query."""
+    from ..core.phones import same_number
+    phones = {p for p in phones if p}
+    if not phones:
+        return {}
+    variants = {}
+    for p in phones:  # a number may be stored as +2557… on one record and 07… on another
+        for v in same_number(p):
+            variants.setdefault(v, []).append(p)
+    from sqlalchemy import func
+    ranked = (db.query(SMSOutbox.id, func.row_number().over(
+        partition_by=SMSOutbox.destination_phone, order_by=(SMSOutbox.created_at.desc(), SMSOutbox.id.desc())).label("rank"))
+        .filter(SMSOutbox.destination_phone.in_(list(variants))).subquery())
+    latest = db.query(SMSOutbox).join(ranked, ranked.c.id == SMSOutbox.id).filter(ranked.c.rank == 1).all()
+    best = {}
+    for row in latest:
+        for phone in variants[row.destination_phone]:
+            if phone not in best or (row.created_at, row.id) > (best[phone].created_at, best[phone].id):
+                best[phone] = row
+    return {p: _check(best.get(p)) for p in phones}
+
+
+def phone_check(db: Session, phone: Optional[str]) -> Optional[dict]:
+    """The latest SMS sent to this number: delivered, waiting or failed (wrong or inactive number)."""
+    return phone_checks(db, [phone]).get(phone) if phone else None

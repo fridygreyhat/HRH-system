@@ -3,7 +3,8 @@ import { api } from '../../api';
 import { useAuth } from '../../AuthContext';
 import { useAction, useApi } from '../../hooks';
 import { Cadre, CadreField } from '../../types';
-import { Alert, AsyncState, Facts, Field, Modal, Section } from '../../components/ui';
+import { Alert, AsyncState, Facts, Field, Modal, pageLang, Section } from '../../components/ui';
+import { confirmAction } from '../../components/ConfirmDialog';
 
 const KEY_RE = /^[a-z][a-z0-9_]{1,79}$/;
 const HOURS_MODE_LABELS: Record<string, string> = {
@@ -27,7 +28,13 @@ function CadreForm({ cadre, onDone, onCancel }: { cadre: Cadre; onDone: (c: Cadr
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return setError('Name is required.');
-    if (!form.is_active && !window.confirm(`Mark the ${cadre.name} cadre as inactive?`)) return undefined;
+    const sw = pageLang() === 'sw';
+    if (!form.is_active && !(await confirmAction({
+      title: sw ? `Zima kada ya ${cadre.name}?` : `Mark the ${cadre.name} cadre as inactive?`,
+      message: sw ? 'Kada hii haitaonekana tena kwa usajili mpya. Kumbukumbu zilizopo zinabaki.' : 'It is no longer offered for new registrations. Existing records are kept.',
+      confirmLabel: sw ? 'Zima kada' : 'Mark inactive',
+      danger: true,
+    }))) return undefined;
     const saved = await run(() =>
       api.put<Cadre>(`/admin/cadres/${cadre.id}`, {
         name: form.name.trim(),
@@ -118,7 +125,12 @@ function FieldForm({
     if (!form.label_en.trim()) return setError('The English label is required.');
     const order = Number(form.sort_order);
     if (!Number.isInteger(order)) return setError('Sort order must be a whole number.');
-    if (field && !form.is_active && !window.confirm(`Hide “${field.label_en}” from the ${cadre.name} form? Data already recorded is kept.`)) return undefined;
+    const sw = pageLang() === 'sw';
+    if (field && !form.is_active && !(await confirmAction({
+      title: sw ? `Ficha “${field.label_sw || field.label_en}” kwenye fomu ya ${cadre.name}?` : `Hide “${field.label_en}” from the ${cadre.name} form?`,
+      message: sw ? 'Taarifa zilizokwisha rekodiwa zinabaki.' : 'Data already recorded is kept.',
+      confirmLabel: sw ? 'Ficha swali' : 'Hide question',
+    }))) return undefined;
     const body = {
       key: form.key,
       label_en: form.label_en.trim(),

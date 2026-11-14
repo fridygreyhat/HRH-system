@@ -13,7 +13,7 @@ from .api.endpoints import admin, auth, batches, budgets, claims, dashboard, dem
 from .api.endpoints import monthly_budgets, public_holidays, salary_amounts
 from .core import config
 from .db.session import get_db
-from .api.endpoints import backdate_access, organizations, community_claims, provider_payment_details, cso_finance
+from .api.endpoints import backdate_access, organizations, community_claims, provider_payment_details, cso_finance, finance_pack
 from .api.endpoints import setup_transfer
 
 logging.basicConfig(level=logging.INFO)
@@ -88,6 +88,7 @@ app.add_api_route("/budget/allocate", budgets.create_line, methods=["POST"], sta
 app.include_router(organizations.router, prefix="/organizations", tags=["Organizations and CSO regions"])
 app.include_router(provider_payment_details.router, prefix="/provider-details", tags=["Provider payment details"])
 app.include_router(cso_finance.router, prefix="/cso-finance", tags=["CSO Finance"])
+app.include_router(finance_pack.router, prefix="/finance-pack", tags=["Finance downloads"])
 app.include_router(salary_amounts.router, prefix="/salary-amounts", tags=["Salary amounts"])
 app.include_router(public_holidays.router, prefix="/public-holidays", tags=["Public holidays"])
 app.include_router(staff.router, prefix="/staff", tags=["Staff registry"])

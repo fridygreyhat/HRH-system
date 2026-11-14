@@ -54,6 +54,13 @@ def _out(db: Session, batch: PayrollBatch, current: CurrentUser, lines: bool = F
     return out
 
 
+@router.get("/ready")
+def ready(db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(FHI360_FINANCE, CSO_FINANCE, OVERSIGHT))):
+    """How many claims each route could batch now. Today Services are paid from the payment form and PRF, and
+    Payroll by the CSO from the signed report, so these are usually zero."""
+    return bt.ready_counts(db, current)
+
+
 @router.get("")
 def list_batches(db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(FHI360_FINANCE, CSO_FINANCE, OVERSIGHT))):
     rows = db.query(PayrollBatch).filter(bt.batch_visibility(current)).order_by(PayrollBatch.id.desc()).limit(200).all()
@@ -86,7 +93,11 @@ def download(batch_id: int, fmt: str, db: Session = Depends(get_db), current: Cu
     if fmt == "csv":
         content, media = bt._csv(lines).encode(), "text/csv"
     elif fmt == "xlsx":
-        content, media = bt.to_xlsx(batch, lines), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        from ...services import payment_forms
+        # A Services batch opens on the summary Central Finance pays from; its full details are the second sheet.
+        content = (payment_forms.batch_services_xlsx(db, batch, lines) if batch.route_code == "A" and FHI360_FINANCE in current.roles
+                   else bt.to_xlsx(batch, lines))
+        media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     else:
         raise HTTPException(status_code=404, detail="Format must be csv or xlsx")
     return Response(content, media_type=media, headers={"Content-Disposition": f'attachment; filename="{batch.reference}.{fmt}"'})

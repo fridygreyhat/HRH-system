@@ -2,7 +2,6 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { Claims } from './Claims';
-import { CreateClaim } from '../components/claims/CreateClaim';
 import { useApi } from '../hooks';
 import * as apiModule from '../api';
 
@@ -32,7 +31,7 @@ test('Central Finance downloads a month-specific Services report; CSO has no Ser
   mockRoles = ['FHI360_FINANCE'];
   const { container, close } = render(<Claims />);
   try {
-    const button = [...container.querySelectorAll('button')].find(b => b.textContent === 'Download Services CSV');
+    const button = [...container.querySelectorAll('button')].find(b => b.textContent === 'Detailed CSV');
     expect(button).toBeTruthy();
     await act(async () => button.click());
     expect(download).toHaveBeenCalledWith(expect.stringMatching(/^\/finance\/services-payment-report\/export\?month=\d{4}-\d{2}&format=csv$/),
@@ -43,13 +42,13 @@ test('Central Finance downloads a month-specific Services report; CSO has no Ser
   }
   mockRoles = ['CSO_FINANCE'];
   const cso = render(<Claims />);
-  try { expect(cso.container.textContent).not.toContain('Download Services CSV'); }
+  try { expect(cso.container.textContent).not.toContain('Detailed CSV'); }
   finally { cso.close(); }
 });
 
 test('finance can page beyond the first claims without losing filters', () => {
   useApi.mockImplementation(path => ({
-    data: path.startsWith('/claims?') ? Array.from({ length: 100 }, (_, i) => ({
+    data: path?.startsWith('/claims?') ? Array.from({ length: 100 }, (_, i) => ({
       id: i + 1, staff_name: 'Provider', status: 'READY', payment_status: 'NOT_STARTED',
       amount: 40000, amount_paid: 0, currency: 'TZS',
     })) : [],
@@ -86,20 +85,12 @@ test('mixed Regional and Central Finance roles use routing/report links, not man
   } finally { close(); }
 });
 
-test('direct manual-form entry is guarded without requesting categories or eligible work logs', () => {
-  const { container, close } = render(<CreateClaim onClose={() => {}} onCreated={() => {}} />);
-  try {
-    expect(document.body.textContent).toContain('Regional Finance workspace');
-    expect(useApi).not.toHaveBeenCalled();
-    expect(document.body.textContent).not.toContain('Select an active claim category');
-  } finally { close(); }
-});
-
-test('legacy claim preparation remains available to channel finance without a Regional Finance role', () => {
+test('Central and CSO Finance cannot prepare a claim by hand, and are told where claims come from', () => {
   mockRoles = ['CSO_FINANCE'];
   const { container, close } = render(<Claims />);
   try {
-    expect(container.textContent).toContain('Prepare a claim');
-    expect(container.textContent).not.toContain('Regional Finance workspace');
+    expect(container.textContent).not.toContain('Prepare a claim');
+    expect(container.textContent).toContain('Services claims are created automatically when Regional Finance sends them to FHI360');
+    expect(container.textContent).toContain('Payroll is not a claim');
   } finally { close(); }
 });

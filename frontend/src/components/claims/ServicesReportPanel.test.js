@@ -23,7 +23,7 @@ test('after a download, Central Finance records the PRF for exactly that file', 
   const root = createRoot(container);
   await act(async () => root.render(<ServicesReportPanel />));
   try {
-    await act(async () => [...container.querySelectorAll('button')].find((b) => b.textContent === 'Download Services CSV').click());
+    await act(async () => [...container.querySelectorAll('button')].find((b) => b.textContent === 'Detailed CSV').click());
     expect(blob).toHaveBeenCalledWith(expect.stringMatching(/format=csv$/), 'GET', expect.any(String));
     expect(get).toHaveBeenCalledWith('/finance/services-payment-report/downloads/41');
     expect(container.textContent).toContain('2 claims, 3 rows, total TZS 750');
@@ -39,5 +39,40 @@ test('after a download, Central Finance records the PRF for exactly that file', 
   } finally {
     act(() => root.unmount()); container.remove();
     blob.mockRestore(); save.mockRestore(); get.mockRestore(); post.mockRestore();
+  }
+});
+
+test('Central Finance downloads the payment form as PDF or Excel', async () => {
+  const blob = jest.spyOn(apiModule.api, 'blob').mockResolvedValue({ blob: new Blob(), filename: 'f', headers: { get: () => null } });
+  const save = jest.spyOn(apiModule, 'saveBlob').mockImplementation(() => {});
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => root.render(<ServicesReportPanel />));
+  try {
+    await act(async () => [...container.querySelectorAll('button')].find((b) => b.textContent === 'Payment form (Excel)').click());
+    expect(blob).toHaveBeenLastCalledWith(expect.stringMatching(/format=xlsx/), 'GET', expect.stringMatching(/^services-payment-form-.*\.xlsx$/));
+    await act(async () => [...container.querySelectorAll('button')].find((b) => b.textContent === 'Payment form (PDF)').click());
+    expect(blob).toHaveBeenLastCalledWith(expect.stringMatching(/format=pdf/), 'GET', expect.stringMatching(/\.pdf$/));
+    expect(container.textContent).toContain('Show payment form');
+  } finally {
+    act(() => root.unmount()); container.remove();
+    blob.mockRestore(); save.mockRestore();
+  }
+});
+
+test('Central Finance downloads every Services timesheet with the payment form last, as one PDF', async () => {
+  const blob = jest.spyOn(apiModule.api, 'blob').mockResolvedValue({ blob: new Blob(), filename: 'f', headers: { get: () => null } });
+  const save = jest.spyOn(apiModule, 'saveBlob').mockImplementation(() => {});
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => root.render(<ServicesReportPanel />));
+  try {
+    await act(async () => [...container.querySelectorAll('button')].find((b) => b.textContent === 'Timesheets + payment form (PDF)').click());
+    expect(blob).toHaveBeenLastCalledWith(expect.stringMatching(/format=pdf.*timesheets=true/), 'GET', expect.stringMatching(/^services-timesheets-and-payment-form-.*\.pdf$/));
+  } finally {
+    act(() => root.unmount()); container.remove();
+    blob.mockRestore(); save.mockRestore();
   }
 });

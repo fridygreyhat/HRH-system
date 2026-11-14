@@ -19,4 +19,4 @@ USER hrh
 EXPOSE 8000
 
 # Apply migrations and the idempotent seed, then serve.
-CMD ["sh", "-c", "alembic -c backend/alembic.ini upgrade head && python -m backend.seed && uvicorn backend.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "alembic -c backend/alembic.ini upgrade head && python -m backend.seed && uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY:-4} --proxy-headers --forwarded-allow-ips '*'"]

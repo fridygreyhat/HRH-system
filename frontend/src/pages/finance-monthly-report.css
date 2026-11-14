@@ -147,3 +147,36 @@
   .finance-provider-identity span { white-space: normal; }
   .finance-pagination { padding: .65rem .9rem; }
 }
+
+/* Which regional reports of the recent pay months are signed: Payroll and Services are separate sign-offs. */
+.signoff-checklist { display: grid; gap: .6rem; border-left: 4px solid var(--primary); }
+.signoff-checklist.has-waiting { border-left-color: var(--accent); }
+.signoff-checklist .section-title { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.signoff-checklist h2 { margin: 0; font-size: 1.05rem; }
+.signoff-checklist > p { margin: 0; }
+.signoff-list { display: grid; gap: .4rem; margin: 0; padding: 0; list-style: none; }
+.signoff-item button {
+  display: flex; align-items: center; justify-content: space-between; gap: .75rem; width: 100%;
+  padding: .6rem .8rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+  color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.signoff-item button:hover { border-color: var(--primary); }
+.signoff-item.is-selected button { border-color: var(--primary); box-shadow: inset 3px 0 0 var(--primary); }
+.signoff-item-text { display: grid; gap: .1rem; min-width: 0; }
+.signoff-item .badge { flex: none; white-space: nowrap; }
+@media (max-width: 640px) {
+  .signoff-item button { flex-direction: column; align-items: flex-start; }
+  .signoff-item .badge { white-space: normal; }
+}
+.payroll-to-cso { display: grid; gap: .5rem; margin: 0; padding: 0; list-style: none; }
+.payroll-to-cso .payroll-row { display: flex; align-items: center; gap: .75rem; padding: .7rem .9rem; border: 1px solid var(--border); border-left: 4px solid #4b4fa6; border-radius: var(--radius); background: var(--surface); }
+.payroll-to-cso .is-not_signed .payroll-row, .payroll-to-cso .is-changed .payroll-row { border-left-color: var(--accent); }
+.payroll-to-cso .payroll-text { display: grid; gap: .15rem; flex: 1; min-width: 0; }
+.payroll-to-cso .btn { flex: none; }
+.payroll-to-cso .badge { flex: none; }
+@media (max-width: 640px) { .payroll-to-cso .payroll-row { flex-wrap: wrap; } .payroll-to-cso .btn { width: 100%; } }
+.download-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: .6rem; }
+.download-card { display: grid; gap: .3rem; padding: .8rem .9rem; }
+.download-card .row { gap: .4rem; margin-top: .2rem; }
+.download-card .group-by { display: flex; align-items: center; gap: .4rem; color: var(--muted); }
+.download-card .group-by select { min-height: 2rem; padding: .2rem .5rem; }

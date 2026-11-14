@@ -99,3 +99,7 @@
 
 /* ---- Backdated access -------------------------------------------------------------------- */
 .card .backdate-grid { display: grid; gap: 0.75rem 1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items: start; }
+
+/* Each queue row carries its work type's colour: Payroll indigo, Services teal. */
+tr.row-type-payroll > td:first-child { box-shadow: inset 4px 0 0 #4b4fa6; }
+tr.row-type-services > td:first-child { box-shadow: inset 4px 0 0 #0f6b73; }

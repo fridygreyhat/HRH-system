@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { qs } from '../api';
 import { Alert, AsyncState, Field, KpiStrip, pageLang, PersonCell, StatusBadge, WorkTypeChip } from '../components/ui';
 import { WorkLogDrawer } from '../components/worklogs/WorkLogDrawer';
+import { SendServicesMonth } from '../components/finance/SendServicesMonth';
 import { CADRE_NAMES, cadreName, money, num } from '../format';
 import { useApi } from '../hooks';
+import { navigate } from '../nav';
 import { Named, RoutingQueueItem } from '../types';
 import './polish-finance.css';
 
@@ -68,6 +70,8 @@ export function RoutingQueue() {
           ]}
         />
       )}
+
+      <SendServicesMonth regions={regions.data || []} regionId={regionId} sw={sw} onSent={queue.reload} />
 
       <div className="fin-toolbar">
         <div className="filters" role="search" aria-label="Filter routing queue">
@@ -147,7 +151,10 @@ export function RoutingQueue() {
           )}
         </AsyncState>
       )}
-      <p className="muted small routing-footnote">{sw ? 'Mshahara (Payroll) hauna bei wala kupangiwa mlipaji; tazama ripoti ya mwezi.' : 'Payroll has no pricing or routing; see the monthly report.'}</p>
+      <p className="muted small routing-footnote">
+        {sw ? 'Mshahara hautumwi hapa: unatumwa kwa CSO kwa kusaini ripoti ya Mshahara ya mwezi. ' : 'Payroll is not routed here: it goes to the CSO when you sign the monthly Payroll report. '}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate('payroll-to-cso')}>{sw ? 'Mshahara kwa CSO' : 'Payroll to CSO'}</button>
+      </p>
       {openId !== null && <WorkLogDrawer logId={openId} onClose={() => setOpenId(null)} onChanged={queue.reload} />}
     </div>
   );

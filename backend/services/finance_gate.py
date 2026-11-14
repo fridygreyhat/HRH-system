@@ -25,6 +25,19 @@ def _quote_missing_daily_amount(db, log, activity, day):
     keys = {key for key in (activity.get("key"), activity.get("source_key")) if key}
     if not keys:
         return activity, None
+    # A bulk review prices the same service, cadre, region and day many times: it switches this cache on for its run.
+    cache = db.info.get("daily_rate_cache")
+    cache_key = (log.cadre_id, assignment.region_id, frozenset(keys), day)
+    if cache is not None and cache_key in cache:
+        terms, error = cache[cache_key]
+        return ({**activity, **terms} if terms else activity), (error.replace("{label}", activity.get("label_en", "Service")) if error else None)
+    terms, error = _daily_terms(db, log, assignment, keys, day)
+    if cache is not None:
+        cache[cache_key] = (terms, error)
+    return ({**activity, **terms} if terms else activity), (error.replace("{label}", activity.get("label_en", "Service")) if error else None)
+
+
+def _daily_terms(db, log, assignment, keys, day):
     candidates = db.query(ActivityRate).filter(
         ActivityRate.cadre_id == log.cadre_id, ActivityRate.region_id == assignment.region_id,
         ActivityRate.item_type == "SERVICES", ActivityRate.unit_type == "PER_DAY",
@@ -40,13 +53,12 @@ def _quote_missing_daily_amount(db, log, activity, day):
             continue
         eligible.append(row)
     if not eligible:
-        return activity, None
+        return None, None
     latest = [row for row in eligible if row.effective_start_date == eligible[0].effective_start_date]
     if len(latest) != 1:
-        return activity, f"{day}: {activity.get('label_en', 'Service')} has conflicting approved daily amounts. Resolve the rate configuration before payment."
+        return None, f"{day}: {{label}} has conflicting approved daily amounts. Resolve the rate configuration before payment."
     row = latest[0]
-    return {**activity, "id": row.id, "rate_value": str(row.rate_value),
-            "currency": row.currency, "unit_type": "PER_DAY",
+    return {"id": row.id, "rate_value": str(row.rate_value), "currency": row.currency, "unit_type": "PER_DAY",
             "rate_effective_start_date": str(row.effective_start_date)}, None
 
 

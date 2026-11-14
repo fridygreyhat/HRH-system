@@ -307,6 +307,9 @@ export interface WorkLogDetail extends WorkLogSummary {
     anomalies: { date: string | null; code: string; message: string }[];
     limits: { daily_hours: string; weekly_hours: string; saturday_min_hours: string; saturday_max_hours: string; sunday_allowed: boolean; backdate_grace_hours: number };
   };
+  /** Payroll only: the monthly salary of the provider's scale, paid by the CSO. */
+  /** Only Finance gets the amount (amount_visible); CTC, Technical, RM and the provider get the scale alone. */
+  payroll_pay?: { amount_visible: boolean; month?: string; salary_scale: string | null; monthly_salary?: string | null; currency?: string } | null;
   financial_preview?: {
     lines: { entry_id: number; date: string; activity: string; units: string; rate: string | null; amount: string | null; currency: string | null }[];
     total: string;
@@ -746,6 +749,8 @@ export interface StaffDetail {
   middle_name: string | null;
   last_name: string;
   legal_name: string;
+  /** Whether the last SMS reached this number (welcome SMS at registration, reminders). */
+  phone_check?: import('./phones').PhoneCheck | null;
   verified_phone: string;
   occupation: string | null;
   occupation_other: string | null;

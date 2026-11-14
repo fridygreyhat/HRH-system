@@ -5,6 +5,7 @@ import { Alert, AsyncState, Field, KpiStrip, Modal } from '../components/ui';
 import { todayLocal, num, payMonth, payMonthDates, previousMonth, workHours } from '../format';
 import { useApi } from '../hooks';
 import { Named } from '../types';
+import { SignoffItem, signoffTarget } from '../signoffs';
 import './finance-monthly-report.css';
 import './polish-finance.css';
 
@@ -79,6 +80,57 @@ const monthName = (month: string, sw = false) => {
 };
 
 const PAGE_SIZE = 10;
+
+function parseTarget(target?: string) {
+  const match = /^(\d{4}-\d{2}):(PAYROLL|SERVICES):(\d+)$/.exec(target || '');
+  return match ? { month: match[1], workType: match[2] as WorkType, regionId: match[3] } : null;
+}
+
+/** Payroll and Services are signed separately, and only the signed Payroll report reaches the CSO. */
+function SignoffChecklist({ items, selected, onOpen, sw }: {
+  items: SignoffItem[]; selected: string; onOpen: (item: SignoffItem) => void; sw: boolean;
+}) {
+  const waiting = items.filter((item) => item.state !== 'SIGNED');
+  return (
+    <section className={`card signoff-checklist${waiting.length ? ' has-waiting' : ''}`} aria-labelledby="signoff-checklist-heading">
+      <div className="section-title">
+        <h2 id="signoff-checklist-heading">{sw ? 'Ripoti za kusaini' : 'Reports to sign'}</h2>
+        <span className={`badge ${waiting.length ? 'badge-warn' : 'badge-success'}`}>
+          {waiting.length ? (sw ? `${num(waiting.length)} zinasubiri` : `${num(waiting.length)} waiting`) : (sw ? 'Zote zimesainiwa' : 'All signed')}
+        </span>
+      </div>
+      <p className="muted small">
+        {sw
+          ? 'Saini Mshahara na Huduma kando kwa kila mkoa. CSO inapokea majedwali ya mishahara pale tu ripoti ya Mshahara inaposainiwa.'
+          : 'Sign Payroll and Services separately for each region. The CSO receives the salary timesheets only once the Payroll report is signed.'}
+      </p>
+      <ul className="signoff-list">
+        {items.map((item) => {
+          const key = signoffTarget(item);
+          const payroll = item.work_type === 'PAYROLL';
+          const state = item.state === 'SIGNED'
+            ? (sw ? `Imesainiwa na ${item.approved_by_name}` : `Signed by ${item.approved_by_name}`)
+            : item.state === 'CHANGED' ? (sw ? 'Imebadilika: saini tena' : 'Changed: sign again') : (sw ? 'Haijasainiwa' : 'Not signed');
+          return (
+            <li key={key} className={`signoff-item is-${item.state.toLowerCase()}${key === selected ? ' is-selected' : ''}`}>
+              <button type="button" onClick={() => onOpen(item)} aria-current={key === selected ? 'true' : undefined}>
+                <span className="signoff-item-text">
+                  <strong>{monthName(item.month, sw)} · {payroll ? (sw ? 'Mshahara' : 'Payroll') : (sw ? 'Huduma' : 'Services')} · {item.region_name}</strong>
+                  <span className="muted small">
+                    {sw ? `Watoa huduma ${num(item.providers)}` : `${num(item.providers)} ${item.providers === 1 ? 'provider' : 'providers'}`}
+                    {' · '}
+                    {payroll ? (sw ? 'inaenda kwa CSO' : 'goes to the CSO') : (sw ? 'inaenda Fedha Kuu FHI360' : 'goes to FHI360 Finance')}
+                  </span>
+                </span>
+                <span className={`badge ${item.state === 'SIGNED' ? 'badge-success' : 'badge-warn'}`}>{state}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
 
 function IndicatorList({ indicators, words }: { indicators: IndicatorTotal[]; words: Words }) {
   if (!indicators.length) return <span className="muted">{words.sw ? 'Hakuna viashiria vilivyorekodiwa' : 'No indicators recorded'}</span>;
@@ -183,11 +235,12 @@ function ProviderGroup({
   );
 }
 
-export function FinanceMonthlyReport() {
+export function FinanceMonthlyReport({ initial }: { initial?: string } = {}) {
+  const opened = parseTarget(initial);
   // Finance signs a month after it ends on the 25th, so open on the last finished month, as batch print does.
-  const [month, setMonth] = useState(() => previousMonth(payMonth(todayLocal())));
-  const [workType, setWorkType] = useState<WorkType>('PAYROLL');
-  const [regionId, setRegionId] = useState('');
+  const [month, setMonth] = useState(() => opened?.month || previousMonth(payMonth(todayLocal())));
+  const [workType, setWorkType] = useState<WorkType>(opened?.workType || 'PAYROLL');
+  const [regionId, setRegionId] = useState(opened?.regionId || '');
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewReviewed, setPreviewReviewed] = useState(false);
@@ -198,6 +251,12 @@ export function FinanceMonthlyReport() {
   const { hasRole, lang } = useAuth();
   const sw = lang === 'sw';
   const isCsoOnly = hasRole('CSO_FINANCE') && !hasRole('REGIONAL_FINANCE', 'FHI360_FINANCE', 'SUPER_ADMIN');
+  // The CSO receives Payroll only: Services are paid by FHI360 Central Finance.
+  useEffect(() => { if (isCsoOnly && workType !== 'PAYROLL') setWorkType('PAYROLL'); }, [isCsoOnly, workType]);
+  const signoffs = useApi<SignoffItem[]>(hasRole('REGIONAL_FINANCE') ? '/finance/monthly-report/status' : null);
+  const openSignoff = (item: SignoffItem) => {
+    setMonth(item.month); setWorkType(item.work_type); setRegionId(String(item.region_id));
+  };
   const reportState = useApi<MonthlyReportResponse>(`/finance/monthly-report${qs({ month, region_id: regionId, work_type: workType })}`);
   const summary = {
     data: reportState.data?.report ?? null,
@@ -264,6 +323,7 @@ export function FinanceMonthlyReport() {
         review_confirmed: true, expected_digest: reportState.data.digest,
       });
       reportState.reload();
+      signoffs.reload();
       setReviewConfirmed(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : (sw ? 'Uidhinishaji haukukamilika.' : 'The sign-off could not be completed.');
@@ -287,11 +347,17 @@ export function FinanceMonthlyReport() {
           <Field label={sw ? 'Mwezi wa malipo' : 'Pay month'} hint={payMonthDates(month)}>
             <input type="month" value={month} onChange={(event) => setMonth(event.target.value)} aria-label="Pay month" />
           </Field>
-          <Field label={sw ? 'Aina ya kazi' : 'Work type'}>
-            <select value={workType} onChange={(event) => setWorkType(event.target.value as WorkType)} aria-label="Work type">
-              <option value="PAYROLL">{sw ? 'Mshahara · kazi iliyoidhinishwa' : 'Payroll · approved work'}</option>
-              <option value="SERVICES">{sw ? 'Huduma · mwonekano wa jumla' : 'Services · aggregate view'}</option>
-            </select>
+          <Field label={sw ? 'Aina ya kazi' : 'Work type'} hint={isCsoOnly ? (sw ? 'Huduma hulipwa na Fedha Kuu FHI360' : 'Services are paid by FHI360 Central Finance') : undefined}>
+            {isCsoOnly ? (
+              <select value="PAYROLL" disabled aria-label="Work type">
+                <option value="PAYROLL">{sw ? 'Mshahara · kazi iliyoidhinishwa' : 'Payroll · approved work'}</option>
+              </select>
+            ) : (
+              <select value={workType} onChange={(event) => setWorkType(event.target.value as WorkType)} aria-label="Work type">
+                <option value="PAYROLL">{sw ? 'Mshahara · kazi iliyoidhinishwa' : 'Payroll · approved work'}</option>
+                <option value="SERVICES">{sw ? 'Huduma · mwonekano wa jumla' : 'Services · aggregate view'}</option>
+              </select>
+            )}
           </Field>
           <Field label={sw ? 'Mkoa' : 'Region'}>
             <select value={regionId} onChange={(event) => setRegionId(event.target.value)} aria-label="Region">
@@ -306,6 +372,9 @@ export function FinanceMonthlyReport() {
           <button type="button" className="btn btn-secondary" onClick={() => download('pdf')} disabled={!!exporting}>{exporting === 'pdf' ? (sw ? 'Inaandaa PDF…' : 'Preparing PDF…') : (sw ? 'Pakua PDF' : 'Download PDF')}</button>
         </div>
       </div>
+      {signoffs.data && signoffs.data.length > 0 && (
+        <SignoffChecklist items={signoffs.data} selected={signoffTarget({ month, work_type: workType, region_id: Number(regionId) })} onOpen={openSignoff} sw={sw} />
+      )}
       {regions.error && <Alert kind="warn">{sw ? 'Orodha ya mikoa haikupakia. Inaonyesha wigo wako ulioidhinishwa.' : 'Region options could not be loaded. Showing your authorized scope.'} {regions.error}</Alert>}
 
       {reportState.data && (
@@ -314,7 +383,12 @@ export function FinanceMonthlyReport() {
             <p className="finance-overview-kicker">{sw ? 'Hali ya hati ya mkoa' : 'Regional document status'}</p>
             <h2 id="finance-signoff-heading">{approval ? (sw ? 'Ripoti imeidhinishwa' : 'Approved report') : (sw ? 'Bado haijaidhinishwa' : 'Not yet approved')}</h2>
             {approval ? (
-              <p>{sw ? 'Imesainiwa na' : 'Signed by'} <strong>{approval.approved_by_name}</strong> {sw ? 'kwa' : 'for'} {approval.region_name} · {approvedDate && !Number.isNaN(approvedDate.getTime()) ? approvedDate.toLocaleString(sw ? 'sw' : undefined) : approval.approved_at}</p>
+              <p>{sw ? 'Imesainiwa na' : 'Signed by'} <strong>{approval.approved_by_name}</strong> {sw ? 'kwa' : 'for'} {approval.region_name} · {approvedDate && !Number.isNaN(approvedDate.getTime()) ? approvedDate.toLocaleString(sw ? 'sw' : undefined) : approval.approved_at}
+                {workType === 'PAYROLL' && !isCsoOnly && <> · <strong>{sw ? 'Imetumwa kwa CSO' : 'Sent to the CSO'}</strong></>}</p>
+            ) : isCsoOnly ? (
+              <p>{workType === 'PAYROLL'
+                ? (sw ? `Fedha ya Mkoa bado haijasaini ripoti ya Mshahara ya ${monthName(month, sw)}. Majedwali ya mishahara yataonekana hapa na kwenye Malipo ya CSO mara tu itakaposainiwa.` : `Regional Finance has not signed the ${monthName(month)} Payroll report yet. The salary timesheets appear here and in CSO payments as soon as it is signed.`)
+                : (sw ? `Fedha ya Mkoa bado haijasaini ripoti ya Huduma ya ${monthName(month, sw)}.` : `Regional Finance has not signed the ${monthName(month)} Services report yet.`)}</p>
             ) : (
               <p>{regionId
                 ? (sw ? `Pitia ripoti ya ${workTypeName.toLowerCase()} ya ${monthName(month, sw)} kwa mkoa uliochaguliwa kabla ya kusaini.` : `Review the ${monthName(month)} ${workType.toLowerCase()} report for the selected region before signing.`)
@@ -331,7 +405,9 @@ export function FinanceMonthlyReport() {
                 <span>{sw ? 'Nimepitia ripoti hii ya mkoa na ninaithibitisha kama hati iliyosainiwa.' : 'I reviewed this regional report and confirm it as a document sign-off.'}</span>
               </label>
               <button type="button" className="btn btn-primary" onClick={approve} disabled={!regionId || !previewReviewed || !reviewConfirmed || approving || reportState.loading}>
-                {approving ? (sw ? 'Inasaini…' : 'Signing off…') : approval ? (sw ? 'Thibitisha uidhinishaji uliosasishwa' : 'Confirm updated sign-off') : (sw ? 'Saini ripoti' : 'Sign off report')}
+                {approving ? (sw ? 'Inasaini…' : 'Signing off…') : workType === 'PAYROLL'
+                  ? (approval ? (sw ? 'Saini tena na utume kwa CSO' : 'Sign again and send to CSO') : (sw ? 'Saini na utume kwa CSO' : 'Sign and send to CSO'))
+                  : approval ? (sw ? 'Thibitisha uidhinishaji uliosasishwa' : 'Confirm updated sign-off') : (sw ? 'Saini ripoti' : 'Sign off report')}
               </button>
             </div>
           )}

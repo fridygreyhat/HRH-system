@@ -103,6 +103,30 @@ EVENTS: dict[str, dict] = {
         "en": "HRH: A payment for your {period} claim has been recorded as paid. Reference: {reference}.",
         "sw": "HRH: Malipo ya dai lako la {period} yamerekodiwa kuwa yamelipwa. Kumbukumbu: {reference}.",
     },
+    "REVIEW_DIGEST": {
+        "recipient": "Reviewer (CTC In-Charge, Technical, RM, Regional Finance)",
+        "variables": ["count", "total"],
+        "en": "HRH: You have {count} new timesheets to review ({total} waiting in total). Please review them in the HRH system.",
+        "sw": "HRH: Una majedwali mapya {count} ya kukagua (jumla {total} yanasubiri). Tafadhali yakague kwenye mfumo wa HRH.",
+    },
+    "REVIEW_OVERDUE": {
+        "recipient": "Reviewer (CTC In-Charge, Technical, RM, Regional Finance)",
+        "variables": ["count", "hours"],
+        "en": "HRH: Reminder: {count} timesheets have waited for your review for more than {hours} hours. Please review them in the HRH system.",
+        "sw": "HRH: Ukumbusho: majedwali {count} yamesubiri ukaguzi wako kwa zaidi ya saa {hours}. Tafadhali yakague kwenye mfumo wa HRH.",
+    },
+    "TIMESHEET_DUE": {
+        "recipient": "Provider who has not submitted",
+        "variables": ["period", "deadline"],
+        "en": "HRH: Reminder: submit your {period} timesheet by {deadline}. Open the HRH system to complete and submit it.",
+        "sw": "HRH: Ukumbusho: wasilisha jedwali lako la {period} kabla ya {deadline}. Fungua mfumo wa HRH kulikamilisha na kuliwasilisha.",
+    },
+    "WELCOME": {
+        "recipient": "Newly registered provider or reviewer",
+        "variables": ["name"],
+        "en": "HRH: Welcome {name}. This number is registered for HRH Pay messages: timesheet reminders, reviews and approvals.",
+        "sw": "HRH: Karibu {name}. Namba hii imesajiliwa kupokea ujumbe wa HRH Pay: ukumbusho wa majedwali, ukaguzi na idhini.",
+    },
 }
 LANGUAGES = ("en", "sw")
 PROTECTED_EVENTS = {name for name, e in EVENTS.items() if e.get("protected")}

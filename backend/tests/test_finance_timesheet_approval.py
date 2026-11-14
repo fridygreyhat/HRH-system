@@ -99,8 +99,11 @@ def test_a_rejected_record_loses_its_timesheet_approval(api, period, v22):
     assert rejected["status"] == "REJECTED" and rejected["finance_timesheet_approved_at"] is None
 
 
-def test_payroll_still_ends_at_rm_with_no_finance_approval(api, db, period, v22):
+def test_regional_finance_approves_rm_approved_payroll_once(api, db, period, v22):
     from .test_finance_routing import approved_payroll
     log = approved_payroll(api, db, period)
-    assert log["status"] == "APPROVED" and ACTION not in api.get(f"/worklogs/{log['id']}", v22["finance"])["available_actions"]
-    act(api, log, ACTION, v22["finance"], confirmed("PAYROLL"), expect=403)
+    assert log["status"] == "APPROVED" and ACTION in api.get(f"/worklogs/{log['id']}", v22["finance"])["available_actions"]
+    approved = act(api, log, ACTION, v22["finance"], confirmed("PAYROLL"))
+    assert approved["status"] == "APPROVED" and approved["finance_timesheet_approved_at"]  # same status, now approved
+    assert ACTION not in approved["available_actions"]
+    act(api, approved, ACTION, v22["finance"], confirmed("PAYROLL"), expect=403)  # only once

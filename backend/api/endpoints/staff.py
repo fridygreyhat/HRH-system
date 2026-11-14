@@ -1,8 +1,8 @@
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -10,12 +10,13 @@ from sqlalchemy.orm import Session
 from ...core import audit as system_audit
 from ...core.roles import CENTRAL_ADMIN, CSO_FINANCE, FHI360_FINANCE, PROVIDER, REGIONAL_ADMIN, SYSTEM_ADMIN
 from ...core.security import CurrentUser, get_current_user, hash_password, require_roles
+from ...core.phones import same_number, tz_mobile
 from ...core.serialize import mask_phone, to_dict
 from ...core.timeutil import local_today
-from ...core.uploads import read_csv_upload
+from ...core.uploads import read_csv_upload, read_upload_bytes
 from ...db.session import get_db
 from ...models import Cadre, District, Facility, Role, RosterImport, Section, Staff, StaffAssignment, StaffChangeRequest, User, UserRole, Ward, WorkLog, WorkLogEntry
-from ...services import staff_registry as reg
+from ...services import roster_template, staff_registry as reg
 from ...services.forms import assignment_out
 from ...services.scope import current_assignment, staff_visibility
 
@@ -40,7 +41,12 @@ class StaffCreate(BaseModel):
     first_name: str = Field(min_length=1, max_length=100)
     middle_name: Optional[str] = Field(default=None, max_length=100)
     last_name: str = Field(min_length=1, max_length=100)
-    verified_phone: str = Field(pattern=r"^\+?\d{9,15}$")
+    verified_phone: str = Field(min_length=9, max_length=20)
+
+    @field_validator("verified_phone")
+    @classmethod
+    def active_mobile(cls, value):
+        return tz_mobile(value)
     occupation: Optional[str] = None
     occupation_other: Optional[str] = None
     salary_scale: Optional[str] = None
@@ -175,8 +181,11 @@ def import_roster(
 ):
     if enrollment_source not in ("ROSTER_IMPORT", "ENGAGEMENT_LIST"):
         raise HTTPException(status_code=422, detail="enrollment_source must be ROSTER_IMPORT or ENGAGEMENT_LIST")
-    content = read_csv_upload(file)
     allowed = None if CENTRAL_ADMIN in current.roles else current.scope_values("region_id")
+    if (file.filename or "").lower().endswith(".xlsx"):
+        content = roster_template.xlsx_to_csv(read_upload_bytes(file))
+    else:
+        content = read_csv_upload(file)
     result = reg.import_roster(db, current, file.filename or "roster.csv", content, enrollment_source, allowed)
     db.commit()
     return to_dict(result)
@@ -184,7 +193,16 @@ def import_roster(
 
 @router.get("/import-template")
 def import_template():
-    return {"columns": reg.ROSTER_COLUMNS, "required": ["first_name", "last_name", "phone", "cadre", "region", "start_date"]}
+    return {"columns": reg.ROSTER_COLUMNS, "required": reg.ROSTER_REQUIRED}
+
+
+@router.get("/import-template.xlsx")
+def import_template_workbook(db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(*ADMINS))):
+    """The Excel template, with dropdowns and the accepted places limited to the administrator's regions."""
+    allowed = None if CENTRAL_ADMIN in current.roles else current.scope_values("region_id")
+    content = roster_template.build_template(db, allowed)
+    return Response(content, media_type=roster_template.XLSX_MEDIA,
+                    headers={"Content-Disposition": 'attachment; filename="hrh-roster-template.xlsx"'})
 
 
 @router.get("/change-requests")
@@ -223,13 +241,15 @@ def new_staff_record(db: Session, current: CurrentUser, body: StaffCreate) -> St
         raise HTTPException(status_code=422, detail="payment_method must be MOBILE_WALLET or BANK")
     reg.check_payment_method(db, body.cadre_id, body.payment_method)
     assignment = _assignment_columns(db, body.assignment)
-    if db.query(Staff).filter(Staff.verified_phone == body.verified_phone).first():
+    if db.query(Staff).filter(Staff.verified_phone.in_(same_number(body.verified_phone))).first():
         raise HTTPException(status_code=409, detail="A staff member with this phone already exists. Use a rotation instead of creating a second identity.")
     staff = Staff(**body.model_dump(exclude={"assignment"}), created_by=current.id)
     db.add(staff)
     db.flush()
     db.add(StaffAssignment(staff_id=staff.id, start_date=body.employment_start_date, created_by=current.id, **assignment))
     system_audit.record(db, current, "staff", staff.id, "create", after=body.model_dump(exclude={"payment_account"}))
+    from ...services import notifications
+    notifications.welcome(db, None, staff.verified_phone, staff.first_name)
     return staff
 
 
@@ -273,6 +293,9 @@ def get_staff(staff_id: int, db: Session = Depends(get_db), current: CurrentUser
         "assignments": [{**assignment_out(db, a), "end_reason": a.end_reason, "is_primary": a.is_primary} for a in assignments],
         "username": db.get(User, staff.user_id).username if staff.user_id else None,
     }
+    if _sees_contact(current):  # did the last SMS reach this number? (a failed welcome means a wrong or inactive number)
+        from ...services import notifications
+        out["phone_check"] = notifications.phone_check(db, staff.verified_phone)
     if sees_payment and not own_profile:
         system_audit.record(db, current, "staff", staff.id, "view_payment_details")
         db.commit()

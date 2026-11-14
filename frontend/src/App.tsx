@@ -4,35 +4,41 @@ import { BrandMark, Icon } from './components/Icon';
 import { roleLabel } from './format';
 import { useApi } from './hooks';
 import { navigate, useHashRoute } from './nav';
-import { Admin } from './pages/Admin';
-import { Batches } from './pages/Batches';
-import { BackdateAccess } from './pages/BackdateAccess';
-import { Claims } from './pages/Claims';
-import { CommunityClaims } from './pages/CommunityClaims';
-import { CsoPortal } from './pages/CsoPortal';
-import { Dashboard } from './pages/Dashboard';
-import { FinanceMonthlyReport } from './pages/FinanceMonthlyReport';
-import { MonthlyServicesBudgets } from './pages/MonthlyServicesBudgets';
 import { ChangePasswordForm, ForcedPasswordChange } from './pages/ChangePassword';
 import { Login } from './pages/Login';
-import { MyWorkLogs } from './pages/MyWorkLogs';
-import { Organizations } from './pages/Organizations';
-import { PrintWorkLog } from './pages/PrintWorkLog';
-import { PrintBatch } from './pages/PrintBatch';
-import { ProviderPaymentDetails } from './pages/ProviderPaymentDetails';
-import { PayPeriods } from './pages/PayPeriods';
-import { SalaryAmounts } from './pages/SalaryAmounts';
-import { PublicHolidays } from './pages/PublicHolidays';
-import { ReviewWorkLogs } from './pages/ReviewWorkLogs';
-import { RoutingQueue } from './pages/RoutingQueue';
-import { Rates } from './pages/Rates';
-import { ReviewCadres } from './pages/ReviewCadres';
-import { Staff } from './pages/Staff';
 import { Modal } from './components/ui';
 import { Home } from './pages/Home';
 import { useTheme } from './theme';
 import { WorkLogSummary } from './types';
 import { useStackedTables } from './stackTables';
+import { lazyPage, PageBoundary } from './lazyPage';
+
+// Screens download when first opened: signing in needs only the shell, the sign-in and the home page.
+const Admin = lazyPage(() => import('./pages/Admin').then((m) => m.Admin));
+const Batches = lazyPage(() => import('./pages/Batches').then((m) => m.Batches));
+const BackdateAccess = lazyPage(() => import('./pages/BackdateAccess').then((m) => m.BackdateAccess));
+const Claims = lazyPage(() => import('./pages/Claims').then((m) => m.Claims));
+const CommunityClaims = lazyPage(() => import('./pages/CommunityClaims').then((m) => m.CommunityClaims));
+const CsoPortal = lazyPage(() => import('./pages/CsoPortal').then((m) => m.CsoPortal));
+const Dashboard = lazyPage(() => import('./pages/Dashboard').then((m) => m.Dashboard));
+const FinanceMonthlyReport = lazyPage(() => import('./pages/FinanceMonthlyReport').then((m) => m.FinanceMonthlyReport));
+const MonthlyServicesBudgets = lazyPage(() => import('./pages/MonthlyServicesBudgets').then((m) => m.MonthlyServicesBudgets));
+const MyWorkLogs = lazyPage(() => import('./pages/MyWorkLogs').then((m) => m.MyWorkLogs));
+const Organizations = lazyPage(() => import('./pages/Organizations').then((m) => m.Organizations));
+const PrintWorkLog = lazyPage(() => import('./pages/PrintWorkLog').then((m) => m.PrintWorkLog));
+const PrintBatch = lazyPage(() => import('./pages/PrintBatch').then((m) => m.PrintBatch));
+const ProviderPaymentDetails = lazyPage(() => import('./pages/ProviderPaymentDetails').then((m) => m.ProviderPaymentDetails));
+const PayPeriods = lazyPage(() => import('./pages/PayPeriods').then((m) => m.PayPeriods));
+const SalaryAmounts = lazyPage(() => import('./pages/SalaryAmounts').then((m) => m.SalaryAmounts));
+const PublicHolidays = lazyPage(() => import('./pages/PublicHolidays').then((m) => m.PublicHolidays));
+const ReviewWorkLogs = lazyPage(() => import('./pages/ReviewWorkLogs').then((m) => m.ReviewWorkLogs));
+const RoutingQueue = lazyPage(() => import('./pages/RoutingQueue').then((m) => m.RoutingQueue));
+const PayrollToCso = lazyPage(() => import('./pages/PayrollToCso').then((m) => m.PayrollToCso));
+const FinanceDownloads = lazyPage(() => import('./pages/FinanceDownloads').then((m) => m.FinanceDownloads));
+const BulkApproval = lazyPage(() => import('./pages/BulkApproval').then((m) => m.BulkApproval));
+const Rates = lazyPage(() => import('./pages/Rates').then((m) => m.Rates));
+const ReviewCadres = lazyPage(() => import('./pages/ReviewCadres').then((m) => m.ReviewCadres));
+const Staff = lazyPage(() => import('./pages/Staff').then((m) => m.Staff));
 
 const REVIEWERS = ['SUPERVISOR', 'FACILITY_IN_CHARGE', 'CSO_TECHNICAL_OFFICER', 'TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE'];
 
@@ -52,7 +58,7 @@ const EVERY_ROLE = ['PROVIDER', 'SUPERVISOR', 'FACILITY_IN_CHARGE', 'CSO_TECHNIC
 /** Menu wording in Kiswahili, the default language. */
 const LABELS_SW: Record<string, string> = {
   home: 'Mwanzo', dashboard: 'Dashibodi', 'my-logs': 'Kumbukumbu zangu', 'payment-details': 'Taarifa za malipo', 'backdate-access': 'Ruhusa ya tarehe zilizopita',
-  rates: 'Viwango vya huduma', 'pay-periods': 'Vipindi vya malipo', 'public-holidays': 'Sikukuu', 'routing-queue': 'Huduma za kukagua', 'finance-monthly': 'Ripoti ya mwezi',
+  rates: 'Viwango vya huduma', 'pay-periods': 'Vipindi vya malipo', 'public-holidays': 'Sikukuu', 'routing-queue': 'Huduma za kukagua', 'payroll-to-cso': 'Mshahara kwa CSO', 'finance-downloads': 'Upakuaji wa Fedha', 'bulk-approval': 'Idhinisha majedwali', 'finance-monthly': 'Ripoti ya mwezi',
   'review-cadres': 'Mgawo wa wakaguzi', worklogs: 'Mapitio ya majedwali', claims: 'Madai ya malipo', batches: 'Makundi ya malipo', budgets: 'Bajeti ya huduma',
   'salary-amounts': 'Viwango vya mishahara', cso: 'Malipo ya CSO', 'community-claims': 'Madai ya jamii', staff: 'Daftari la watumishi', organizations: 'Mashirika na mikoa', admin: 'Utawala',
 };
@@ -60,7 +66,7 @@ const DESCRIPTIONS_SW: Record<string, string> = {
   'my-logs': 'Rekodi na uwasilishe kazi zako za kila siku', 'payment-details': 'Akaunti yako ya benki na simu ya malipo',
   'backdate-access': 'Ruhusa ya muda kwa tarehe zilizopita', rates: 'Huduma, viwango vya kila siku na siku za chini',
   'pay-periods': 'Ratiba za kazi na malipo za mikoa', 'public-holidays': 'Sikukuu zinazoonekana kwenye kalenda na majedwali',
-  'routing-queue': 'Idhinisha na upeleke Huduma', 'finance-monthly': 'Jumla ya kazi zilizoidhinishwa kwa mwezi',
+  'routing-queue': 'Idhinisha na upeleke Huduma', 'payroll-to-cso': 'Saini Mshahara na uutume kwa CSO', 'finance-downloads': 'Majedwali, shughuli, malipo na faili la kuingiza', 'bulk-approval': 'Idhinisha majedwali safi kwa pamoja', 'finance-monthly': 'Jumla ya kazi zilizoidhinishwa kwa mwezi',
   'review-cadres': 'Kada na maeneo ya wakaguzi', worklogs: 'Amua majedwali ya eneo lako', claims: 'Andaa, idhinisha na ufuatilie madai',
   batches: 'Faili za malipo, makabidhiano na stakabadhi', budgets: 'Bajeti za Huduma za mikoa kwa mwezi', 'salary-amounts': 'Mshahara wa mwezi kwa kila ngazi',
   cso: 'Malipo, uthibitisho na majedwali ya mishahara', 'community-claims': 'Madai ya jamii na malipo yake', staff: 'Watumishi, vituo vyao na mizunguko',
@@ -91,8 +97,11 @@ export const PAGES: Page[] = [
   { key: 'rates', label: 'Service amounts', description: 'Services, daily amounts and minimum days', icon: 'receipt', group: 'Finance', roles: ['TECHNICAL_OFFICER', 'RPM', 'REGIONAL_FINANCE', 'OVERSIGHT', 'SUPER_ADMIN'], render: () => <Rates /> },
   { key: 'pay-periods', label: 'Pay periods', description: 'Regional work and pay schedules', icon: 'calendar', group: 'Finance', roles: ['TECHNICAL_OFFICER', 'CENTRAL_ADMIN', 'FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <PayPeriods /> },
   { key: 'public-holidays', label: 'Public holidays', description: 'Holidays shown on calendars and timesheets', icon: 'calendar', group: 'System', roles: ['CENTRAL_ADMIN', 'SYSTEM_ADMIN', 'SUPER_ADMIN'], render: () => <PublicHolidays /> },
+  { key: 'bulk-approval', label: 'Approve timesheets', description: 'Approve clean timesheets together', icon: 'check', group: 'Finance', roles: ['REGIONAL_FINANCE', 'SUPER_ADMIN'], render: (target) => <BulkApproval initial={target} /> },
   { key: 'routing-queue', label: 'Services to review', description: 'Approve and route Services', icon: 'route', group: 'Finance', roles: ['REGIONAL_FINANCE', 'SUPER_ADMIN'], render: () => <RoutingQueue /> },
-  { key: 'finance-monthly', label: 'Monthly work report', description: 'Approved work totals by pay month', icon: 'calendar', group: 'Finance', roles: ['REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'SUPER_ADMIN'], render: () => <FinanceMonthlyReport /> },
+  { key: 'payroll-to-cso', label: 'Payroll to CSO', description: 'Sign Payroll and send it to the CSO', icon: 'wallet', group: 'Finance', roles: ['REGIONAL_FINANCE', 'SUPER_ADMIN'], render: () => <PayrollToCso /> },
+  { key: 'finance-downloads', label: 'Finance downloads', description: 'Timesheets, activities, payment summary, import file', icon: 'table', group: 'Finance', roles: ['REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'SUPER_ADMIN'], render: () => <FinanceDownloads /> },
+  { key: 'finance-monthly', label: 'Monthly work report', description: 'Approved work totals by pay month', icon: 'calendar', group: 'Finance', roles: ['REGIONAL_FINANCE', 'FHI360_FINANCE', 'CSO_FINANCE', 'SUPER_ADMIN'], render: (target) => <FinanceMonthlyReport initial={target} /> },
   { key: 'review-cadres', label: 'Review assignments', description: 'Reviewer cadres and areas', icon: 'users', group: 'System', roles: ['SYSTEM_ADMIN', 'SUPER_ADMIN'], render: () => <ReviewCadres /> },
   {
     key: 'worklogs',
@@ -245,13 +254,17 @@ function App() {
   if (printing)
     return (
       <main className="content content-print">
-        <PrintWorkLog logId={Number(route.id)} />
+        <PageBoundary resetKey={`print-${route.id}`}>
+          <PrintWorkLog logId={Number(route.id)} />
+        </PageBoundary>
       </main>
     );
   if (route.page === 'print-batch')
     return (
       <main className="content content-print">
-        <PrintBatch target={route.id} />
+        <PageBoundary resetKey={`print-batch-${route.id}`}>
+          <PrintBatch target={route.id} />
+        </PageBoundary>
       </main>
     );
 
@@ -261,7 +274,10 @@ function App() {
         <div className="sidebar-brand">
           <BrandMark />
           <div>
-            <div className="brand-name">HRH Pay</div>
+            <div className="brand-name">
+              HRH Pay
+              <img src={`${process.env.PUBLIC_URL}/brand/tanzania-nembo.png`} alt="Nembo ya Taifa" title="Nembo ya Taifa" className="brand-nembo" />
+            </div>
             <div className="brand-sub">{lang === 'sw' ? 'Kazi · Madai · Malipo' : 'Work logs · Claims · Payroll'}</div>
           </div>
           <button type="button" className="icon-btn sidebar-close" onClick={() => setMenuOpen(false)} aria-label="Close menu">
@@ -284,7 +300,7 @@ function App() {
                 {items.map((p) => {
                   const active = p.key === current?.key;
                   return (
-                    <button key={p.key} type="button" title={p.description} className={`nav-item${active ? ' active' : ''}`} aria-current={active ? 'page' : undefined} onClick={() => { setMenuOpen(false); navigate(p.key); }}>
+                    <button key={p.key} type="button" className={`nav-item${active ? ' active' : ''}`} aria-current={active ? 'page' : undefined} onClick={() => { setMenuOpen(false); navigate(p.key); }}>
                       <Icon name={p.icon} />
                       <span>{label(p)}</span>
                       {p.key === 'worklogs' && isReviewer && <QueueCount />}
@@ -346,7 +362,9 @@ function App() {
                   </div>
                 </header>
               )}
-              <div className={banded ? 'banded' : undefined}>{current.render(route.id || undefined)}</div>
+              <div className={banded ? 'banded' : undefined}>
+                <PageBoundary resetKey={`${current.key}-${route.id || ''}`}>{current.render(route.id || undefined)}</PageBoundary>
+              </div>
             </React.Fragment>
           ) : (
             <p className="empty">Your account has no roles with pages yet. Ask an administrator.</p>

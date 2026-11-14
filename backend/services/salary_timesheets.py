@@ -29,6 +29,8 @@ NOT_SIGNED = "Provider has not signed this timesheet"
 OTHER_ROW = "Salary is on this provider's other row"
 OTHER_CSO = "Also on another CSO's file this month: check before paying"
 FACILITY, COMMUNITY, NOT_ASSIGNED = "Facility", "Community", "Not assigned"
+# The timesheet PDF has a page per provider: 1,000 builds in about 10 seconds; more is split by region.
+MAX_PDF_PROVIDERS = 1000
 # The CSO's on-screen list. Bank details and daily times stay in the downloaded, audited file.
 SCREEN_FIELDS = ("staff_id", "provider_name", "cadre_name", "facility_name", "community_area_name", "work_setting",
                  "region_name", "days_signed", "monthly_salary", "checks")
@@ -179,11 +181,34 @@ def _footer(canvas, document):
     canvas.drawRightString(document.pagesize[0] - 28, 16, f"Page {document.page}")
 
 
-def pdf_file(result):
+def _styles():
     styles = getSampleStyleSheet()
     body = ParagraphStyle("sheet", parent=styles["BodyText"], fontSize=8, leading=10)
     tiny = ParagraphStyle("tiny", parent=body, fontSize=5.5, leading=6.5, alignment=1)
     head = ParagraphStyle("head", parent=tiny, fontName="Helvetica-Bold")
+    return styles, body, tiny, head
+
+
+GRID = TableStyle([("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#8a9a96")),
+                   ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e7f2ef")),
+                   ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                   ("LEFTPADDING", (0, 0), (-1, -1), 2), ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+                   ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2)])
+
+
+# The coloured band that tells the two kinds of timesheet apart, as on the screens (indigo Payroll, teal Services).
+KINDS = {
+    "PAYROLL": ("#4b4fa6", "PAYROLL TIMESHEET · JEDWALI LA MSHAHARA", "Monthly salary, paid by the CSO to the bank"),
+    "SERVICES": ("#0f6b73", "SERVICES TIMESHEET · JEDWALI LA HUDUMA", "Paid per service day by FHI360 Central Finance to the mobile wallet"),
+}
+
+
+def timesheet_page(provider, month, holidays, details, footer, heading=None, kind=None, services=None):
+    """One staff member's page: details, the month's attendance by day, and each activity's month total.
+
+    Activities are month totals only: no per-day clinical counts leave the reviewers (a day's count at one facility
+    can point to a person)."""
+    styles, body, tiny, head = _styles()
 
     def p(value, style=body):
         return Paragraph(escape(str(value if value not in (None, "") else "—")), style)
@@ -194,12 +219,83 @@ def pdf_file(result):
     def bilingual(sw, en):
         return Paragraph(f"<b>{escape(sw)}</b><br/>{escape(en)}", body)
 
+    title = month_title(month)
+    dates = month_dates(month)
+    holiday_dates = {row["date"] for row in holidays}
+    days = {day["date"]: day for day in provider.get("attendance", [])}
+    story = []
+    if kind in KINDS:
+        color, label, who = KINDS[kind]
+        band = Table([[Paragraph(f'<font color="white"><b>{escape(label)}</b><br/>{escape(who)}</font>', body)]],
+                     colWidths=[786], hAlign="LEFT")
+        band.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(color)),
+                                  ("LEFTPADDING", (0, 0), (-1, -1), 8), ("TOPPADDING", (0, 0), (-1, -1), 5),
+                                  ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
+        story += [band, Spacer(1, 4)]
+    story += [p(heading or provider["cadre_name"], styles["Heading2"]), p(title, styles["Heading3"])]
+    rows = [[bilingual(*details[i][0]), p(details[i][1]),
+             *((bilingual(*details[i + 1][0]), p(details[i + 1][1])) if i + 1 < len(details) else ("", ""))]
+            for i in range(0, len(details), 2)]
+    story += [Table(rows, colWidths=[100, 280, 100, 300], hAlign="LEFT"), Spacer(1, 8)]
+
+    def line(sw, en, values, total=""):
+        return [bilingual(sw, en)] + values + [Paragraph(escape(total), head)]
+
+    def by_day(read):
+        return [cell(read(days[d.isoformat()])) if d.isoformat() in days else "" for d in dates]
+
+    sheet = Table([
+        [bilingual("Tarehe", "Date")] + [Paragraph(f"{d.day}<br/>{WEEKDAYS_SW[d.weekday()]}", head) for d in dates]
+        + [Paragraph("JUMLA<br/>TOTAL", head)],
+        line("Muda wa kuanza", "Start time", by_day(lambda day: day["start"])),
+        line("Muda wa kumaliza", "End time", by_day(lambda day: day["end"])),
+        line("Masaa", "Hours worked", by_day(lambda day: hours_text(day["hours"])), hours_text(provider["hours"])),
+        line("Siku za kazi", "Days worked", [Paragraph('<font name="ZapfDingbats">\u2713</font>', tiny)
+                                             if d.isoformat() in days else "" for d in dates], str(provider["days"])),
+        *([line("Sikukuu", "Public holiday", [cell("S") if d.isoformat() in holiday_dates else "" for d in dates], str(len(holiday_dates)))]
+          if holiday_dates else []),
+    ], colWidths=[76] + [(786 - 76 - 34) / len(dates)] * len(dates) + [34], hAlign="LEFT")
+    sheet.setStyle(GRID)
+    sheet.setStyle(TableStyle([("BACKGROUND", (column, 1), (column, -1), colors.HexColor("#e4e4e4"))
+                               for column, day in enumerate(dates, start=1) if day.isoformat() in holiday_dates]))
+    story += [sheet, Spacer(1, 8)]
+    if services:
+        table = Table([[bilingual("Huduma", "Service"), bilingual("Siku za kazi", "Days worked"),
+                        bilingual("Siku za kulipwa", "Days paid"), bilingual("Kiasi", "Amount")]]
+                      + [[p(row["service"]), p(row["worked"]), p(row["paid"]), p(_number(row["amount"]) if row.get("amount") not in (None, "") else "—")]
+                         for row in services],
+                      colWidths=[300, 80, 80, 110], hAlign="LEFT", repeatRows=1)
+        table.setStyle(GRID)
+        story += [p("Huduma zilizotolewa / Services delivered", styles["Heading4"]), table, Spacer(1, 8)]
+    indicators = provider.get("indicators") or []
+    if indicators:
+        activities = Table([[bilingual("Shughuli", "Activity"), bilingual("Jumla ya mwezi", "Month total")]]
+                           + [[p(item["label"]), p(_number(item["total"]))] for item in indicators],
+                           colWidths=[420, 90], hAlign="LEFT", repeatRows=1)
+        activities.setStyle(GRID)
+        story += [p("Shughuli zote za mwezi / All activities this month (month totals)", styles["Heading4"]), activities, Spacer(1, 8)]
+    if holiday_dates:
+        story.append(p("Sikukuu / Public holidays: " + "; ".join(f"{row['date']} {row['name_sw']} / {row['name_en']}" for row in holidays)))
+    if not days:
+        story.append(p(NO_DAILY_TIMES))
+    story += [p(text) for text in footer]
+    return story
+
+
+def _number(value):
+    amount = Decimal(str(value))
+    return f"{amount:,.0f}" if amount == amount.to_integral_value() else f"{amount:,.2f}"
+
+
+def pdf_file(result):
+    """Every staff member's signed Payroll timesheet, then the payroll payment form as the last pages."""
+    from . import payment_forms
+    styles, body, tiny, head = _styles()
+
+    def p(value, style=body):
+        return Paragraph(escape(str(value if value not in (None, "") else "—")), style)
+
     title = month_title(result["month"])
-    grid = TableStyle([("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#8a9a96")),
-                       ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e7f2ef")),
-                       ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                       ("LEFTPADDING", (0, 0), (-1, -1), 2), ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-                       ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2)])
     totals = result["totals"]
     story = [p("Salary timesheets", styles["Title"]),
              p(f"{result['organization_name']} | {title}", styles["Heading3"]),
@@ -208,7 +304,8 @@ def pdf_file(result):
              p(f"Total salary: {amount_text(totals['salary'])}", styles["Heading3"]),
              *[p(f"{row['name']}: {row['providers']} {'provider' if row['providers'] == 1 else 'providers'}, {amount_text(row['salary'])}")
                for row in result["settings"]],
-             p(NOT_PAYMENT)]
+             p(NOT_PAYMENT),
+             p("Contents: one timesheet page per provider, then the payment form (summary of all staff to pay) as the last pages.")]
     if result["work_setting"]:
         story.insert(2, p(f"{result['work_setting']} providers only"))
     missing = [r["name"] for r in result["regions"] if r["included"] and not r["signed"]]
@@ -218,65 +315,22 @@ def pdf_file(result):
                        ("Not signed by provider", "not_signed")):
         if result[key]:
             story.append(p(f"{label}: " + ", ".join(result[key])))
-    story.append(Spacer(1, 8))
-    summary = [[p(text) for text in ("Provider", "Region", "Facility", "Community area", "Cadre", "Salary scale", "Days signed",
-                                     "Monthly salary", "Bank", "Account number", "Branch")]]
-    summary += [[p(row["provider_name"]), p(row["region_name"]), p(row["facility_name"]), p(row["community_area_name"]), p(row["cadre_name"]),
-                 p(row["salary_scale"]), p(row["days_signed"]),
-                 p(OTHER_ROW if OTHER_ROW in row["checks"] else amount_text(row["monthly_salary"])),
-                 p(row["bank_name"] or "Missing"), p(row["bank_account_number"] or "Missing"), p(row["bank_branch"] or "Missing")]
-                for row in result["providers"]]
-    table = Table(summary, colWidths=[100, 62, 88, 78, 70, 40, 32, 78, 78, 85, 75], repeatRows=1, hAlign="LEFT")
-    table.setStyle(grid)
-    story.append(table)
-
-    dates = month_dates(result["month"])
-    holidays = {row["date"] for row in result["holidays"]}
-    shaded = TableStyle([("BACKGROUND", (column, 1), (column, -1), colors.HexColor("#e4e4e4"))
-                         for column, day in enumerate(dates, start=1) if day.isoformat() in holidays])
     for provider in result["providers"]:
-        days = {day["date"]: day for day in provider.get("attendance", [])}
-        story += [PageBreak(), p(provider["cadre_name"], styles["Heading2"]), p(title, styles["Heading3"])]
-        details = Table([
-            [bilingual("Mkoa", "Region"), p(provider["region_name"]), bilingual("Kituo", "Facility"), p(provider["facility_name"])],
-            [bilingual("Eneo la jamii", "Community area"), p(provider["community_area_name"]),
-             bilingual("Mahali pa kazi", "Work setting"), p(provider["work_setting"])],
-            [bilingual("Jina", "Name"), p(provider["provider_name"]), bilingual("Kada", "Cadre"), p(provider["cadre_name"])],
-            [bilingual("Ngazi ya mshahara", "Salary scale"), p(provider["salary_scale"]), bilingual("Namba", "Staff ID"), p(provider["staff_id"])],
-            [bilingual("Mshahara", "Monthly salary"), p(OTHER_ROW if OTHER_ROW in provider["checks"] else amount_text(provider["monthly_salary"])),
-             bilingual("Benki", "Bank"), p(" | ".join(str(provider[key] or "Missing") for key in ("bank_name", "bank_account_number", "bank_branch")))],
-        ], colWidths=[100, 280, 100, 300], hAlign="LEFT")
-        story += [details, Spacer(1, 8)]
-
-        def line(sw, en, values, total=""):
-            return [bilingual(sw, en)] + values + [Paragraph(escape(total), head)]
-
-        def by_day(read):
-            return [cell(read(days[d.isoformat()])) if d.isoformat() in days else "" for d in dates]
-
-        sheet = Table([
-            [bilingual("Tarehe", "Date")] + [Paragraph(f"{d.day}<br/>{WEEKDAYS_SW[d.weekday()]}", head) for d in dates]
-            + [Paragraph("JUMLA<br/>TOTAL", head)],
-            line("Muda wa kuanza", "Start time", by_day(lambda day: day["start"])),
-            line("Muda wa kumaliza", "End time", by_day(lambda day: day["end"])),
-            line("Masaa", "Hours worked", by_day(lambda day: hours_text(day["hours"])), hours_text(provider["hours"])),
-            line("Siku za kazi", "Days worked", [Paragraph('<font name="ZapfDingbats">\u2713</font>', tiny)
-                                                 if d.isoformat() in days else "" for d in dates], str(provider["days"])),
-            *([line("Sikukuu", "Public holiday", [cell("S") if d.isoformat() in holidays else "" for d in dates], str(len(holidays)))]
-              if holidays else []),
-        ], colWidths=[76] + [(786 - 76 - 34) / len(dates)] * len(dates) + [34], hAlign="LEFT")
-        sheet.setStyle(grid)
-        sheet.setStyle(shaded)
-        story += [sheet, Spacer(1, 10)]
-        if holidays:
-            story.append(p("Sikukuu / Public holidays: " + "; ".join(f"{row['date']} {row['name_sw']} / {row['name_en']}" for row in result["holidays"])))
-        if not days:
-            story.append(p(NO_DAILY_TIMES))
-        story += [p(f"Days signed by provider: {provider['days_signed']}"),
-                  p("Idhini ya RM / RM approval: Completed"),
-                  p(f"Regional Finance sign-off: {provider['approved_by_name']}, {provider['approved_at']}"),
-                  p(NOT_PAYMENT)]
-
+        salary = OTHER_ROW if OTHER_ROW in provider["checks"] else amount_text(provider["monthly_salary"])
+        details = [
+            (("Mkoa", "Region"), provider["region_name"]), (("Kituo", "Facility"), provider["facility_name"]),
+            (("Eneo la jamii", "Community area"), provider["community_area_name"]), (("Mahali pa kazi", "Work setting"), provider["work_setting"]),
+            (("Jina", "Name"), provider["provider_name"]), (("Kada", "Cadre"), provider["cadre_name"]),
+            (("Ngazi ya mshahara", "Salary scale"), provider["salary_scale"]), (("Namba", "Staff ID"), provider["staff_id"]),
+            (("Mshahara", "Monthly salary"), salary),
+            (("Benki", "Bank"), " | ".join(str(provider[key] or "Missing") for key in ("bank_name", "bank_account_number", "bank_branch"))),
+        ]
+        footer = [f"Days signed by provider: {provider['days_signed']}", "Idhini ya RM / RM approval: Completed",
+                  f"Regional Finance sign-off: {provider['approved_by_name']}, {provider['approved_at']}", NOT_PAYMENT]
+        story += [PageBreak(), *timesheet_page(provider, result["month"], result["holidays"], details, footer, kind="PAYROLL")]
+    form = payment_forms.payroll_form(result)
+    if form["rows"]:
+        story += [PageBreak(), *payment_forms.form_flowables(form, landscape(A4)[0] - 56)]
     output = io.BytesIO()
     SimpleDocTemplate(output, pagesize=landscape(A4), topMargin=28, bottomMargin=28, leftMargin=28, rightMargin=28,
                       title=f"Salary timesheets {result['month']}").build(story, onFirstPage=_footer, onLaterPages=_footer)

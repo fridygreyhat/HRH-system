@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { qs } from '../api';
 import { useAuth } from '../AuthContext';
 import { ClaimDrawer } from '../components/claims/ClaimDrawer';
-import { CreateClaim } from '../components/claims/CreateClaim';
 import { ServicesProofPaymentDialog } from '../components/claims/ServicesProofPaymentDialog';
 import { RegionalFinanceNextSteps } from '../components/claims/RegionalFinanceNextSteps';
 import { ServicesReportPanel } from '../components/claims/ServicesReportPanel';
@@ -52,7 +51,8 @@ export function Claims() {
   // Prefer the Regional Finance workflow even when the account also holds
   // Central Finance access. Its manual form is invalid for new work logs.
   const regionalFinance = hasRole('REGIONAL_FINANCE') && !hasRole('SUPER_ADMIN');
-  const canCreate = hasRole('FHI360_FINANCE', 'CSO_FINANCE') && !regionalFinance;
+  // Claims are never prepared by hand: Services claims come from Regional Finance's routing, Payroll is paid by the CSO.
+  const channelFinance = hasRole('FHI360_FINANCE', 'CSO_FINANCE') && !regionalFinance;
   const [status, setStatus] = useState('');
   const [paymentStatus, setPaymentStatus] = useState('');
   const [route, setRoute] = useState('');
@@ -63,7 +63,6 @@ export function Claims() {
   const providerOnly = hasRole('PROVIDER') && !hasRole('FHI360_FINANCE', 'CSO_FINANCE', 'REGIONAL_FINANCE', 'RPM', 'OVERSIGHT', 'COMMUNITY_VERIFIER');
   const claims = useApi<ClaimSummary[]>(`/claims${qs({ status, payment_status: paymentStatus, route, period_id: periodId, offset: page * 100, limit: 100 })}`);
   const [openId, setOpenId] = useState<number | null>(null);
-  const [creating, setCreating] = useState(false);
   const [servicesProofPayment, setServicesProofPayment] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -127,11 +126,6 @@ export function Claims() {
           </Field>
         </div>
         <div className="fin-actions">
-          {canCreate && (
-            <button className="btn btn-primary" onClick={() => setCreating(true)}>
-              {sw ? 'Andaa dai' : 'Prepare a claim'}
-            </button>
-          )}
           {hasRole('FHI360_FINANCE') && (
             <button className="btn btn-secondary" onClick={() => setServicesProofPayment(true)}>
               {sw ? 'Uthibitisho + malipo ya Huduma' : 'Services proof + payment'}
@@ -222,25 +216,19 @@ export function Claims() {
         ))}
       </AsyncState>
 
+      {channelFinance && (
+        <p className="fin-footnote claims-origin">
+          {sw
+            ? 'Madai ya Huduma huundwa yenyewe Fedha ya Mkoa inapoyatuma kwa FHI360. Mshahara si dai: CSO hulipa kutoka ripoti ya Mshahara iliyosainiwa (Malipo ya CSO → Majedwali ya mshahara).'
+            : "Services claims are created automatically when Regional Finance sends them to FHI360. Payroll is not a claim: the CSO pays it from the signed Payroll report (CSO payments → Salary timesheets)."}
+        </p>
+      )}
       {(page > 0 || (claims.data?.length || 0) >= 100) && <nav className="row fin-pager" aria-label={sw ? 'Kurasa za madai' : 'Claims pages'}>
         <button className="btn btn-secondary" disabled={claims.loading || page === 0} onClick={() => setPage(page - 1)}>{sw ? 'Madai yaliyotangulia' : 'Previous claims'}</button>
         <span>{sw ? 'Ukurasa' : 'Page'} {page + 1}</span>
         <button className="btn btn-secondary" disabled={claims.loading || (claims.data?.length || 0) < 100} onClick={() => setPage(page + 1)}>{sw ? 'Madai yanayofuata' : 'Next claims'}</button>
       </nav>}
 
-      {creating && (
-        <CreateClaim
-          onClose={() => setCreating(false)}
-          onCreated={(c) => {
-            setCreating(false);
-            setNotice(sw
-              ? `Dai #${c.id} limeundwa (${CLAIM_STATUS_LABELS_SW[c.status] || CLAIM_STATUS_LABELS[c.status] || c.status}).`
-              : `Claim #${c.id} created (${CLAIM_STATUS_LABELS[c.status] || c.status}).`);
-            claims.reload();
-            setOpenId(c.id);
-          }}
-        />
-      )}
       {servicesProofPayment && (
         <ServicesProofPaymentDialog
           onClose={() => setServicesProofPayment(false)}

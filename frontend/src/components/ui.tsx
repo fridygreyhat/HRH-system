@@ -192,7 +192,7 @@ function useDialogFocus(onClose: () => void) {
     dialogStack.push(token);
     const previous = document.activeElement as HTMLElement | null;
     const node = ref.current;
-    const focusable = node?.querySelector<HTMLElement>('[autofocus], input, select, textarea, button:not([data-close])');
+    const focusable = node?.querySelector<HTMLElement>('[autofocus], [data-autofocus]') || node?.querySelector<HTMLElement>('input, select, textarea, button:not([data-close])');
     (focusable || node)?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && dialogStack[dialogStack.length - 1] === token) {

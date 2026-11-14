@@ -25,6 +25,7 @@ import {
 import { useApi } from '../../hooks';
 import { navigate } from '../../nav';
 import { ChannelResponse, FinancePayorsResponse, ReturnFlag, WorkLogDetail, WorkLogSnapshot } from '../../types';
+import { WorkTypeBanner } from './WorkTypeBanner';
 import { Alert, AuditTimeline, DevCodeNotice, Drawer, Facts, Field, Modal, ReasonDialog, Section, StatusBadge, WorkTypeChip } from '../ui';
 import { Icon } from '../Icon';
 import { ageText, EntriesView, FLAG_GENERAL_FIELDS, FlagsList, TotalsPanel, WORKLOG_ACTION_LABELS_SW } from './shared';
@@ -264,9 +265,11 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
   const paymentStep = log?.status === 'PENDING_FINANCE_REVIEW' && log.available_actions.includes('finance_review');
   const timesheetApprovedAt = log?.finance_timesheet_approved_at;
   const timesheetFolded = Boolean(timesheetApprovedAt && log?.available_actions.includes('finance_review'));
-  const decisionTitle = timesheetStep ? tr('Review 1 of 2 · Timesheet', 'Mapitio 1 kati ya 2 · Jedwali')
+  // Payroll and Services are approved on the same screen: every decision names which one it is.
+  const typeTag = log?.work_type === 'PAYROLL' ? tr('Payroll', 'Mshahara') : log?.work_type === 'SERVICES' ? tr('Services', 'Huduma') : '';
+  const decisionTitle = (typeTag ? `${typeTag} · ` : '') + (timesheetStep ? tr('Review 1 of 2 · Timesheet', 'Mapitio 1 kati ya 2 · Jedwali')
     : paymentStep ? tr('Review 2 of 2 · Services payment', 'Mapitio 2 kati ya 2 · Malipo ya Huduma')
-      : routingActionAvailable ? tr('Send to Central Finance', 'Tuma kwa Fedha Kuu') : tr('Review and decide', 'Pitia na uamue');
+      : routingActionAvailable ? tr('Send to Central Finance', 'Tuma kwa Fedha Kuu') : tr('Review and decide', 'Pitia na uamue'));
   const decisionLabel = (value: string) => value === 'verify' && log?.assignment && !log.assignment.facility ? tr('Verify and approve (CSO Technical)', 'Hakiki na idhinisha (Kitaalamu wa CSO)')
     : regionalDecision && value === 'return' ? tr('Return to cadre Technical', 'Rudisha kwa Kitaalamu wa kada')
     : regionalDecision && value === 'reject' ? tr('Reject to provider', 'Kataa kwa mtoa huduma') : actionDisplayLabel(value, Boolean(log?.finance_snapshot), sw);
@@ -430,7 +433,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
       <Alert>{error}</Alert>
       {!log && loading && <p className="muted">{tr('Loading…', 'Inapakia…')}</p>}
       {log && (
-        <div className="stack-lg wl-review">
+        <div className={`stack-lg wl-review is-${(log.work_type || 'legacy').toLowerCase()}`}>
           <section className="wl-head" aria-label={tr('Timesheet header', 'Kichwa cha jedwali')}>
             <div className="wl-head-main">
               <span className="wl-head-cadre">{cadreLabel}</span>
@@ -447,6 +450,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
               <Icon name="table" size={15} /> {tr('Print view', 'Chapisha')}
             </button>
           </section>
+          <WorkTypeBanner log={log} sw={sw} showAmount={!timesheetStep} />
           <ApprovalStepper status={log.status} audit={log.audit} hoursInStatus={log.hours_in_status} facilityEndorsed={log.endorsements.find((e) => e.version === log.version && e.kind === 'FACILITY_IN_CHARGE')?.actor_name} technicalReviewer={log.cadre?.technical_reviewer_title} communityOnly={!!log.assignment && !log.assignment.facility} workflowVersion={log.workflow_version} workType={log.work_type} financeTimesheetApproved={Boolean(timesheetApprovedAt)} />
           {showTimesheet && <ReviewSummary log={log} task={reviewTask} amount={summaryAmount} sw={sw} active={log.available_actions.length > 0} />}
           {!!log.review_feedback?.length && <Section title={tr('Current review feedback', 'Maoni ya mapitio ya sasa')}>
@@ -649,8 +653,8 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
               </label>
               <div className="row wl-actions">
                 {log.available_actions.filter((a) => (!isRpmWithoutFinanceRole || !['route_fhi360', 'route_cso', 'paid'].includes(a)) && !(a === 'hold' && fixedDailyNoBudget)).map((a) => (
-                  <button key={a} className={`btn ${DESTRUCTIVE_ACTIONS.has(a) ? 'btn-secondary' : 'btn-primary'}`} disabled={!reviewReached || !reviewConfirmed || (a === 'finance_review' && log.work_type === 'SERVICES' && !canSubmitServiceFinanceReview(fundingSourceId, availableFundingSources, reviewReached, reviewConfirmed)) || ((a === 'route_fhi360' || a === 'route_cso') && !canRouteReviewedFinanceContext(reviewedContextDirty))} onClick={() => setAction(a)}>
-                    {decisionLabel(a)}
+                  <button key={a} className={`btn ${DESTRUCTIVE_ACTIONS.has(a) ? 'btn-secondary' : `btn-primary wl-action-${(log.work_type || 'legacy').toLowerCase()}`}`} disabled={!reviewReached || !reviewConfirmed || (a === 'finance_review' && log.work_type === 'SERVICES' && !canSubmitServiceFinanceReview(fundingSourceId, availableFundingSources, reviewReached, reviewConfirmed)) || ((a === 'route_fhi360' || a === 'route_cso') && !canRouteReviewedFinanceContext(reviewedContextDirty))} onClick={() => setAction(a)}>
+                    {decisionLabel(a)}{!DESTRUCTIVE_ACTIONS.has(a) && typeTag ? ` · ${typeTag}` : ''}
                   </button>
                 ))}
               </div>

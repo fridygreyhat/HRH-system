@@ -148,7 +148,7 @@ test('approving the timesheet needs a fresh confirmation for the Services paymen
   mockLog = baseLog({ available_actions: ['finance_timesheet_approve', 'return', 'reject'] });
   await open();
   const box = () => container.querySelector('input[type="checkbox"]');
-  const button = (text, scope = container) => [...scope.querySelectorAll('button')].find((node) => node.textContent === text);
+  const button = (text, scope = container) => [...scope.querySelectorAll('button')].find((node) => node.textContent === text || node.textContent === `${text} · Services`);
   expect(button('Approve timesheet').disabled).toBe(true);
   await act(async () => box().click());
   expect(button('Approve timesheet').disabled).toBe(false);

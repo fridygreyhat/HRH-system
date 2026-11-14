@@ -30,10 +30,20 @@ def test_monthly_signoff_exports_and_revisions(api, db, period, v22, work_type):
         db.add(WorkLogMeasure(entry_id=entry.id, field_key="clients", value=5))
         logs.append(log.id)
     db.commit()
+    # Payroll goes to the CSO; Services go to FHI360, so the CSO never receives a Services report.
+    cso = work_type == "PAYROLL"
+    reader = "csofin1" if cso else rf
 
-    assert api.get(path, "csofin1")["report"]["providers"] == []
-    assert api.get(old_path, "csofin1")["providers"] == []  # legacy endpoint cannot leak draft work
-    api.get(export + "&format=csv", "csofin1", expect=404)
+    def cso_refused():
+        for url in (path, old_path, export + "&format=csv"):
+            assert "FHI360 Central Finance" in api.get(url, "csofin1", expect=403)["detail"]
+
+    if cso:
+        assert api.get(path, "csofin1")["report"]["providers"] == []
+        assert api.get(old_path, "csofin1")["providers"] == []  # legacy endpoint cannot leak draft work
+        api.get(export + "&format=csv", "csofin1", expect=404)
+    else:
+        cso_refused()
     api.post("/finance/monthly-report/approve", "csofin1", {
         "month": month, "region_id": region, "work_type": work_type,
         "review_confirmed": True, "expected_digest": "0" * 64}, expect=403)
@@ -55,27 +65,33 @@ def test_monthly_signoff_exports_and_revisions(api, db, period, v22, work_type):
     assert signed["approval"]["region_id"] == region
     assert api.post("/finance/monthly-report/approve", rf, payload)["approval"]["id"] == signed["approval"]["id"]
     assert db.query(FinanceMonthlyReport).filter_by(month=month, region_id=region, work_type=work_type).count() == 1
-    published = api.get(path, "csofin1")
-    assert published["state"] == "APPROVED" and published["report"]["totals"]["providers"] == 2
-    assert published["can_approve"] is False and published["report"]["totals"]["hours"] == review["report"]["totals"]["hours"]
-    assert api.get(old_path, "csofin1")["totals"]["providers"] == 2
-    # Receiving one's own signed documentation is separate from payment
-    # authority. Do not require or silently activate CSO payment routing.
-    authority = db.query(CSORegionAssignment).filter_by(region_id=region, is_active=True).all()
-    for row in authority:
-        row.is_active = False
-    db.commit()
-    assert api.get(path, "csofin1")["report"]["totals"]["providers"] == 2
-    api.get(path, "csofin3", expect=403)
-    assert not db.query(CSORegionAssignment).filter_by(region_id=region, is_active=True).count()
-    for row in authority:
-        row.is_active = True
-    db.commit()
+    stored = db.query(FinanceMonthlyReport).filter_by(month=month, region_id=region, work_type=work_type).one()
+    if not cso:
+        assert stored.snapshot["organizations"] == {}  # a Services sign-off keeps no CSO copy
+        cso_refused()
+    else:
+        assert stored.snapshot["organizations"]
+        published = api.get(path, "csofin1")
+        assert published["state"] == "APPROVED" and published["report"]["totals"]["providers"] == 2
+        assert published["can_approve"] is False and published["report"]["totals"]["hours"] == review["report"]["totals"]["hours"]
+        assert api.get(old_path, "csofin1")["totals"]["providers"] == 2
+        # Receiving one's own signed documentation is separate from payment
+        # authority. Do not require or silently activate CSO payment routing.
+        authority = db.query(CSORegionAssignment).filter_by(region_id=region, is_active=True).all()
+        for row in authority:
+            row.is_active = False
+        db.commit()
+        assert api.get(path, "csofin1")["report"]["totals"]["providers"] == 2
+        api.get(path, "csofin3", expect=403)
+        assert not db.query(CSORegionAssignment).filter_by(region_id=region, is_active=True).count()
+        for row in authority:
+            row.is_active = True
+        db.commit()
 
     for fmt, content_type, prefix in (("csv", "text/csv", b"\xef\xbb\xbf"),
                                        ("pdf", "application/pdf", b"%PDF")):
         response = api.client.get(export + f"&format={fmt}",
-                                  headers={"Authorization": f"Bearer {api.token('csofin1')}"})
+                                  headers={"Authorization": f"Bearer {api.token(reader)}"})
         assert response.status_code == 200, response.text[:300] if response.status_code != 200 else ""
         assert content_type in response.headers["content-type"]
         assert "attachment" in response.headers["content-disposition"]
@@ -83,7 +99,7 @@ def test_monthly_signoff_exports_and_revisions(api, db, period, v22, work_type):
         assert response.content.startswith(prefix)
         assert len(response.content) > 300
     csv_response = api.client.get(export + "&format=csv",
-                 headers={"Authorization": f"Bearer {api.token('csofin1')}"})
+                 headers={"Authorization": f"Bearer {api.token(reader)}"})
     assert "CHW" in csv_response.content.decode("utf-8-sig")
     assert "Clients served" in csv_response.content.decode("utf-8-sig")
 
@@ -95,12 +111,16 @@ def test_monthly_signoff_exports_and_revisions(api, db, period, v22, work_type):
     db.commit()
     changed = api.get(path, rf)
     assert changed["stale"] and changed["report"]["totals"]["providers"] == 3
-    assert api.get(path, "csofin1")["report"]["totals"]["providers"] == 2
+    if cso:
+        assert api.get(path, "csofin1")["report"]["totals"]["providers"] == 2
     api.post("/finance/monthly-report/approve", rf, payload, expect=409)
     revised = api.post("/finance/monthly-report/approve", rf, {**payload, "expected_digest": changed["digest"]})
     assert revised["approval"]["id"] != signed["approval"]["id"] and not revised["stale"]
     assert db.query(FinanceMonthlyReport).filter_by(month=month, region_id=region, work_type=work_type).count() == 2
-    assert api.get(path, "csofin1")["report"]["totals"]["providers"] == 3
+    if cso:
+        assert api.get(path, "csofin1")["report"]["totals"]["providers"] == 3
+    else:
+        cso_refused()
     assert db.query(PaymentClaim).filter(PaymentClaim.work_log_id.in_(logs)).count() == 0
 
 
@@ -142,3 +162,53 @@ def test_report_indicators_have_swahili_names_beside_the_report(db):
     assert names[field.key] == field.label_sw
     assert "no_such_field" not in names  # unknown indicators keep their recorded name
     assert monthly_report_approval.labels_sw(db, {"cadres": [], "providers": []}) == {}
+
+
+def test_signoff_status_keeps_payroll_waiting_after_services_is_signed(api, db, period, v22):
+    """The demo: Regional Finance signed Services, so the CSO received nothing. Payroll must still show as waiting."""
+    from datetime import timedelta
+    from backend.core.period_dates import pay_month_of, pay_month_range
+    from backend.core.security import load_current_user
+    from backend.models import User
+
+    rf = v22["finance"]
+    region = v22["region_id"]
+    all_cadres(db, rf)
+    for work_type, status in (("PAYROLL", "APPROVED"), ("SERVICES", "PENDING_FINANCE_REVIEW")):
+        log, entry, _ = unpriced_log(db, period, "chw1", work_type)
+        log.status, log.approved_at = status, utcnow()
+    db.commit()
+    month = pay_month_of(entry.entry_date)
+    after = pay_month_range(month)[1] + timedelta(days=1)  # the month has closed
+
+    def status():
+        actor = load_current_user(db, db.query(User).filter_by(username=rf).one())
+        return {(i["work_type"], i["month"], i["region_id"]): i for i in monthly_report_approval.signoff_status(db, actor, after)}
+
+    def sign(work_type):
+        report = api.get(f"/finance/monthly-report?month={month}&region_id={region}&work_type={work_type}", rf)
+        api.post("/finance/monthly-report/approve", rf, {"month": month, "region_id": region, "work_type": work_type,
+                                                          "review_confirmed": True, "expected_digest": report["digest"]})
+
+    first = status()
+    assert first[("PAYROLL", month, region)]["state"] == "NOT_SIGNED"
+    assert first[("PAYROLL", month, region)]["can_approve"] and first[("PAYROLL", month, region)]["providers"] == 1
+    sign("SERVICES")
+    listed = monthly_report_approval.signoff_status(db, load_current_user(db, db.query(User).filter_by(username=rf).one()), after)
+    assert (listed[0]["work_type"], listed[0]["state"]) == ("PAYROLL", "NOT_SIGNED")  # what still waits comes first
+    assert status()[("SERVICES", month, region)]["state"] == "SIGNED"
+    sign("PAYROLL")
+    signed = status()[("PAYROLL", month, region)]
+    assert signed["state"] == "SIGNED" and signed["approved_by_name"]
+    # Work authorized after the sign-off asks for it to be confirmed again.
+    later, _, _ = unpriced_log(db, period, "hcp1", "PAYROLL")
+    later.status, later.approved_at = "APPROVED", utcnow()
+    db.commit()
+    assert status()[("PAYROLL", month, region)]["state"] == "CHANGED"
+    # The still-open pay month is not asked for yet.
+    actor = load_current_user(db, db.query(User).filter_by(username=rf).one())
+    assert all(i["month"] != month for i in monthly_report_approval.signoff_status(db, actor, pay_month_range(month)[1]))
+    # Only Regional Finance gets the reminder list.
+    assert isinstance(api.get("/finance/monthly-report/status", rf), list)
+    api.get("/finance/monthly-report/status", "csofin1", expect=403)
+    api.get("/finance/monthly-report/status", "chw1", expect=403)

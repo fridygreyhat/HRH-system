@@ -1,0 +1,28 @@
+/* Payroll (indigo) and Services (teal) timesheets look different while they are approved, as their chips already do. */
+.wtb { --wtb: #0f6b73; --wtb-bg: #e6f4f3; display: grid; gap: .7rem; padding: .9rem 1rem; border: 1px solid color-mix(in srgb, var(--wtb) 35%, transparent); border-left: 6px solid var(--wtb); border-radius: var(--radius); background: var(--wtb-bg); color: var(--text); }
+.wtb-payroll { --wtb: #4b4fa6; --wtb-bg: #eceefc; }
+:root[data-theme='dark'] .wtb { --wtb: #5fc4bd; --wtb-bg: rgba(80, 180, 175, .12); }
+:root[data-theme='dark'] .wtb-payroll { --wtb: #9fa3f0; --wtb-bg: rgba(120, 125, 230, .14); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .wtb { --wtb: #5fc4bd; --wtb-bg: rgba(80, 180, 175, .12); }
+  :root:not([data-theme='light']) .wtb-payroll { --wtb: #9fa3f0; --wtb-bg: rgba(120, 125, 230, .14); }
+}
+.wtb-head { display: flex; align-items: flex-start; gap: .7rem; }
+.wtb-icon { display: grid; place-items: center; flex: none; width: 2.3rem; height: 2.3rem; border-radius: 50%; background: var(--wtb); color: #fff; }
+.wtb-title { display: block; color: var(--wtb); font-size: .95rem; letter-spacing: .06em; }
+.wtb-who { margin: .15rem 0 0; font-size: .82rem; color: var(--text); }
+.wtb-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: .5rem; margin: 0; }
+.wtb-facts div { padding: .45rem .6rem; border-radius: calc(var(--radius) - 2px); background: var(--surface); }
+.wtb-facts dt { color: var(--muted); font-size: .72rem; }
+.wtb-facts dd { margin: .1rem 0 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.wtb-missing { color: var(--warn-fg); }
+.wtb-services { display: grid; gap: .25rem; }
+.wtb-label { color: var(--muted); font-size: .72rem; }
+.wtb-services ul { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0; padding: 0; list-style: none; }
+.wtb-services li { padding: .2rem .55rem; border-radius: 999px; background: var(--surface); font-size: .78rem; }
+.wtb-services li span { color: var(--muted); }
+/* The approve button carries the same colour, so the decision cannot be mistaken for the other kind. */
+.btn-primary.wl-action-payroll { background: #4b4fa6; border-color: #4b4fa6; color: #fff; }
+.btn-primary.wl-action-services { background: #0f6b73; border-color: #0f6b73; color: #fff; }
+.wl-review.is-payroll .wl-decision { border-left: 4px solid #4b4fa6; }
+.wl-review.is-services .wl-decision { border-left: 4px solid #0f6b73; }

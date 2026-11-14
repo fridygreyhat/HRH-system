@@ -31,7 +31,7 @@ const texts = (container, selector) => [...container.querySelectorAll(selector)]
 
 beforeEach(() => {
   useApi.mockImplementation(path => ({
-    data: path.startsWith('/claims?') ? [{
+    data: path?.startsWith('/claims?') ? [{
       id: 1, staff_name: 'Asha', period_label: 'Oktoba 2026', work_type: 'SERVICES', status: 'APPROVED', payment_status: 'PROOF_REQUIRED',
       amount: 40000, amount_paid: 0, currency: 'TZS', category_name: 'Huduma A',
     }] : [],

@@ -6,6 +6,7 @@ import { useAction, useApi } from '../../hooks';
 import { BatchDetail } from '../../types';
 import { ClaimDrawer } from '../claims/ClaimDrawer';
 import { Alert, AsyncState, Drawer, Facts, PersonCell, ReasonDialog, RouteBadge, Section, StatusBadge } from '../ui';
+import { confirmAction } from '../ConfirmDialog';
 
 /** Payment-status counts for the claims in a batch, as small payment badges. */
 export function PaymentProgress({ progress }: { progress: Record<string, number> }) {
@@ -48,7 +49,13 @@ export function BatchDrawer({ batchId, onClose, onChanged }: { batchId: number; 
   };
 
   const transition = async (b: BatchDetail, kind: 'hand-off' | 'receive') => {
-    if (!window.confirm(kind === 'hand-off' ? (sw ? HAND_OFF_CONFIRM_SW : HAND_OFF_CONFIRM) : (sw ? RECEIVE_CONFIRM_SW : RECEIVE_CONFIRM))) return;
+    const handOff = kind === 'hand-off';
+    if (!(await confirmAction({
+      title: handOff ? (sw ? 'Kabidhi kundi kwa CSO?' : 'Hand off to the CSO?') : (sw ? 'Thibitisha kupokea kundi?' : 'Acknowledge receipt?'),
+      message: handOff ? (sw ? HAND_OFF_CONFIRM_SW : HAND_OFF_CONFIRM) : (sw ? RECEIVE_CONFIRM_SW : RECEIVE_CONFIRM),
+      confirmLabel: handOff ? (sw ? 'Kabidhi kwa CSO' : 'Hand off') : (sw ? 'Thibitisha kupokea' : 'Acknowledge receipt'),
+      danger: true,
+    }))) return;
     setNotice(null);
     const updated = await action.run(() => api.post<BatchDetail>(`/batches/${b.id}/${kind}`));
     if (updated) {

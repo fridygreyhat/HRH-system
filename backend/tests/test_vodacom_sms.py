@@ -69,7 +69,7 @@ def test_network_failure_redacted(gateway, monkeypatch, caplog):
     assert "test-only-token" not in caplog.text
 
 
-@pytest.mark.parametrize("phone", ["0712345678", "255712345678,255712345679", "+12345678900", ""])
+@pytest.mark.parametrize("phone", ["255712345678,255712345679", "+12345678900", "0812345678", ""])
 def test_invalid_recipient_does_not_send(gateway, monkeypatch, phone):
     opener = response(monkeypatch, b"")
     assert gateway.send_sms(phone, "message") is None
@@ -93,3 +93,10 @@ def test_gateway_selection_and_no_mock_fallback(monkeypatch):
 
 def test_redirects_refused():
     assert vodacom_sms._NoRedirect().redirect_request(None, None, 302, "", {}, "https://example.com") is None
+
+
+def test_a_local_number_is_sent_in_international_form(gateway, monkeypatch):
+    """Older records keep 07…: Vodacom still gets 2557…, so those people are not silently skipped."""
+    opener = response(monkeypatch, b'{"MessageID":"accepted-id","Status":{"StatusCode":0}}')
+    assert gateway.send_sms("0712 345 678", "HRH test") == "accepted-id"
+    assert json.loads(opener.open.call_args.args[0].data)["recipient"] == "255712345678"

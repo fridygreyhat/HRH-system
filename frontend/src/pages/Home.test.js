@@ -86,3 +86,43 @@ test('a reviewer sees what waits on them and what is over 24 hours', () => {
   expect(html).toContain('Neema Mushi');
   expect(html).toContain('2 timesheets wait for your decision.');
 });
+
+test('Regional Finance is reminded of an unsigned Payroll report even after signing Services', () => {
+  const status = [
+    { month: '2026-10', region_id: 11, region_name: 'Iringa', work_type: 'PAYROLL', state: 'NOT_SIGNED', providers: 3 },
+    { month: '2026-10', region_id: 11, region_name: 'Iringa', work_type: 'SERVICES', state: 'SIGNED', providers: 2 },
+  ];
+  const html = home(['REGIONAL_FINANCE'], { '/finance/monthly-report/status': status });
+  expect(html).toContain('1 Payroll report is not signed, so the CSO has no salary timesheets yet.');
+  expect(html).toContain('Reports to sign');
+  expect(html).toContain('Iringa');
+  expect(html).toContain('Not signed');
+  expect(html).toContain('Send Payroll to the CSO');
+  // The big button opens the reports, not the Services list that is all clear.
+  expect(html).toMatch(/home-cta[^>]*>Send Payroll to the CSO/);
+});
+
+test('Regional Finance with every report signed gets no reminder', () => {
+  const html = home(['REGIONAL_FINANCE'], { '/finance/monthly-report/status': [{ month: '2026-10', region_id: 11, region_name: 'Iringa', work_type: 'PAYROLL', state: 'SIGNED', providers: 3 }] });
+  expect(html).not.toContain('Reports to sign');
+  expect(html).not.toContain('not signed');
+});
+
+test('CSO Finance sees on Home which Payroll Regional Finance has sent, and which still waits', () => {
+  const status = [
+    { month: '2026-10', region_id: 11, region_name: 'Iringa', state: 'SIGNED', approved_providers: 3, signed_providers: 3, approved_by_name: 'Jonas Abel' },
+    { month: '2026-10', region_id: 22, region_name: 'Njombe', state: 'WAITING', approved_providers: 2, signed_providers: 0, approved_by_name: null },
+  ];
+  const html = home(['CSO_FINANCE'], { '/cso-finance/payroll-status': status });
+  expect(html).toContain('October 2026 payroll received from Regional Finance: 3 providers (Iringa).');
+  expect(html).toContain('Payroll from Regional Finance');
+  expect(html).toContain('Received');
+  expect(html).toContain('Signed by Jonas Abel');
+  expect(html).toContain('Regional Finance has not signed');
+});
+
+test('CSO Finance waiting for Regional Finance is told so', () => {
+  const html = home(['CSO_FINANCE'], { '/cso-finance/payroll-status': [
+    { month: '2026-10', region_id: 22, region_name: 'Njombe', state: 'WAITING', approved_providers: 2, signed_providers: 0, approved_by_name: null }] });
+  expect(html).toContain('Waiting for Regional Finance to sign October 2026 payroll (Njombe).');
+});

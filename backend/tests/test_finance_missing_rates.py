@@ -68,10 +68,12 @@ def test_rm_approves_unpriced_work_but_finance_cannot_prepare_payment(api, db, p
     if kind == "PAYROLL":
         assert result["financial_preview"] is None
         assert "hold" not in result["available_actions"]
-        assert log.id not in {item["id"] for item in api.get("/worklogs?queue=true&work_type=PAYROLL", v22["finance"])}
+        # RM-approved Payroll now waits for Regional Finance's approval before the month is signed and sent to the CSO.
+        assert log.id in {item["id"] for item in api.get("/worklogs?queue=true&work_type=PAYROLL", v22["finance"])}
+        assert "finance_timesheet_approve" in api.get(f"/worklogs/{log.id}", v22["finance"])["available_actions"]
         api.post(f"/worklogs/{log.id}/actions/finance_review", v22["finance"], {
             "review_confirmed": True, "review_type": kind,
-        }, expect=403)
+        }, expect=403)  # there is still no payment review: Payroll is not a claim
         return
     queue = api.get(f"/worklogs?queue=true&work_type={kind}", v22["finance"])
     assert log.id in {item["id"] for item in queue}

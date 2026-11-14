@@ -119,6 +119,11 @@ class Api:
         # may act. test_finance_timesheet_approval.py uses `call` to test this step.
         if path.endswith("/actions/finance_review") and kw.get("expect") != 403:
             self._approve_finance_timesheet(path.removesuffix("/actions/finance_review"), user)
+        # Signing a Payroll month needs every Payroll timesheet in it approved by Regional Finance first;
+        # test_finance_bulk_approval.py tests that rule itself with `call`.
+        if (path == "/finance/monthly-report/approve" and isinstance(json, dict) and json.get("work_type") == "PAYROLL"
+                and kw.get("expect") in (None, 200, 409)):
+            self._approve_payroll_month(user, json["month"], json["region_id"])
         if path == "/rates" and isinstance(json, dict):
             json = {"min_days_per_month": 0, **json}  # required of real users; only test_service_targets.py is about it
         return self.call("POST", path, user, json=json if json is not None else {}, **kw)
@@ -128,6 +133,23 @@ class Api:
         if "finance_timesheet_approve" in log["available_actions"]:
             self.call("POST", f"{log_path}/actions/finance_timesheet_approve", user,
                       json={"review_confirmed": True, "review_type": log["work_type"]})
+
+    def _approve_payroll_month(self, user, month, region_id):
+        listing = self.client.get(f"/finance/bulk-review?work_type=PAYROLL&month={month}&region_id={region_id}",
+                                  headers={"Authorization": f"Bearer {self.token(user)}"})
+        if listing.status_code != 200:
+            return
+        ids = [row["work_log_id"] for row in listing.json()["rows"]]
+        if not ids:
+            return
+        # These tests are about signing; approving the timesheets is tested in test_finance_bulk_approval.py.
+        from backend.db.session import SessionLocal
+        from backend.models import User, WorkLog, utcnow
+        with SessionLocal() as session:
+            actor = session.query(User).filter_by(username=user).one()
+            for log in session.query(WorkLog).filter(WorkLog.id.in_(ids)):
+                log.finance_timesheet_approved_by, log.finance_timesheet_approved_at = actor.id, utcnow()
+            session.commit()
 
     def put(self, path, user, json=None, **kw):
         return self.call("PUT", path, user, json=json, **kw)
@@ -149,6 +171,20 @@ def payment_code_skipped(request, monkeypatch):
 _months = itertools.count()
 
 
+def test_month(n: int) -> tuple[int, int, int]:
+    """The n-th past month a test may use, and a week offset for its start day.
+
+    Counting back from three months ago leaves every month back to 2000 (the synthetic staff's assignment start):
+    this month and last month are the seeded demo periods, and test_chw_monthly_activities keeps the month before.
+    Once every month is used, the count goes round again with periods starting a week later, so dates never repeat."""
+    today = date.today()
+    first = today.year * 12 + today.month - 1 - 3
+    months = first - 2000 * 12 + 1  # months available from three months ago back to January 2000
+    lap, step = divmod(n, months)
+    index = first - step
+    return index // 12, index % 12 + 1, lap
+
+
 @pytest.fixture()
 def period(api, db):
     """A fresh past pay period with DEMO budget lines, so every test has its own work logs and budgets."""
@@ -167,13 +203,10 @@ def legacy_workflow_default(monkeypatch):
 
 
 def make_period(api: Api, db, amounts: dict | None = None) -> dict:
-    n = next(_months)
-    # Always use past periods, without letting suite growth push ordinary fixtures
-    # before the synthetic staff's 2000 assignment start.
-    year, month = date.today().year - 1 - n // 12, 12 - n % 12
+    year, month, lap = test_month(next(_months))
     start = date(year, month, 1)
     # Ordinary test entries start on a Monday; weekend rules are tested explicitly.
-    start += timedelta(days=(7 - start.weekday()) % 7)
+    start += timedelta(days=(7 - start.weekday()) % 7 + 7 * lap)
     end = date(year, month, calendar.monthrange(year, month)[1])
     p = api.post("/admin/pay-periods", "central1", {"start_date": str(start), "end_date": str(end), "period_label": f"TEST {start:%b %Y}", "status": "OPEN"})
     amounts = amounts or {}
@@ -245,3 +278,16 @@ def approved_log(api: Api, provider: str, period: dict) -> dict:
     api.post(f"/worklogs/{log['id']}/otp/confirm", provider, {"code": log["otp"]["dev_otp"]})
     api.post(f"/worklogs/{log['id']}/actions/endorse", "tofficer1", {})
     return api.post(f"/worklogs/{log['id']}/actions/authorize", "rpm1", {})
+
+
+@pytest.fixture()
+def each_timesheet_sms(db):
+    """The original way: reviewers get one SMS per timesheet (now off by default in favour of a summary SMS)."""
+    from backend.models import SystemSetting
+    db.merge(SystemSetting(key="reviewer_sms_each_timesheet", value=True))
+    db.commit()
+    yield
+    row = db.get(SystemSetting, "reviewer_sms_each_timesheet")
+    if row:
+        db.delete(row)
+        db.commit()

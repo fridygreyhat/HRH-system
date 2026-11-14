@@ -9,6 +9,7 @@ import { BatchDrawer } from '../components/batches/BatchDrawer';
 import { SalaryTimesheets } from '../components/cso/SalaryTimesheets';
 import { Alert, AsyncState, Empty, Field, KpiStrip, PersonCell, RouteBadge, Section, StatTile, StatusBadge, WorkTypeChip } from '../components/ui';
 import './polish-finance.css';
+import { confirmAction } from '../components/ConfirmDialog';
 
 type SectionKey = 'all' | 'pending' | 'receipt' | 'routec' | 'recon' | 'export';
 
@@ -186,6 +187,17 @@ function ClaimList({ rows, onOpen, meId, sw }: { rows: ClaimSummary[]; onOpen: (
   );
 }
 
+interface CsoPayrollStatus {
+  month: string;
+  region_id: number;
+  region_name: string;
+  state: 'SIGNED' | 'WAITING';
+  approved_providers: number;
+  signed_providers: number;
+  approved_by_name: string | null;
+  approved_at: string | null;
+}
+
 export function CsoPortal({ initialSection }: { initialSection?: 'export' } = {}) {
   const { me, lang } = useAuth();
   const sw = lang === 'sw';
@@ -193,6 +205,8 @@ export function CsoPortal({ initialSection }: { initialSection?: 'export' } = {}
   const batches = useApi<Batch[]>('/batches');
   const payPeriods = useApi<PayPeriod[]>('/cso-finance/pay-periods');
   const organizations = useApi<CsoFinanceOrganization[]>('/cso-finance/organizations');
+  // Payroll is never a claim: it arrives as Regional Finance's signed Payroll report, so it leads this page.
+  const payroll = useApi<CsoPayrollStatus[]>('/cso-finance/payroll-status');
   const receive = useAction();
   const payrollExport = useAction();
   const [section, setSection] = useState<SectionKey>(initialSection || 'all');
@@ -221,6 +235,7 @@ export function CsoPortal({ initialSection }: { initialSection?: 'export' } = {}
     batches.reload();
     payPeriods.reload();
     organizations.reload();
+    payroll.reload();
   };
   const refreshing = claims.loading || batches.loading || payPeriods.loading || organizations.loading;
 
@@ -238,11 +253,14 @@ export function CsoPortal({ initialSection }: { initialSection?: 'export' } = {}
   const latePending = pending.filter((c) => hoursSince(c.updated_at) > 48).length;
 
   const acknowledge = async (b: Batch) => {
-    if (!window.confirm(sw
-      ? `Thibitisha kwamba CSO yako imepokea kundi ${b.reference}? Malipo yanaweza kurekodiwa baada ya kupokelewa tu. Hatua hii haiwezi kurudishwa.`
-      : `Acknowledge that your CSO has received batch ${b.reference}? Payments can be recorded only after receipt. This cannot be undone.`)) {
-      return;
-    }
+    if (!(await confirmAction({
+      title: sw ? `Thibitisha kupokea kundi ${b.reference}?` : `Acknowledge batch ${b.reference}?`,
+      message: sw
+        ? 'Thibitisha kwamba CSO yako imepokea kundi hili. Malipo yanaweza kurekodiwa baada ya kupokelewa tu. Hatua hii haiwezi kurudishwa.'
+        : 'Confirm that your CSO has received this batch. Payments can be recorded only after receipt. This cannot be undone.',
+      confirmLabel: sw ? 'Thibitisha kupokea' : 'Acknowledge receipt',
+      danger: true,
+    }))) return;
     setNotice(null);
     const ok = await receive.run(() => api.post(`/batches/${b.id}/receive`));
     if (ok !== undefined) {
@@ -253,12 +271,17 @@ export function CsoPortal({ initialSection }: { initialSection?: 'export' } = {}
 
   const tabs: { key: SectionKey; label: string }[] = [
     { key: 'all', label: sw ? 'Muhtasari' : 'Overview' },
+    { key: 'export', label: sw ? 'Mshahara (majedwali)' : 'Payroll (salary timesheets)' },
     { key: 'pending', label: `${sw ? 'Malipo yanayosubiri' : 'Pending payments'}${claims.data ? ` (${pending.length})` : ''}` },
     { key: 'receipt', label: `${sw ? 'Yanasubiri kupokelewa' : 'Awaiting receipt'}${batches.data ? ` (${awaitingReceipt.length})` : ''}` },
     { key: 'routec', label: `${sw ? 'Madai ya jamii' : 'Community claims'}${claims.data ? ` (${routeCCount})` : ''}` },
     { key: 'recon', label: sw ? 'Upatanisho' : 'Reconciliation' },
-    { key: 'export', label: sw ? 'Majedwali ya mshahara' : 'Salary timesheets' },
   ];
+  // Only older records can be payroll claims; today payroll is paid from the signed report above, never a claim.
+  const olderPayrollClaims = all.filter((c) => (c.work_type === 'PAYROLL' || (c.workflow_version === 1 && c.route_code === 'B'))
+    && ['READY', 'EXPORTED', 'HANDED_OFF'].includes(c.status) && ['NOT_STARTED', 'PENDING', 'FAILED'].includes(c.payment_status));
+  const received = (payroll.data || []).filter((row) => row.state === 'SIGNED');
+  const waiting = (payroll.data || []).filter((row) => row.state === 'WAITING');
   const show = (k: SectionKey) => section === 'all' || section === k;
   const jump = (k: SectionKey) => setSection(section === k ? 'all' : k);
 
@@ -272,6 +295,14 @@ export function CsoPortal({ initialSection }: { initialSection?: 'export' } = {}
         <KpiStrip
           label={sw ? 'Muhtasari wa malipo ya CSO' : 'CSO payments at a glance'}
           items={[
+            {
+              label: sw ? 'Mshahara uliopokelewa' : 'Payroll received',
+              value: num(received.reduce((total, row) => total + row.signed_providers, 0)), icon: 'users', tone: received.length ? 'success' : 'neutral',
+              note: waiting.length
+                ? (sw ? `Mikoa ${num(waiting.length)} inasubiri Fedha ya Mkoa` : `${num(waiting.length)} waiting for Regional Finance`)
+                : (sw ? 'Watoa huduma, kutoka Fedha ya Mkoa' : 'providers, signed by Regional Finance'),
+              onClick: () => jump('export'), active: section === 'export',
+            },
             {
               label: sw ? 'Malipo yanayosubiri' : 'Pending payments', value: num(pending.length), icon: 'wallet', tone: pending.length ? 'warn' : 'neutral',
               note: latePending ? (sw ? `${num(latePending)} zaidi ya saa 48` : `${num(latePending)} over 48 h`) : `${money(sum(pending, outstanding))} ${sw ? 'bado' : 'outstanding'}`,
@@ -310,6 +341,8 @@ export function CsoPortal({ initialSection }: { initialSection?: 'export' } = {}
       </div>
 
       <Alert kind="success">{notice}</Alert>
+
+      {show('export') && <SalaryTimesheets csoId={selectedCsoId} noCso={organizations.data?.length === 0} />}
 
       {show('pending') && (
         <Section title={sw ? 'Malipo yanayosubiri' : 'Pending payments'} actions={<span className="muted small">{sw ? 'Ya zamani kwanza' : 'Oldest first'}</span>}>
@@ -455,9 +488,8 @@ export function CsoPortal({ initialSection }: { initialSection?: 'export' } = {}
         </Section>
       )}
 
-      {show('export') && <SalaryTimesheets csoId={selectedCsoId} noCso={organizations.data?.length === 0} />}
 
-      {show('export') && (
+      {show('export') && olderPayrollClaims.length > 0 && (
         <Section title={sw ? 'Madai ya zamani ya mshahara · CSV ya benki' : 'Older payroll claims · bank CSV'}>
           <p className="muted small">
             {sw

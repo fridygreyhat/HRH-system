@@ -6,6 +6,7 @@ import { OrganizationAssignment, OrganizationsResponse } from '../types';
 import { Alert, AsyncState, Field, KpiStrip, Modal, StatusBadge, pageLang } from '../components/ui';
 import './organizations.css';
 import './polish-admin.css';
+import { confirmAction } from '../components/ConfirmDialog';
 
 const TYPE_NAMES: Record<string, { en: string; sw: string }> = {
   CSO: { en: 'CSO', sw: 'CSO' },
@@ -106,10 +107,14 @@ export function Organizations() {
 
   const toggleAssignment = async (assignment: OrganizationAssignment) => {
     const pair = `${assignment.organization_name} · ${assignment.region_name}`;
-    const question = sw
-      ? `Zima ${pair}?\n\nHii inazuia upelekaji wa mishahara na shughuli za bajeti za CSO hii katika mkoa huu kuanzia sasa. Historia iliyopo inabaki.`
-      : `Deactivate ${pair}?\n\nThis blocks future payroll routing and budget operations for this CSO-region. Existing history is preserved.`;
-    if (assignment.is_active && !window.confirm(question)) return;
+    if (assignment.is_active && !(await confirmAction({
+      title: sw ? `Zima ${pair}?` : `Deactivate ${pair}?`,
+      message: sw
+        ? 'Hii inazuia upelekaji wa mishahara na shughuli za bajeti za CSO hii katika mkoa huu kuanzia sasa. Historia iliyopo inabaki.'
+        : 'This blocks future payroll routing and budget operations for this CSO-region. Existing history is preserved.',
+      confirmLabel: sw ? 'Zima' : 'Deactivate',
+      danger: true,
+    }))) return;
     const result = await run(() => api.post('/organizations/assign-cso-region', {
       organization_id: assignment.organization_id, region_id: assignment.region_id, is_active: !assignment.is_active,
     }));

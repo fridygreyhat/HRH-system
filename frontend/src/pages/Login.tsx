@@ -93,6 +93,13 @@ export function Login() {
             {busy ? 'Signing in… / Inaingia…' : 'Sign in / Ingia'}
           </button>
           <div className="partner-bar" role="group" aria-label="Programme partners">
+            <img
+              src={`${process.env.PUBLIC_URL}/brand/tanzania-nembo.png`}
+              alt="Nembo ya Taifa, United Republic of Tanzania"
+              title="Nembo ya Taifa · Coat of arms of Tanzania (drawing: FischX, CC BY-SA 3.0)"
+              className="partner-nembo"
+            />
+            <span className="partner-divider" aria-hidden="true" />
             <img src={`${process.env.PUBLIC_URL}/brand/usa-mark.png`} alt="United States of America" className="partner-usa" />
             <span className="partner-divider" aria-hidden="true" />
             <img src={`${process.env.PUBLIC_URL}/brand/fhi360-logo.png`} alt="FHI 360" className="partner-fhi" />

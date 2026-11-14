@@ -1,7 +1,7 @@
 /* HRH Pay service worker: fast start and an offline notice. It never stores data, sign-ins or downloads:
    /api/ requests always go to the network, so nothing private stays on a shared phone. */
-const VERSION = 'hrh-pay-v1';
-const SHELL = ['/', '/manifest.webmanifest', '/favicon.svg', '/icons/icon-192.png', '/brand/fhi360-logo.png', '/brand/usa-mark.png'];
+const VERSION = 'hrh-pay-v3';
+const SHELL = ['/', '/manifest.webmanifest', '/favicon.svg', '/icons/icon-192.png', '/brand/fhi360-logo.png', '/brand/usa-mark.png', '/brand/tanzania-nembo.png'];
 
 const OFFLINE_PAGE = `<!doctype html><html lang="sw"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>HRH Pay · Offline</title><style>

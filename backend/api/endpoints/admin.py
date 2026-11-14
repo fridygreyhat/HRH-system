@@ -3,7 +3,7 @@ from datetime import date
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, create_model
+from pydantic import BaseModel, Field, create_model, field_validator
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -23,6 +23,7 @@ from ...core.roles import (
     SYSTEM_ADMIN,
 )
 from ...core.security import CurrentUser, get_current_user, get_user_roles, hash_password, load_current_user, require_roles
+from ...core.phones import tz_mobile
 from ...core.serialize import mask_phone, to_dict
 from ...core.settings import DEFAULTS, SETTING_DESCRIPTIONS, all_settings
 from ...db.session import get_db
@@ -389,7 +390,12 @@ class UserCreate(BaseModel):
     username: str = Field(min_length=3, max_length=100)
     password: str = Field(min_length=8, max_length=72)
     full_name: str = Field(min_length=1, max_length=255)
-    phone: str = Field(pattern=r"^\+?\d{9,15}$")
+    phone: str = Field(min_length=9, max_length=20)
+
+    @field_validator("phone")
+    @classmethod
+    def active_mobile(cls, value):
+        return tz_mobile(value)
     email: Optional[str] = None
     preferred_language: str = Field(default="sw", pattern="^(en|sw)$")
     roles: List[str] = Field(min_length=1)
@@ -488,6 +494,8 @@ def _users_out(db: Session, users: list[User]) -> list[dict]:
     for user_id, cadre_id in db.query(UserReviewCadre.user_id, UserReviewCadre.cadre_id).filter(UserReviewCadre.user_id.in_(ids)):
         cadres.setdefault(user_id, []).append(cadre_id)
     staff = dict(db.query(Staff.user_id, Staff.id).filter(Staff.user_id.in_(ids)).all())
+    from ...services.notifications import phone_checks as latest_sms
+    phone_checks = latest_sms(db, [user.phone for user in users])
     return [{
         **to_dict(user, exclude=("hashed_password", "session_version")),
         "is_locked": bool(user.locked_until and user.locked_until > utcnow()),
@@ -495,6 +503,7 @@ def _users_out(db: Session, users: list[User]) -> list[dict]:
         "scopes": scopes.get(user.id, []),
         "review_cadre_ids": sorted(cadres.get(user.id, [])),
         "staff_id": staff.get(user.id),
+        "phone_check": phone_checks.get(user.phone),
     } for user in users]
 
 
@@ -584,6 +593,9 @@ def create_user(body: UserCreate, db: Session = Depends(get_db), current: Curren
         _link_staff(db, current, user, body.staff_id, body.staff)
     elif PROVIDER in body.roles:
         raise HTTPException(status_code=422, detail="A provider account must be linked to a staff record (CHW, Data Clerk or HCP)")
+    if not body.staff:  # a new staff record already sent its own welcome
+        from ...services import notifications
+        notifications.welcome(db, user, user.phone, user.full_name)
     system_audit.record(db, current, "user", user.id, "create", after=body.model_dump(exclude={"password": True, "staff": {"payment_account"}}, mode="json"))
     _commit(db)
     return _user_out(db, user)
@@ -664,7 +676,12 @@ def deactivate(user_id: int, db: Session = Depends(get_db), current: CurrentUser
 
 class UserUpdate(BaseModel):
     full_name: str = Field(min_length=1, max_length=255)
-    phone: str = Field(pattern=r"^\+?\d{9,15}$")
+    phone: str = Field(min_length=9, max_length=20)
+
+    @field_validator("phone")
+    @classmethod
+    def active_mobile(cls, value):
+        return tz_mobile(value)
     email: Optional[str] = None
     preferred_language: str = Field(default="sw", pattern="^(en|sw)$")
 

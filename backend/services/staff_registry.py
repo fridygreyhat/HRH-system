@@ -11,6 +11,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import DataError
 from sqlalchemy.orm import Session
 
+from ..core.phones import same_number, tz_mobile
 from ..core import audit as system_audit
 from ..core.roles import PROVIDER
 from ..core.security import CurrentUser
@@ -49,10 +50,11 @@ def validate_changes(db: Session, staff: Staff, changes: dict) -> None:
     if "cadre_id" in changes and not db.get(Cadre, changes["cadre_id"]):
         raise HTTPException(status_code=422, detail="Unknown cadre")
     if "verified_phone" in changes:
-        phone = str(changes["verified_phone"] or "")
-        if not PHONE_PATTERN.match(phone):
-            raise HTTPException(status_code=422, detail="Phone must be 9–15 digits, optionally starting with +")
-        if db.query(Staff).filter(Staff.verified_phone == phone, Staff.id != staff.id).first():
+        try:
+            phone = changes["verified_phone"] = tz_mobile(changes["verified_phone"])
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error))
+        if db.query(Staff).filter(Staff.verified_phone.in_(same_number(phone)), Staff.id != staff.id).first():
             raise HTTPException(status_code=409, detail="Another staff member already has this phone")
     for name in ("first_name", "last_name"):
         if name in changes and not str(changes[name] or "").strip():
@@ -141,6 +143,7 @@ def exit_staff(db: Session, current: CurrentUser, staff: Staff, end_date: date, 
 
 ROSTER_COLUMNS = ["first_name", "middle_name", "last_name", "phone", "cadre", "occupation", "salary_scale", "region", "district",
                   "ward", "facility", "community_area", "section", "organization", "start_date"]
+ROSTER_REQUIRED = ["first_name", "last_name", "phone", "cadre", "region", "start_date"]
 
 
 def facility_for_name(db: Session, ward_id: int, name: str) -> Facility:
@@ -161,7 +164,7 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
     identity per person.
     """
     reader = csv.DictReader(io.StringIO(content.lstrip("﻿")))
-    missing = {"first_name", "last_name", "phone", "cadre", "region", "start_date"} - set(reader.fieldnames or [])
+    missing = set(ROSTER_REQUIRED) - set(reader.fieldnames or [])
     if missing:
         raise HTTPException(status_code=422, detail=f"Missing required columns: {sorted(missing)}. Expected: {ROSTER_COLUMNS}")
 
@@ -181,7 +184,8 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
 
     result = RosterImport(filename=filename, enrollment_source=source, uploaded_by=current.id, errors=[], total_rows=0, created_count=0, updated_count=0, error_count=0)
     errors = []
-    for line_no, row in enumerate(reader, start=2):
+    for row in reader:
+        line_no = reader.line_num  # the row number in the file, even after empty lines
         result.total_rows += 1
         try:
             with db.begin_nested():
@@ -209,9 +213,7 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
                 if section and not db.get(Section, section):
                     raise ValueError(f"Unknown section '{section}'")
                 start = date.fromisoformat(row["start_date"].strip())
-                phone = re.sub(r"[\s-]", "", row["phone"])  # rosters often write 0712 345 678
-                if not PHONE_PATTERN.match(phone):
-                    raise ValueError("Phone must be 9–15 digits, optionally starting with +")
+                phone = tz_mobile(row["phone"])  # rosters often write 0712 345 678; saved as +255712345678
                 assignment = {
                     "region_id": region.id,
                     "district_id": district_id,
@@ -221,7 +223,7 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
                     "section": section,
                     "organization_id": org.id if org else None,
                 }
-                staff = db.query(Staff).filter(Staff.verified_phone == phone).first()
+                staff = db.query(Staff).filter(Staff.verified_phone.in_(same_number(phone))).first()
                 if staff:
                     current_row = db.query(StaffAssignment).filter(StaffAssignment.staff_id == staff.id, StaffAssignment.end_date.is_(None)).first()
                     if current_row and all(getattr(current_row, k) == v for k, v in assignment.items()):
@@ -245,6 +247,8 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
                         created_by=current.id,
                     )
                     db.add(staff)
+                    from . import notifications
+                    notifications.welcome(db, None, staff.verified_phone, staff.first_name)
                     db.flush()
                     db.add(StaffAssignment(staff_id=staff.id, start_date=start, created_by=current.id, **assignment))
                     result.created_count += 1

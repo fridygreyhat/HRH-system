@@ -5,6 +5,7 @@ import { Alert, AsyncState, Field, KpiStrip, PersonCell } from '../components/ui
 import { num } from '../format';
 import './polish-review.css';
 import { useAction, useApi } from '../hooks';
+import { confirmAction } from '../components/ConfirmDialog';
 
 type Provider = { id: number; name: string; cadre: string; region: string };
 type Grant = {
@@ -96,7 +97,14 @@ export function BackdateAccess() {
     }
   };
   const revoke = async (grant: Grant) => {
-    if (!window.confirm(sw ? `Futa ruhusa ya kuingiza kwa nyuma kwa ${grant.provider_name} tarehe ${readableRange(grant)}?` : `Revoke backdated access for ${grant.provider_name} for ${readableRange(grant)}?`)) return;
+    if (!(await confirmAction({
+      title: sw ? 'Futa ruhusa ya kuingiza kwa nyuma?' : 'Revoke backdated access?',
+      message: sw
+        ? `${grant.provider_name} hataweza tena kuingiza kazi za tarehe ${readableRange(grant)}.`
+        : `${grant.provider_name} will no longer be able to enter work for ${readableRange(grant)}.`,
+      confirmLabel: sw ? 'Futa ruhusa' : 'Revoke access',
+      danger: true,
+    }))) return;
     const result = await revokeAction.run(async () => {
       await api.del<Grant>(`/backdate-access/${grant.id}`);
       return true;

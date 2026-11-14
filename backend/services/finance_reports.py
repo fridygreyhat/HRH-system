@@ -4,7 +4,7 @@ from decimal import Decimal
 from fastapi import HTTPException
 
 from ..models import Cadre, CommunityArea, Facility, Region, Staff, StaffAssignment, WorkLog, WorkLogEntry, WorkLogMeasure
-from ..core.period_dates import pay_month_range
+from ..core.period_dates import PAY_MONTH_END_DAY, pay_month_range
 from ..core.workflow_policy import RM_AUTHORIZED_STATUSES as RM_AUTHORIZED
 from .forms import cadre_fields
 from .scope import worklog_visibility
@@ -23,7 +23,43 @@ def record_attendance(days, entry):
         day["end"] = max(day["end"] or end, end)
 
 
-def monthly_summary(db, current, month, region_id, work_type, organization_id=None, daily=False):
+def authorized(current):
+    """RM-authorized work this person may see: what a monthly report counts."""
+    return (
+        worklog_visibility(current),
+        record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id),
+        WorkLog.status.in_(RM_AUTHORIZED),
+        # Legacy BUDGET_HOLD can be an RM hold, not finance-authorized work.
+        (WorkLog.status != "BUDGET_HOLD") | WorkLog.approved_at.is_not(None),
+    )
+
+
+def pay_month_sql(day):
+    """The pay month of a date column, in SQL: the 26th already belongs to the next month (as pay_month_of)."""
+    from sqlalchemy import func, text
+    shifted = func.date_trunc("month", day - text(f"interval '{int(PAY_MONTH_END_DAY)} days'")) + text("interval '1 month'")
+    return func.to_char(shifted, "YYYY-MM")
+
+
+def report_counts(db, current, start, end):
+    """One query for every regional report between two dates: {(region, work type, pay month): (providers, logs,
+    last change)}. Counted as monthly_summary counts them, so the sign-off reminder need not build every report."""
+    from sqlalchemy import func
+    month = pay_month_sql(WorkLogEntry.entry_date)
+    rows = (
+        db.query(StaffAssignment.region_id, WorkLog.work_type, month,
+                 func.count(func.distinct(WorkLog.staff_id)), func.count(func.distinct(WorkLog.id)),
+                 func.max(func.greatest(WorkLog.updated_at, WorkLog.status_changed_at)))
+        .join(WorkLog, WorkLog.id == WorkLogEntry.work_log_id)
+        .join(StaffAssignment, StaffAssignment.id == WorkLog.assignment_id)
+        .filter(*authorized(current), WorkLog.work_type.in_(["PAYROLL", "SERVICES"]),
+                WorkLogEntry.entry_date >= start, WorkLogEntry.entry_date <= end)
+        .group_by(StaffAssignment.region_id, WorkLog.work_type, month)
+    )
+    return {(region, kind, pay_month): (providers, logs, changed) for region, kind, pay_month, providers, logs, changed in rows}
+
+
+def monthly_summary(db, current, month, region_id, work_type, organization_id=None, daily=False, facility_id=None, staff_id=None, cadre_id=None):
     year, number = map(int, month.split("-"))
     if not 2000 <= year <= 2100:
         raise HTTPException(422, "Select a month between 2000 and 2100.")
@@ -38,17 +74,19 @@ def monthly_summary(db, current, month, region_id, work_type, organization_id=No
         .outerjoin(Facility, Facility.id == StaffAssignment.facility_id)
         .outerjoin(CommunityArea, CommunityArea.id == StaffAssignment.community_area_id)
         .filter(
-            worklog_visibility(current),
-            record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id),
+            *authorized(current),
             WorkLog.work_type == work_type,
-            WorkLog.status.in_(RM_AUTHORIZED),
-            # Legacy BUDGET_HOLD can be an RM hold, not finance-authorized work.
-            (WorkLog.status != "BUDGET_HOLD") | WorkLog.approved_at.is_not(None),
             WorkLogEntry.entry_date >= start, WorkLogEntry.entry_date <= end,
         )
     )
     if region_id:
         query = query.filter(StaffAssignment.region_id == region_id)
+    if facility_id:
+        query = query.filter(StaffAssignment.facility_id == facility_id)
+    if staff_id:
+        query = query.filter(WorkLog.staff_id == staff_id)
+    if cadre_id:
+        query = query.filter(WorkLog.cadre_id == cadre_id)
     if organization_id is not None:
         query = query.filter(StaffAssignment.organization_id == organization_id)
     rows = query.order_by(Cadre.code, Staff.first_name, Staff.last_name, Region.name, WorkLogEntry.id).all()

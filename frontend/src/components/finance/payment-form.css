@@ -1,0 +1,30 @@
+/* The payment form on screen: white paper with black rules, like the printed EpiC / FHI360 form. */
+.payment-form { display: grid; gap: .45rem; padding: 1rem; border: 1px solid #000; border-radius: 0; font-size: 12px; }
+.payment-form .pf-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.payment-form .pf-project { font-size: 16px; color: #000; }
+.payment-form .pf-logos { display: flex; align-items: center; gap: 1.5rem; }
+.payment-form .pf-logos img { height: 34px; width: auto; max-width: 140px; }
+.payment-form .pf-title { margin: 0; text-align: center; font-size: 13px; color: #000; }
+.payment-form .pf-activity { display: grid; grid-template-columns: minmax(6rem, 25%) 1fr; border: 1px solid #000; }
+.payment-form .pf-activity span { padding: .25rem .5rem; border-right: 1px solid #000; font-weight: 700; text-align: center; }
+.payment-form .pf-activity strong { padding: .25rem .5rem; text-align: center; }
+.payment-form .pf-venue { margin: 0; padding: .25rem; border: 1px solid #000; text-align: center; font-weight: 700; }
+.payment-form .table-wrap { overflow-x: auto; border: 0; background: transparent; }
+.payment-form .pf-table { width: 100%; border-collapse: collapse; color: #000; background: #fff; font-size: 11.5px; }
+.payment-form .pf-table th, .payment-form .pf-table td { padding: .3rem .4rem; border: 1px solid #000; color: #000; background: #fff; vertical-align: middle; }
+.payment-form .pf-table th { background: #efefef; font-weight: 700; text-align: center; line-height: 1.2; text-transform: none; letter-spacing: 0; }
+.payment-form .pf-table td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.payment-form .pf-table tfoot td { font-weight: 700; }
+.payment-form .pf-missing { color: #a33; font-weight: 600; }
+.payment-form .pf-note { margin: 0; color: #444; font-size: 11px; }
+.payment-form.is-services { box-shadow: inset 4px 0 0 #0f6b73; }
+.payment-form.is-payroll { box-shadow: inset 4px 0 0 #4b4fa6; }
+@media (max-width: 640px) {
+  .payment-form { padding: .7rem; }
+  .payment-form .pf-logos img { height: 26px; }
+}
+.payment-form .pf-table td { text-align: left; }
+.payment-form .pf-table th { white-space: normal; }
+.payment-form .pf-table td:nth-child(2), .payment-form .pf-table td:nth-child(4) { min-width: 6.5rem; }
+.payment-form .pf-table th:nth-child(8) { width: 6.5rem; }
+.payment-form .pf-table td:last-child { white-space: nowrap; }

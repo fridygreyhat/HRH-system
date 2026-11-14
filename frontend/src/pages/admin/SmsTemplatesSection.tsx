@@ -4,7 +4,8 @@ import { useAuth } from '../../AuthContext';
 import { dateTime, humanize } from '../../format';
 import { useAction, useApi } from '../../hooks';
 import { SmsTemplate } from '../../types';
-import { Alert, AsyncState, Drawer, Field, StatusBadge } from '../../components/ui';
+import { Alert, AsyncState, Drawer, Field, pageLang, StatusBadge } from '../../components/ui';
+import { confirmAction } from '../../components/ConfirmDialog';
 
 const PROTECTED_TEXT = 'Protected: the one-time code message cannot be edited.';
 const LANG_LABELS: Record<string, string> = { en: 'English', sw: 'Kiswahili' };
@@ -32,7 +33,14 @@ function TemplateEditor({ template, canEdit, onPublished }: { template: SmsTempl
   };
 
   const publish = async () => {
-    if (!window.confirm(`Publish this text as the new ${LANG_LABELS[template.language]} “${humanize(template.event_name)}” message? It is used for every message sent from now on.`)) return;
+    const sw = pageLang() === 'sw';
+    if (!(await confirmAction({
+      title: sw ? `Chapisha ujumbe mpya wa “${humanize(template.event_name)}”?` : `Publish the new “${humanize(template.event_name)}” message?`,
+      message: sw
+        ? `Maandishi haya (${LANG_LABELS[template.language]}) yatatumika kwa kila ujumbe utakaotumwa kuanzia sasa.`
+        : `This ${LANG_LABELS[template.language]} text is used for every message sent from now on.`,
+      confirmLabel: sw ? 'Chapisha' : 'Publish',
+    }))) return;
     const ok = await publishAction.run(async () => {
       await api.post('/admin/sms-templates', body);
       return true;

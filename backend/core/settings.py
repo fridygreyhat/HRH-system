@@ -19,6 +19,15 @@ DEFAULTS: dict[str, Any] = {
     "gps_required_on_submit": False,
     "reminder_after_hours": 24,
     "reminder_repeat_hours": 24,
+    # Reviewers get one summary SMS of new timesheets (at most every N hours), not one SMS per timesheet.
+    "reviewer_sms_each_timesheet": False,
+    "review_digest_hours": 3,
+    # Reviewer summaries and reminders are only sent between these local hours.
+    "sms_send_from_hour": 7,
+    "sms_send_until_hour": 19,
+    # Providers who have not submitted get a reminder on these days of the month, at this local hour.
+    "submit_reminder_days": [23, 25],
+    "submit_reminder_hour": 8,
     "max_daily_hours": 9.0,
     "max_weekly_hours": 45.0,
     "saturday_min_hours": 4.0,
@@ -47,6 +56,12 @@ SETTING_DESCRIPTIONS = {
     "gps_capture_events": "Events at which location is sampled: ENTRY and/or SUBMIT",
     "reminder_after_hours": "Hours pending before the first reviewer reminder",
     "reminder_repeat_hours": "Minimum hours between repeat reminders",
+    "reviewer_sms_each_timesheet": "Send reviewers one SMS per timesheet (off: one summary SMS of new timesheets)",
+    "review_digest_hours": "Hours between reviewer summary SMS of new timesheets",
+    "sms_send_from_hour": "Earliest local hour for reviewer summaries and reminders",
+    "sms_send_until_hour": "Latest local hour for reviewer summaries and reminders",
+    "submit_reminder_days": "Days of the month when providers who have not submitted get a reminder (e.g. 23, 25)",
+    "submit_reminder_hour": "Local hour for the provider submission reminder",
     "max_daily_hours": "Maximum hours per weekday for Services; Payroll is separately capped at eight hours",
     "max_weekly_hours": "Monday–Friday hours per work type; Payroll is separately capped at 40, and Saturday clinics are counted separately",
     "saturday_min_hours": "Minimum total hours for a Saturday weekend clinic",

@@ -38,3 +38,11 @@ td.num .cell-main, td.num .cell-sub, th.num .cell-sub { text-align: right; }
   .fin-actions { margin-left: 0; justify-content: flex-start; width: 100%; }
   .fin-wrap { max-width: none; }
 }
+
+/* Send a region's month of Services to Central Finance */
+.send-month h2 { margin: 0; font-size: 1.05rem; }
+.send-month-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .5rem; margin: 0; }
+.send-month-counts div { padding: .5rem .7rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.send-month-counts .is-ready { border-left: 4px solid #0f6b73; }
+.send-month-counts dt { color: var(--muted); font-size: .72rem; }
+.send-month-counts dd { margin: .1rem 0 0; font-weight: 700; }

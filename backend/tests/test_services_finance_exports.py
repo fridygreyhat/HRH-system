@@ -11,7 +11,7 @@ from backend.core.security import load_current_user
 from backend.services import services_finance_exports as exports
 from .test_named_central_review import reviewed
 from .test_services_without_budgets import empty_period
-from .test_v22_finance import v22
+from .test_v22_finance import central_approve, v22
 from .test_ctc_facility_approval import no_provider_sms
 
 pytestmark = pytest.mark.usefixtures("no_provider_sms")
@@ -45,6 +45,9 @@ def test_routed_services_csv_pdf_fields_and_scope(api, db, empty_period, v22):
     assert Decimal(rows[0]["Service amount"]) == 40000
     assert rows[-1]["Region"] == "TOTAL ALL SERVICES"
     assert Decimal(rows[-1]["Service amount"]) == 40000
+    # The PDF is the payment form: only claims Central Finance has approved are on it.
+    assert fetch(api, month, "pdf").status_code == 404
+    central_approve(api, claim.id)
     pdf = fetch(api, month, "pdf")
     assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
     for user in ("chw1", "csofin1", v22["finance"]):
@@ -81,6 +84,8 @@ def test_multiple_services_count_worked_days_but_pay_only_one(api, db, empty_per
     missing = next(row for row in rows if row["Services name"] == "Never worked service")
     assert (missing["Days worked"], missing["Service amount"], missing["Minimum days"], missing["Days short"]) == ("0", "0", "3", "3")
     assert Decimal(rows[-1]["Service amount"]) == claim.amount
+    central_approve(api, claim.id)  # the PDF payment form lists approved claims only
+    db.refresh(claim)
     assert fetch(api, empty_period["start_date"][:7], "pdf").status_code == 200
 
     # A claim Finance has not routed yet is not in the report or its total.

@@ -8,7 +8,9 @@ from sqlalchemy import or_
 from ..models import Cadre, CadreFormField, CSORegionAssignment, FinanceMonthlyReport, Region, StaffAssignment
 from ..core.roles import REGIONAL_FINANCE, FHI360_FINANCE, CSO_FINANCE
 from ..core import audit
-from .finance_reports import monthly_summary
+from ..core.period_dates import pay_month_of, pay_month_range
+from ..core.timeutil import local_today
+from .finance_reports import monthly_summary, pay_month_sql, report_counts
 from .v22_scope import regions_for
 
 
@@ -30,6 +32,7 @@ def cso_regions(db, current):
     # and current organization/cadre grants still apply below and in view().
     if organizations:
         assigned |= {row[0] for row in db.query(FinanceMonthlyReport.region_id).filter(
+            FinanceMonthlyReport.work_type == "PAYROLL",
             or_(*(FinanceMonthlyReport.snapshot["organizations"].has_key(str(org))
                   for org in organizations)))}
     explicit = regions_for(current)
@@ -118,9 +121,15 @@ def view(db, current, month, region_id, work_type):
     return {**result, "labels_sw": labels_sw(db, result["report"])}
 
 
+SERVICES_NOT_FOR_CSO = "Services go to FHI360 Central Finance, not to the CSO. The CSO receives the signed Payroll report."
+
+
 def _view(db, current, month, region_id, work_type):
     # Validate month even when there is no published snapshot.
     check_month(month)
+    if cso_only(current) and work_type != "PAYROLL":
+        # Payroll is the CSO's; Services are paid by FHI360, so their report never reaches the CSO.
+        raise HTTPException(403, SERVICES_NOT_FOR_CSO)
     allowed = cso_regions(db, current) if cso_only(current) else regions_for(current)
     if region_id and not current.unrestricted and region_id not in allowed:
         raise HTTPException(403, "This region is outside your assigned scope.")
@@ -152,11 +161,111 @@ def _view(db, current, month, region_id, work_type):
             "stale": bool(row and row.digest != current_digest), "report": report}
 
 
+# Pay months Regional Finance is reminded about: the last ones that have closed (the open month is signed after its 25th).
+STATUS_MONTHS = 3
+WORK_TYPE_ORDER = {"PAYROLL": 0, "SERVICES": 1}  # Payroll first: its sign-off is what the CSO receives
+
+
+def previous_month(month):
+    year, number = map(int, month.split("-"))
+    return f"{year - 1}-12" if number == 1 else f"{year}-{number - 1:02d}"
+
+
+def _to_approve(db, current, month, region_id):
+    from .finance_bulk import payroll_waiting
+    return payroll_waiting(db, current, month, region_id)
+
+
+def signoff_status(db, current, today=None):
+    """Every regional report with RM-authorized work in the recent closed pay months, and whether it is signed.
+
+    Payroll and Services are signed separately, and only the Payroll sign-off reaches the CSO, so a signed Services
+    report must not hide an unsigned Payroll one."""
+    months, month = [], pay_month_of(today or local_today())
+    for _ in range(STATUS_MONTHS):
+        month = previous_month(month)
+        months.append(month)
+    counts = report_counts(db, current, pay_month_range(months[-1])[0], pay_month_range(months[0])[1])
+    allowed = regions_for(current)
+    counts = {key: value for key, value in counts.items() if key[2] in months and (current.unrestricted or key[0] in allowed)}
+    names = {r.id: r.name for r in db.query(Region).filter(Region.id.in_({key[0] for key in counts}))}
+    items = []
+    for (region_id, work_type, month), (providers, logs, changed) in counts.items():
+        row = latest(db, month, region_id, work_type)
+        if not row:
+            state = "NOT_SIGNED"
+        elif logs == row.snapshot["regional"]["totals"]["logs"] and changed and changed <= row.approved_at:
+            state = "SIGNED"  # nothing approved, edited or withdrawn since the sign-off: no need to rebuild the report
+        else:  # something moved since signing: compare the exact signed document
+            state = "SIGNED" if row.digest == digest(monthly_summary(db, current, month, region_id, work_type)) else "CHANGED"
+        items.append({
+            "month": month, "region_id": region_id, "region_name": names[region_id], "work_type": work_type,
+            "state": state, "providers": providers,
+            "approved_at": row.approved_at.isoformat() if row else None,
+            "approved_by_name": row.snapshot["approved_by_name"] if row else None,
+            "can_approve": can_approve(db, current, region_id),
+            "to_approve": _to_approve(db, current, month, region_id) if work_type == "PAYROLL" else 0,
+        })
+    # Waiting first, newest month first, Payroll before Services.
+    items.sort(key=lambda i: (i["state"] == "SIGNED", -int(i["month"].replace("-", "")),
+                              WORK_TYPE_ORDER[i["work_type"]], i["region_name"]))
+    return items
+
+
+def cso_payroll_status(db, current, today=None):
+    """For CSO Finance: each recent pay month and region where its providers have RM-approved Payroll, and whether
+    Regional Finance has signed it (sent it to the CSO). Counts only: names stay unseen until the report is signed."""
+    from sqlalchemy import func
+    from ..core.workflow_policy import RM_AUTHORIZED_STATUSES
+    from ..models import WorkLog, WorkLogEntry
+    organizations = current.scope_values("organization_id")
+    regions = cso_regions(db, current)
+    if not organizations or not regions:
+        return []
+    months, month = [], pay_month_of(today or local_today())
+    for _ in range(STATUS_MONTHS):
+        month = previous_month(month)
+        months.append(month)
+    start, end = pay_month_range(months[-1])[0], pay_month_range(months[0])[1]
+    pay_month = pay_month_sql(WorkLogEntry.entry_date)
+    rows = (db.query(StaffAssignment.region_id, pay_month, func.count(func.distinct(WorkLog.staff_id)))
+            .join(WorkLog, WorkLog.assignment_id == StaffAssignment.id)
+            .join(WorkLogEntry, WorkLogEntry.work_log_id == WorkLog.id)
+            .filter(WorkLog.work_type == "PAYROLL", WorkLog.status.in_(RM_AUTHORIZED_STATUSES),
+                    StaffAssignment.organization_id.in_(organizations), StaffAssignment.region_id.in_(regions),
+                    WorkLog.cadre_id.in_(current.review_cadres or {-1}),
+                    WorkLogEntry.entry_date >= start, WorkLogEntry.entry_date <= end)
+            .group_by(StaffAssignment.region_id, pay_month))
+    approved = {(region, month): count for region, month, count in rows if month in months}
+    names = {r.id: r.name for r in db.query(Region).filter(Region.id.in_(regions))}
+    codes = {c.code for c in db.query(Cadre).filter(Cadre.id.in_(current.review_cadres))}
+    items = []
+    for (region, month), count in approved.items():
+        row = latest(db, month, region, "PAYROLL")
+        signed = 0
+        if row:
+            signed = len({p["staff_id"] for org in organizations
+                          for p in (row.snapshot["organizations"].get(str(org)) or {"providers": []})["providers"]
+                          if p["cadre_code"] in codes})
+        items.append({"month": month, "region_id": region, "region_name": names[region], "approved_providers": count,
+                      "state": "SIGNED" if row and signed else "WAITING", "signed_providers": signed,
+                      "approved_by_name": row.snapshot["approved_by_name"] if row else None,
+                      "approved_at": row.approved_at.isoformat() if row else None})
+    items.sort(key=lambda i: (i["state"] == "SIGNED", -int(i["month"].replace("-", "")), i["region_name"]))
+    return items
+
+
 def approve(db, current, data):
     if not data.review_confirmed:
         raise HTTPException(422, "Confirm that you reviewed the complete regional monthly report.")
     if not can_approve(db, current, data.region_id):
         raise HTTPException(403, "Regional Finance must cover this region and all CHW, HCP and Data Clerk cadres to approve the whole report.")
+    if data.work_type == "PAYROLL":
+        from .finance_bulk import payroll_waiting
+        waiting = payroll_waiting(db, current, data.month, data.region_id)
+        if waiting:
+            raise HTTPException(409, f"{waiting} Payroll {'timesheet is' if waiting == 1 else 'timesheets are'} not approved yet. "
+                                     "Approve them (or return the ones that should not be paid) before signing and sending to the CSO.")
     region = db.query(Region).filter_by(id=data.region_id).with_for_update().one_or_none()
     if not region:
         raise HTTPException(404, "Region not found.")
@@ -166,10 +275,12 @@ def approve(db, current, data):
     if not result["report"]["providers"]:
         raise HTTPException(422, "There is no RM-authorized work to approve for this region and month.")
     organizations = {}
-    for org, in db.query(StaffAssignment.organization_id).filter(
-            StaffAssignment.region_id == region.id, StaffAssignment.organization_id.isnot(None)).distinct():
+    # Only Payroll goes to the CSO: a Services sign-off keeps no CSO copy (Services are paid by FHI360).
+    for org, in (db.query(StaffAssignment.organization_id).filter(
+            StaffAssignment.region_id == region.id, StaffAssignment.organization_id.isnot(None)).distinct()
+            if data.work_type == "PAYROLL" else []):
         organizations[str(org)] = monthly_summary(db, current, data.month, region.id, data.work_type,
-                                                  organization_id=org, daily=data.work_type == "PAYROLL")
+                                                  organization_id=org, daily=True)
     previous = latest(db, data.month, data.region_id, data.work_type)
     # The digest covers the regional report only. A corrected CSO or placement must still reach the CSO's copy.
     if previous and previous.digest == result["digest"] and previous.snapshot["organizations"] == organizations:

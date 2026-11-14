@@ -72,14 +72,31 @@ test('CSO Community claims section shows incoming direct Route C work with exter
   }
 });
 
-test('CSO payroll export downloads a scoped GET CSV and explains it does not transfer funds', async () => {
-  mockBlob.mockResolvedValue({ blob: new Blob(['csv']), filename: 'payroll.csv' });
+test('without older payroll claims, the old bank CSV is not offered: payroll comes from the signed report', async () => {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
   await act(async () => root.render(<CsoPortal />));
   try {
-    const exportTab = Array.from(container.querySelectorAll('.subnav button')).find(button => button.textContent === 'Salary timesheets');
+    expect(container.textContent).not.toContain('Older payroll claims');
+    expect(container.textContent).not.toContain('Download payroll CSV');
+  } finally {
+    act(() => root.unmount());
+    container.remove();
+  }
+});
+
+test('CSO payroll export downloads a scoped GET CSV and explains it does not transfer funds', async () => {
+  mockBlob.mockResolvedValue({ blob: new Blob(['csv']), filename: 'payroll.csv' });
+  // An older record: a routed, unpaid payroll claim from before payroll was paid from the signed report.
+  mockCommunityClaim = { id: 70, work_log_id: 9, staff_id: 12, period_id: 21, route_code: 'B', status: 'READY', payment_status: 'NOT_STARTED',
+    workflow_version: 1, work_type: 'PAYROLL', amount: 1000, currency: 'TZS', amount_paid: 0, staff_name: 'Neema Juma', updated_at: '2025-01-01T00:00:00Z' };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => root.render(<CsoPortal />));
+  try {
+    const exportTab = Array.from(container.querySelectorAll('.subnav button')).find(button => button.textContent === 'Payroll (salary timesheets)');
     await act(async () => Simulate.click(exportTab));
     expect(container.textContent).toContain('does not transfer money or change claim status');
     expect(container.textContent).toContain('bank payment details only');
@@ -89,6 +106,7 @@ test('CSO payroll export downloads a scoped GET CSV and explains it does not tra
     expect(mockBlob).toHaveBeenCalledWith('/cso-finance/export-payroll?cso_id=10&period_id=21', 'GET', 'payroll-export.csv');
     expect(mockSaveBlob).toHaveBeenCalledWith({ blob: expect.any(Blob), filename: 'payroll.csv' });
   } finally {
+    mockCommunityClaim = null;
     act(() => root.unmount());
     container.remove();
   }
@@ -118,11 +136,11 @@ test('CSO downloads signed salary timesheets as PDF or CSV and is told which reg
   const root = createRoot(container);
   await act(async () => root.render(<CsoPortal />));
   try {
-    const tab = Array.from(container.querySelectorAll('.subnav button')).find(button => button.textContent === 'Salary timesheets');
+    const tab = Array.from(container.querySelectorAll('.subnav button')).find(button => button.textContent === 'Payroll (salary timesheets)');
     await act(async () => Simulate.click(tab));
     expect(container.textContent).toContain('does not pay anyone or change any record');
     expect(container.textContent).toContain('signed by Regional Finance Mara');
-    expect(container.textContent).toContain("Kagera: not signed yet, so its timesheets are not in the file");
+    expect(container.textContent).toContain("Kagera: Regional Finance has not signed the Payroll report yet, so its timesheets are not in the file");
     expect(container.textContent).toContain('320 h 30 min');
     expect(container.textContent).toContain('1,500,000');
     expect(container.textContent).toContain('Bank details missing (1): Asha Juma');
@@ -134,7 +152,7 @@ test('CSO downloads signed salary timesheets as PDF or CSV and is told which reg
     expect(container.textContent).toContain('Public holidays in this month: 09 Dec 2026 Independence Day');
     const month = container.querySelector('input[type="month"]').value;
     const button = text => Array.from(container.querySelectorAll('button')).find(item => item.textContent === text);
-    await act(async () => Simulate.click(button('Download PDF')));
+    await act(async () => Simulate.click(button('Timesheets + payment form (PDF)')));
     await act(async () => Simulate.click(button('Download CSV')));
     expect(mockBlob).toHaveBeenCalledWith(`/cso-finance/salary-timesheets/export?cso_id=10&month=${month}&format=pdf`, 'GET', `salary-timesheets-${month}.pdf`);
     expect(mockBlob).toHaveBeenCalledWith(`/cso-finance/salary-timesheets/export?cso_id=10&month=${month}&format=csv`, 'GET', `salary-timesheets-${month}.csv`);
@@ -157,7 +175,7 @@ test('A long list of flagged providers is shortened on screen but keeps the full
   const root = createRoot(container);
   await act(async () => root.render(<CsoPortal />));
   try {
-    const tab = Array.from(container.querySelectorAll('.subnav button')).find(button => button.textContent === 'Salary timesheets');
+    const tab = Array.from(container.querySelectorAll('.subnav button')).find(button => button.textContent === 'Payroll (salary timesheets)');
     await act(async () => Simulate.click(tab));
     expect(container.textContent).toContain('Bank details missing (150): Provider 1,');
     expect(container.textContent).toContain('Provider 10 and 140 more, all marked in the list below');
@@ -181,7 +199,7 @@ test('CSO can find any provider before exporting, with region, facility and cadr
   const root = createRoot(container);
   await act(async () => root.render(<CsoPortal />));
   try {
-    const tab = Array.from(container.querySelectorAll('.subnav button')).find(button => button.textContent === 'Salary timesheets');
+    const tab = Array.from(container.querySelectorAll('.subnav button')).find(button => button.textContent === 'Payroll (salary timesheets)');
     await act(async () => Simulate.click(tab));
     const rows = () => Array.from(container.querySelectorAll('tbody tr')).map(row => row.textContent).filter(text => text.startsWith('Provider '));
     const button = text => Array.from(container.querySelectorAll('button')).find(item => item.textContent === text);
@@ -221,10 +239,10 @@ test('With no CSO or pay period, the page says what to set up instead of staying
   const root = createRoot(container);
   await act(async () => root.render(<CsoPortal />));
   try {
-    const tab = Array.from(container.querySelectorAll('.subnav button')).find(button => button.textContent === 'Salary timesheets');
+    const tab = Array.from(container.querySelectorAll('.subnav button')).find(button => button.textContent === 'Payroll (salary timesheets)');
     await act(async () => Simulate.click(tab));
     expect(container.textContent).toContain('No CSO is linked to this account');
-    expect(container.textContent).toContain('An administrator must create one under Pay periods');
+    // The pay-period hint belonged to the older payroll-claims CSV, which shows only when such claims exist.
     expect(container.querySelector('input[type="month"]')).toBeNull();
   } finally {
     mockOrganizations = organizations;
@@ -240,11 +258,11 @@ test('Salary timesheet downloads stay off until a signed timesheet exists', asyn
   const root = createRoot(container);
   await act(async () => root.render(<CsoPortal />));
   try {
-    const tab = Array.from(container.querySelectorAll('.subnav button')).find(button => button.textContent === 'Salary timesheets');
+    const tab = Array.from(container.querySelectorAll('.subnav button')).find(button => button.textContent === 'Payroll (salary timesheets)');
     await act(async () => Simulate.click(tab));
     expect(container.textContent).toContain('No signed timesheets for this month yet');
     const button = text => Array.from(container.querySelectorAll('button')).find(item => item.textContent === text);
-    expect(button('Download PDF').disabled).toBe(true);
+    expect(button('Timesheets + payment form (PDF)').disabled).toBe(true);
     expect(button('Download CSV').disabled).toBe(true);
   } finally {
     act(() => root.unmount());

@@ -16,11 +16,10 @@ pytestmark = pytest.mark.usefixtures("no_provider_sms")
 
 @pytest.fixture
 def empty_period(api):
-    from .conftest import _months
-    n = next(_months)
-    year, month = date.today().year - 1 - n // 12, 12 - n % 12
+    from .conftest import _months, test_month
+    year, month, lap = test_month(next(_months))
     first = date(year, month, 1)
-    first += timedelta(days=(7 - first.weekday()) % 7)
+    first += timedelta(days=(7 - first.weekday()) % 7 + 7 * lap)
     return api.post("/admin/pay-periods", "central1", {
         "start_date": str(first), "end_date": str(date(year, month, calendar.monthrange(year, month)[1])),
         "period_label": f"Unallocated test {year}-{month:02d}", "status": "OPEN",

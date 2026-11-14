@@ -36,8 +36,10 @@ def cadre_fields(db: Session, cadre_id: int, include_inactive: bool = False) -> 
 
 
 def field_out(f: CadreFormField) -> dict:
-    return {"key": f.key, "label_en": f.label_en, "label_sw": f.label_sw, "field_type": f.field_type,
-            "sort_order": f.sort_order, "is_active": f.is_active}
+    # Fields read from an activity snapshot may lack a Swahili label or an order; show them as recorded.
+    return {"key": f.key, "label_en": f.label_en, "label_sw": getattr(f, "label_sw", None),
+            "field_type": getattr(f, "field_type", None), "sort_order": getattr(f, "sort_order", 0),
+            "is_active": getattr(f, "is_active", True)}
 
 
 def cadre_out(db: Session, cadre: Cadre, include_inactive: bool = False) -> dict:

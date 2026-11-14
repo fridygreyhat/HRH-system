@@ -81,6 +81,16 @@ def definition_out(row: ActivityRate) -> dict:
 
 
 def builtins(db, cadre_id: int) -> list[dict]:
+    # A bulk review checks hundreds of timesheets of the same few cadres: it switches this cache on for its own run.
+    cache = db.info.get("builtins_cache")
+    if cache is not None:
+        if cadre_id not in cache:
+            cache[cadre_id] = _builtins(db, cadre_id)
+        return deepcopy(cache[cadre_id])
+    return _builtins(db, cadre_id)
+
+
+def _builtins(db, cadre_id: int) -> list[dict]:
     cadre = db.get(Cadre, cadre_id)
     fields = {f.key: {"key": f.key, "label_en": f.label_en, "label_sw": f.label_sw, "field_type": f.field_type, "sort_order": f.sort_order, "is_active": True}
               for f in db.query(CadreFormField).filter(CadreFormField.cadre_id == cadre_id)}

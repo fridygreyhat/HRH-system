@@ -5,6 +5,7 @@ import { dateOnly, dateTime, money, num, payMonth, payMonthDates, previousMonth,
 import { useAction, useApi } from '../../hooks';
 import { Alert, Field } from '../ui';
 import { PrfProofDialog } from './PrfProofDialog';
+import { PaymentForm, PaymentFormView } from '../finance/PaymentFormView';
 
 interface Prf {
   id: number;
@@ -49,14 +50,19 @@ export function ServicesReportPanel({ onPaid }: { onPaid?: () => void } = {}) {
   const [paidNotice, setPaidNotice] = useState('');
   const save = useAction();
   const prfs = useApi<Prf[]>(month ? `/finance/services-payment-report/prfs${qs({ month })}` : null);
+  const [showForm, setShowForm] = useState(false);
+  const [regionId, setRegionId] = useState('');
+  const regions = useApi<{ id: number; name: string }[]>('/finance/regions');
+  const form = useApi<PaymentForm>(showForm && month ? `/finance/services-payment-form${qs({ month, include_prf: includePrf, region_id: regionId })}` : null);
 
-  const fetchReport = async (format: 'csv' | 'pdf') => {
+  const fetchReport = async (format: 'csv' | 'pdf' | 'xlsx', timesheets = false) => {
     setBusy(true);
     setError('');
     setDownload(null);
     save.setError(null);
     try {
-      const result = await api.blob(`/finance/services-payment-report/export${qs({ month, format, include_prf: includePrf })}`, 'GET', `services-payment-${month}.${format}`);
+      const result = await api.blob(`/finance/services-payment-report/export${qs({ month, format, include_prf: includePrf, region_id: regionId, timesheets })}`, 'GET',
+        format === 'csv' ? `services-payment-${month}.csv` : timesheets ? `services-timesheets-and-payment-form-${month}.pdf` : `services-payment-form-${month}.${format}`);
       saveBlob(result);
       const id = result.headers?.get('x-download-id');
       if (id) setDownload(await api.get<Download>(`/finance/services-payment-report/downloads/${id}`));
@@ -101,9 +107,34 @@ export function ServicesReportPanel({ onPaid }: { onPaid?: () => void } = {}) {
           <Field label={sw ? 'Mwezi wa ripoti ya Huduma' : 'Services report month'} hint={payMonthDates(month)}>
             <input type="month" required value={month} onChange={(e) => { setMonth(e.target.value); setDownload(null); }} />
           </Field>
-          <button className="btn btn-secondary" disabled={busy || !month} onClick={() => fetchReport('csv')}>{sw ? 'Pakua CSV ya Huduma' : 'Download Services CSV'}</button>
-          <button className="btn btn-secondary" disabled={busy || !month} onClick={() => fetchReport('pdf')}>{sw ? 'Pakua PDF ya Huduma' : 'Download Services PDF'}</button>
+          {(regions.data?.length || 0) > 1 && (
+            <Field label={sw ? 'Mkoa' : 'Region'}>
+              <select value={regionId} onChange={(e) => { setRegionId(e.target.value); setDownload(null); }}>
+                <option value="">{sw ? 'Mikoa yote' : 'All regions'}</option>
+                {(regions.data || []).map((region) => <option key={region.id} value={region.id}>{region.name}</option>)}
+              </select>
+            </Field>
+          )}
+          <button className="btn btn-primary" disabled={busy || !month} onClick={() => fetchReport('pdf', true)}>{sw ? 'Majedwali + fomu ya malipo (PDF)' : 'Timesheets + payment form (PDF)'}</button>
+          <button className="btn btn-secondary" disabled={busy || !month} onClick={() => fetchReport('pdf')}>{sw ? 'Fomu ya malipo (PDF)' : 'Payment form (PDF)'}</button>
+          <button className="btn btn-secondary" disabled={busy || !month} onClick={() => fetchReport('xlsx')}>{sw ? 'Fomu ya malipo (Excel)' : 'Payment form (Excel)'}</button>
+          <button className="btn btn-ghost" disabled={busy || !month} onClick={() => fetchReport('csv')}>{sw ? 'CSV ya kina' : 'Detailed CSV'}</button>
+          <button className="btn btn-ghost" disabled={!month} aria-expanded={showForm} onClick={() => setShowForm(!showForm)}>
+            {showForm ? (sw ? 'Ficha fomu' : 'Hide payment form') : (sw ? 'Onyesha fomu ya malipo' : 'Show payment form')}
+          </button>
         </div>
+        {showForm && (form.error
+          ? <Alert kind="warn">{form.error}</Alert>
+          : form.data ? <>
+            {(form.data.awaiting_central_review?.claims || 0) > 0 && (
+              <Alert kind="warn">{sw
+                ? `Madai ${num(form.data.awaiting_central_review!.claims)} (${money(form.data.awaiting_central_review!.amount)}) bado yanasubiri idhini ya Fedha Kuu, kwa hiyo hayamo kwenye fomu. Yaidhinishe kwenye orodha ya madai hapa chini.`
+                : `${num(form.data.awaiting_central_review!.claims)} routed ${form.data.awaiting_central_review!.claims === 1 ? 'claim' : 'claims'} (${money(form.data.awaiting_central_review!.amount)}) still ${form.data.awaiting_central_review!.claims === 1 ? 'awaits' : 'await'} Central Finance approval, so ${form.data.awaiting_central_review!.claims === 1 ? 'it is' : 'they are'} not on the form. Approve them in the claims list below.`}</Alert>
+            )}
+            {form.data.rows.length > 0
+              ? <PaymentFormView form={form.data} sw={sw} />
+              : <p className="muted">{sw ? 'Hakuna Huduma zilizoidhinishwa na Fedha Kuu kwa mwezi huu bado.' : 'No Services approved by Central Finance for this month yet.'}</p>}
+          </> : <p className="muted">{sw ? 'Inapakia…' : 'Loading…'}</p>)}
         <label className="check-line small">
           <input type="checkbox" checked={includePrf} onChange={(e) => setIncludePrf(e.target.checked)} />
           <span>{sw ? 'Jumuisha madai yaliyo kwenye PRF tayari (kumbukumbu tu, haiwezi kurekodi PRF)' : 'Include claims already on a PRF (reference only, cannot record a PRF)'}</span>

@@ -37,9 +37,14 @@ signal.signal(signal.SIGTERM, lambda *_args: sys.exit(0))
 signal.signal(signal.SIGINT, lambda *_args: sys.exit(0))
 
 try:
+    # Several server processes use every CPU core; one process could not keep up with a few hundred people at once.
+    workers = os.environ.get("WEB_CONCURRENCY") or str(max(2, min(4, os.cpu_count() or 2)))
     children.append(subprocess.Popen([
         sys.executable, "-m", "uvicorn", "backend.replit_app:app",
-        "--host", os.environ.get("HOST", "0.0.0.0"), "--port", "5000",
+        "--host", os.environ.get("HOST", "0.0.0.0"), "--port", "5000", "--workers", workers,
+        # Behind the host's proxy, read the visitor's address from X-Forwarded-For, so the sign-in limit counts each
+        # person and not the proxy. Set FORWARDED_ALLOW_IPS to the proxy's address (or * where only the proxy can connect).
+        "--proxy-headers", "--forwarded-allow-ips", os.environ.get("FORWARDED_ALLOW_IPS", "127.0.0.1"),
     ]))
     children.append(subprocess.Popen([sys.executable, "-m", "backend.worker"]))
     while all(child.poll() is None for child in children):

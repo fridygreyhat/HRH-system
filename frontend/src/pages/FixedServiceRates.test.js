@@ -31,9 +31,11 @@ test('service amount setup has no Payroll, hourly or per-count payment choices',
 test('Super Admin sees Delete with used periods protected', () => {
   mockSuper = true;
   const html = renderToStaticMarkup(<PayPeriods />);
-  expect(html).toContain('Delete unused period');
-  expect(html).toContain('In use: archive unpaid periods to restart while retaining history');
   expect(html.match(/>Delete<\/button>/g)).toHaveLength(2);
+  expect(html.match(/disabled="">Delete<\/button>/g)).toHaveLength(1); // only the period in use
+  // Why it is switched off is a visible line under the table, not hover text phones never show.
+  expect(html).toContain('Delete works only for a period with no work logs, claims or budget lines.');
+  expect(html).not.toContain('In use: archive unpaid periods');
 });
 
 test('Technical officers cannot see period Delete', () => {

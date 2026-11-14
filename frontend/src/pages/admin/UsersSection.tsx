@@ -5,7 +5,7 @@ import { useAuth } from '../../AuthContext';
 import { dateTime, num, roleLabel } from '../../format';
 import { useAction, useApi } from '../../hooks';
 import { AdminUser, Cadre, RoleInfo, UserScope } from '../../types';
-import { Alert, AsyncState, Drawer, Facts, Field, KpiStrip, PersonCell, StatusBadge, Tabs } from '../../components/ui';
+import { Alert, AsyncState, Drawer, Facts, Field, KpiStrip, pageLang, PersonCell, StatusBadge, Tabs } from '../../components/ui';
 import { Row, matches, nameMap, refName, useLookups } from './common';
 import { StaffRecordAccess } from './StaffRecordAccess';
 import { StaffDrawer } from '../../components/staff/StaffDrawer';
@@ -30,7 +30,8 @@ const DIMS: { key: Dim; label: string; path: string }[] = [
   { key: 'organization_id', label: 'Organization', path: '/admin/organizations' },
 ];
 const DIM_PATHS = DIMS.map((d) => d.path);
-const PHONE_RE = /^\+?\d{9,15}$/;
+import { normalizeTzMobile, TZ_MOBILE_INPUT_PATTERN, TZ_MOBILE_MESSAGE } from '../../phones';
+import { confirmAction } from '../../components/ConfirmDialog';
 /** Granted automatically with a staff record; never ticked by hand. */
 const PROVIDER = 'PROVIDER';
 const SUPER_ADMIN = 'SUPER_ADMIN';
@@ -244,7 +245,7 @@ function CreateUser({ roles, onDone, onCancel }: { roles: RoleInfo[] | null; onD
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (form.password.length < 8) return setError('The password must be at least 8 characters.');
-    if (!PHONE_RE.test(form.phone.trim())) return setError('Enter the phone number as 9–15 digits, optionally starting with +, e.g. +255712345678.');
+    if (!normalizeTzMobile(form.phone)) return setError(TZ_MOBILE_MESSAGE);
     if (!isWorker && !otherRoles.length) return setError('Choose at least one role.');
     const link = isWorker ? healthWorkerPayload(worker, form.phone) : null;
     if (typeof link === 'string') return setError(link);
@@ -298,8 +299,8 @@ function CreateUser({ roles, onDone, onCancel }: { roles: RoleInfo[] | null; onD
             <input value={form.full_name} onChange={set('full_name')} required maxLength={255} />
           </Field>
         )}
-        <Field label="Phone *" hint={isWorker ? 'Receives SMS codes, e.g. +255712345678' : 'e.g. +255712345678'}>
-          <input type="tel" value={form.phone} onChange={set('phone')} required pattern="\+?\d{9,15}" />
+        <Field label="Mobile phone *" hint="Active Tanzanian mobile, e.g. 0712 345 678. Review alerts, reminders and codes go to it; a welcome SMS is sent now.">
+          <input type="tel" value={form.phone} onChange={set('phone')} required pattern={TZ_MOBILE_INPUT_PATTERN} />
         </Field>
         <Field label="Email">
           <input type="email" value={form.email} onChange={set('email')} />
@@ -351,7 +352,7 @@ function LinkStaff({ user, onChanged }: { user: AdminUser; onChanged: (u: AdminU
   const { busy, error, setError, run } = useAction();
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (worker.mode === 'new' && !PHONE_RE.test(user.phone || '')) return setError('Give this user a valid phone number first; it becomes the verified phone.');
+    if (worker.mode === 'new' && !normalizeTzMobile(user.phone || '')) return setError('Give this user an active Tanzanian mobile number first; it becomes the verified phone.');
     const link = healthWorkerPayload(worker, user.phone || '');
     if (typeof link === 'string') return setError(link);
     const u = await run(() => api.post<AdminUser>(`/admin/users/${user.id}/staff`, link));
@@ -441,7 +442,13 @@ function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleIn
     e.preventDefault();
     setDone(null);
     if (password.length < 8) return pwAction.setError('The new password must be at least 8 characters.');
-    if (!window.confirm(`Set a new password for ${user.username}? Their current password stops working immediately.`)) return undefined;
+    const sw = pageLang() === 'sw';
+    if (!(await confirmAction({
+      title: sw ? `Weka nenosiri jipya la ${user.username}?` : `Set a new password for ${user.username}?`,
+      message: sw ? 'Nenosiri lake la sasa litaacha kufanya kazi mara moja.' : 'Their current password stops working immediately.',
+      confirmLabel: sw ? 'Weka nenosiri' : 'Set password',
+      danger: true,
+    }))) return undefined;
     const ok = await pwAction.run(async () => {
       await api.post(`/admin/users/${user.id}/reset-password`, { new_password: password });
       return true;
@@ -470,7 +477,13 @@ function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleIn
   };
 
   const deactivate = async () => {
-    if (!window.confirm(`Deactivate ${user.username}? They will no longer be able to sign in.`)) return;
+    const sw = pageLang() === 'sw';
+    if (!(await confirmAction({
+      title: sw ? `Zima ${user.username}?` : `Deactivate ${user.username}?`,
+      message: sw ? 'Hataweza tena kuingia kwenye mfumo.' : 'They will no longer be able to sign in.',
+      confirmLabel: sw ? 'Zima mtumiaji' : 'Deactivate user',
+      danger: true,
+    }))) return;
     const u = await deactivateAction.run(() => api.post<AdminUser>(`/admin/users/${user.id}/deactivate`));
     if (u) {
       onChanged(u);

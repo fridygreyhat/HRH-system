@@ -18,8 +18,11 @@ from ...services import finance_gate, payment_requests, worklog_workflow as wf
 from ...services.v22_scope import record_condition, regions_for
 from ...services import monthly_report_approval as monthly_reports
 from ...services.monthly_report_exports import csv_file, pdf_file
+from .provider_payment_details import private_response
 
 router = APIRouter()
+MEDIA = {"csv": "text/csv; charset=utf-8", "pdf": "application/pdf",
+         "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
 
 
 class MonthlyApprovalIn(BaseModel):
@@ -34,22 +37,56 @@ class MonthlyApprovalIn(BaseModel):
 def export_services_payment_report(
     month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
     region_id: Optional[int] = Query(default=None, gt=0),
-    format: Literal["csv", "pdf"] = "csv",
+    format: Literal["csv", "pdf", "xlsx"] = "csv",
     include_prf: bool = False,
+    timesheets: bool = False,
     db: Session = Depends(get_db),
     current=Depends(require_roles(FHI360_FINANCE)),
 ):
-    from ...services import services_finance_exports as exports
-    rows = exports.rows(db, current, month, region_id, include_prf)
-    payload = exports.csv_file(rows) if format == "csv" else exports.pdf_file(rows, month)
+    """CSV is the detailed data file; PDF and Excel are the payment form, one row per person, as Finance signs it.
+    PDF with timesheets=true puts each person's Services timesheet first and the payment form last."""
+    from ...services import payment_forms, services_finance_exports as exports
+    if format == "csv":
+        rows = exports.rows(db, current, month, region_id, include_prf)
+        payload = exports.csv_file(rows)
+    else:
+        form = payment_forms.services_form(db, current, month, region_id, include_prf)
+        rows = form["report_rows"]
+        if not rows:
+            waiting = form["awaiting_central_review"]["claims"]
+            raise HTTPException(404, f"No Services approved by Central Finance for this month yet. "
+                                     f"{waiting} routed {'claim awaits' if waiting == 1 else 'claims await'} Central Finance approval.")
+        if format == "pdf" and timesheets:
+            from ...services.salary_timesheets import MAX_PDF_PROVIDERS
+            if len(form["rows"]) > MAX_PDF_PROVIDERS:
+                raise HTTPException(422, f"This PDF would have {len(form['rows']):,} timesheet pages. Choose a region to keep it "
+                                         f"under {MAX_PDF_PROVIDERS:,} providers. The payment form alone includes everyone.")
+            payload = payment_forms.services_pack_pdf(db, current, form, month, region_id)
+        else:
+            payload = payment_forms.pdf_file(form) if format == "pdf" else payment_forms.xlsx_file(form)
     download = exports.record_download(db, current, month, region_id, format, rows)
     audit.record(db, current, "services_payment_report", month, "download",
                  after={"format": format, "region_id": region_id, "rows": len(rows), "include_prf": include_prf, "download_id": download.id})
     db.commit()
-    return Response(payload, media_type="text/csv; charset=utf-8" if format == "csv" else "application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="services-payment-{month}.{format}"',
+    name = (f"services-payment-{month}.csv" if format == "csv" else f"services-timesheets-and-payment-form-{month}.pdf"
+            if timesheets and format == "pdf" else f"services-payment-form-{month}.{format}")
+    return Response(payload, media_type=MEDIA[format],
+                    headers={"Content-Disposition": f'attachment; filename="{name}"',
                              "X-Download-Id": str(download.id),
                              "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+
+@router.get("/services-payment-form", dependencies=[Depends(private_response)])
+def services_payment_form(
+    month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    region_id: Optional[int] = Query(default=None, gt=0),
+    include_prf: bool = False,
+    db: Session = Depends(get_db),
+    current=Depends(require_roles(FHI360_FINANCE)),
+):
+    """The Services payment form on screen: what the PDF and Excel downloads contain."""
+    from ...services import payment_forms
+    return payment_forms.screen(payment_forms.services_form(db, current, month, region_id, include_prf))
 
 
 class PrfIn(BaseModel):
@@ -116,6 +153,12 @@ def monthly_report(
     current=Depends(require_roles(REGIONAL_FINANCE, FHI360_FINANCE, CSO_FINANCE)),
 ):
     return monthly_reports.view(db, current, month, region_id, work_type)
+
+
+@router.get("/monthly-report/status")
+def monthly_report_status(db: Session = Depends(get_db), current=Depends(require_roles(REGIONAL_FINANCE))):
+    """Which regional Payroll and Services reports of the recent pay months are signed, and which still wait."""
+    return monthly_reports.signoff_status(db, current)
 
 
 @router.post("/monthly-report/approve")
@@ -353,5 +396,128 @@ def channel(body: ChannelIn, db: Session = Depends(get_db), current=Depends(requ
         "amount": str(claim.amount), "currency": claim.currency,
     }
     audit.record(db, current, "payment_claim", claim.id, "finance_channel", after=result, reason=body.comment)
+    db.commit()
+    return result
+
+
+# ---- Services: send a region's whole month to FHI360 Central Finance at once --------------------------------------
+
+def _services_month_logs(db, current, month, region_id):
+    from ...core.period_dates import pay_month_range
+    from ...models import WorkLogEntry
+    monthly_reports.check_month(month)
+    if not current.unrestricted and region_id not in regions_for(current):
+        raise HTTPException(403, "This region is outside your Regional Finance scope.")
+    start, end = pay_month_range(month)
+    return (_visible(db, current).filter(
+        WorkLog.work_type == "SERVICES",
+        WorkLog.assignment_id.in_(db.query(StaffAssignment.id).filter(StaffAssignment.region_id == region_id)),
+        WorkLog.id.in_(db.query(WorkLogEntry.work_log_id).filter(WorkLogEntry.entry_date.between(start, end))))
+        .order_by(WorkLog.id))
+
+
+def _amount(db, log):
+    claim = db.query(PaymentClaim).filter(PaymentClaim.work_log_id == log.id, PaymentClaim.status != "CANCELLED").first()
+    value = claim.amount if claim else (log.finance_snapshot or {}).get("total")
+    return str(value) if value is not None else None
+
+
+@router.get("/services-month")
+def services_month(month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"), region_id: int = Query(gt=0),
+                   db: Session = Depends(get_db), current=Depends(require_roles(REGIONAL_FINANCE))):
+    """Where a region's Services for the month stand: still to check, checked and ready to send, sent."""
+    from decimal import Decimal
+    from ...services.central_review import eligible_reviewers
+    logs = _services_month_logs(db, current, month, region_id).all()
+    stages = {"review": [wf.PENDING_FINANCE], "ready": [wf.FINANCE_REVIEWED], "hold": [wf.BUDGET_HOLD],
+              "sent": [wf.ROUTED_FHI360, wf.PAID]}
+    counts = {stage: sum(1 for log in logs if log.status in statuses) for stage, statuses in stages.items()}
+    ready = [log for log in logs if log.status == wf.FINANCE_REVIEWED]
+    total = sum((Decimal(a) for a in (_amount(db, log) for log in ready) if a is not None), Decimal(0))
+    reviewers = []
+    if ready:
+        # Only a reviewer who may approve every one of them can take the month.
+        allowed = None
+        for log in ready:
+            ids = {user.id: user for user in eligible_reviewers(db, log) if user.id != current.id}
+            allowed = ids if allowed is None else {k: v for k, v in allowed.items() if k in ids}
+        reviewers = [{"id": u.id, "name": u.full_name, "username": u.username} for u in (allowed or {}).values()]
+    return {"month": month, "region_id": region_id, "counts": counts, "ready_total": str(total), "currency": "TZS",
+            "ready": [{"work_log_id": log.id, "provider_name": db.get(Staff, log.staff_id).legal_name, "amount": _amount(db, log)}
+                      for log in ready],
+            "central_reviewers": reviewers}
+
+
+class ServicesMonthIn(BaseModel):
+    month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    region_id: int = Field(gt=0)
+    central_reviewer_id: int = Field(gt=0)
+    review_confirmed: bool
+    comment: Optional[str] = Field(default=None, max_length=2000)
+
+
+@router.post("/services-month/send")
+def send_services_month(body: ServicesMonthIn, db: Session = Depends(get_db), current=Depends(require_roles(REGIONAL_FINANCE))):
+    """Send every checked Services timesheet of the region and month to Central Finance in one step. All or none: if
+    one cannot go, nothing is sent and the message names the person."""
+    if not body.review_confirmed:
+        raise HTTPException(422, "Confirm that you checked the month's Services before sending them.")
+    logs = _services_month_logs(db, current, body.month, body.region_id).filter(WorkLog.status == wf.FINANCE_REVIEWED).with_for_update().all()
+    if not logs:
+        raise HTTPException(409, "No checked Services are ready to send for this region and month.")
+    sent = []
+    for log in logs:
+        name = db.get(Staff, log.staff_id).legal_name
+        try:
+            payor = finance_gate.eligible_payors(db, log)[0]
+            wf.transition(db, current, log, "route_fhi360", body.comment or f"Sent with {body.month} Services to Central Finance",
+                          {"target_payor_id": payor.id, "review_confirmed": True, "review_type": "SERVICES",
+                           "central_reviewer_id": body.central_reviewer_id,
+                           "expected_review_token": (log.finance_snapshot or {}).get("review_token")},
+                          log.version)
+        except HTTPException as error:
+            db.rollback()
+            raise HTTPException(error.status_code, f"{name}: {error.detail} Nothing was sent.")
+        claim = db.query(PaymentClaim).filter(PaymentClaim.work_log_id == log.id, PaymentClaim.status != "CANCELLED").one()
+        sent.append({"work_log_id": log.id, "claim_id": claim.id, "provider_name": name, "amount": str(claim.amount)})
+    audit.record(db, current, "services_month", f"{body.month}:{body.region_id}", "send_to_central_finance",
+                 after={"count": len(sent), "central_reviewer_id": body.central_reviewer_id, "claims": [s["claim_id"] for s in sent]})
+    db.commit()
+    return {"sent": sent, "count": len(sent)}
+
+
+
+# ---- Regional Finance: approve timesheets in bulk (clean ones; flagged ones one by one) -----------------------------
+
+@router.get("/bulk-review")
+def bulk_review(work_type: Literal["SERVICES", "PAYROLL"], month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+                region_id: int = Query(gt=0), cadre_id: Optional[int] = Query(default=None, gt=0),
+                facility_id: Optional[int] = Query(default=None, gt=0),
+                db: Session = Depends(get_db), current=Depends(require_roles(REGIONAL_FINANCE))):
+    """Timesheets of a region's month waiting for Regional Finance, each marked clean or with the reasons to look at it."""
+    from ...services import finance_bulk
+    monthly_reports.check_month(month)
+    return finance_bulk.review_list(db, current, work_type, month, region_id, cadre_id, facility_id)
+
+
+class BulkApproveIn(BaseModel):
+    work_type: Literal["SERVICES", "PAYROLL"]
+    month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    region_id: int = Field(gt=0)
+    work_log_ids: list[int] = Field(min_length=1)
+    funding_source_id: Optional[int] = Field(default=None, gt=0)
+    review_confirmed: bool
+
+
+@router.post("/bulk-approve")
+def bulk_approve(body: BulkApproveIn, db: Session = Depends(get_db), current=Depends(require_roles(REGIONAL_FINANCE))):
+    """Approve the clean timesheets chosen. Services: timesheet and amount together, with one funding source. Payroll:
+    the timesheet, ready for the region's sign-off. Nothing is sent here."""
+    from ...services import finance_bulk
+    if not body.review_confirmed:
+        raise HTTPException(422, "Confirm that you checked these timesheets before approving them.")
+    result = finance_bulk.approve(db, current, body.work_type, body.month, body.region_id, body.work_log_ids, body.funding_source_id)
+    audit.record(db, current, "bulk_approval", f"{body.work_type}:{body.month}:{body.region_id}", "approve",
+                 after={"approved": len(result["approved"]), "skipped": len(result["skipped"]), "funding_source_id": body.funding_source_id})
     db.commit()
     return result

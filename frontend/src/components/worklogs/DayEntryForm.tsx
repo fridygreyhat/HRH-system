@@ -8,6 +8,7 @@ import { Alert, Field } from '../ui';
 import { FieldLabel, flagFieldLabel } from './shared';
 import { GroupedIndicators } from './GroupedIndicators';
 import { AdditionalServices, ServiceDraft } from './AdditionalServices';
+import { confirmAction } from '../ConfirmDialog';
 
 export interface GpsFix {
   gps_lat: number;
@@ -198,7 +199,15 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
   };
 
   const del = async () => {
-    if (!window.confirm(t('confirmDelete'))) return;
+    const sw = lang === 'sw';
+    if (!(await confirmAction({
+      title: t('confirmDelete'),
+      message: sw
+        ? `Masaa na shughuli zilizorekodiwa ${dateOnly(date)} zitaondolewa. Unaweza kuiingiza siku hii tena baadaye.`
+        : `The hours and activities recorded for ${dateOnly(date)} will be removed. You can enter the day again afterwards.`,
+      confirmLabel: sw ? 'Futa siku' : 'Delete day',
+      danger: true,
+    }))) return;
     const result = await remove.run(() => api.del<WorkLogDetail>(`/worklogs/${log.id}/entries/${date}`));
     if (result) onSaved(result);
   };

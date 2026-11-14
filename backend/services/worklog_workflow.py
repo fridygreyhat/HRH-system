@@ -107,9 +107,11 @@ def stage_owner(db: Session, log: WorkLog) -> str:
 
 def transitions_for(log):
     if getattr(log, "work_type", None) == "PAYROLL":
-        # Payroll ends with RM's operational approval. It is not a payable claim.
-        return {key: value for key, value in TRANSITIONS.items()
-                if key[1] not in {"hold", "release"}}
+        # Payroll ends with RM's operational approval. It is not a payable claim. Regional Finance then approves each
+        # timesheet (or returns it) before signing the region's month and sending it to the CSO.
+        return {**{key: value for key, value in TRANSITIONS.items() if key[1] not in {"hold", "release"}},
+                (APPROVED, FINANCE_TIMESHEET_APPROVE): (APPROVED, REGIONAL_FINANCE),
+                (APPROVED, "return"): (RETURNED, REGIONAL_FINANCE)}
     if log.workflow_version < 2:
         return TRANSITIONS
     return {
@@ -310,6 +312,8 @@ def transition(
         elif action == FINANCE_TIMESHEET_APPROVE:
             log.finance_timesheet_approved_by = current.id
             log.finance_timesheet_approved_at = now
+        elif action == "authorize":  # a resubmitted Payroll timesheet needs Regional Finance's approval again
+            _clear_finance_timesheet_approval(log)
         elif action == "finance_review":
             finance_gate.review(db, current, log, (details or {}).get("category_id"),
                                 (details or {}).get("funding_source_id"))
@@ -330,7 +334,8 @@ def transition(
         log.status_changed_at = now
     if next_status in {RETURNED, REJECTED}:
         log.confirmed_version = None
-    log.approved_at = now if log.status in {APPROVED, ROUTED_FHI360, ROUTED_CSO} else (None if next_status in {RETURNED, REJECTED} else log.approved_at)
+    if action != FINANCE_TIMESHEET_APPROVE:  # Regional Finance's approval keeps RM's approval time
+        log.approved_at = now if log.status in {APPROVED, ROUTED_FHI360, ROUTED_CSO} else (None if next_status in {RETURNED, REJECTED} else log.approved_at)
     audit(db, current, log, action, role, old, comment, details)
     db.flush()
     _notify(db, log, action, comment)
@@ -369,6 +374,10 @@ def period_label(period: Optional[PayPeriod]) -> str:
     return period.period_label or f"{period.start_date} to {period.end_date}"
 
 
+REVIEW_ARRIVAL_EVENTS = {"WORKLOG_SUBMITTED", "WORKLOG_RETURNED_TO_REVIEWER", "WORKLOG_CONFIRMED", "WORKLOG_ENDORSED",
+                         "WORKLOG_FINANCE_REVIEW"}
+
+
 def _notify(db: Session, log: WorkLog, action: str, comment: Optional[str]) -> None:
     staff = db.get(Staff, log.staff_id)
     provider_user = db.get(User, staff.user_id) if staff.user_id else None
@@ -378,6 +387,9 @@ def _notify(db: Session, log: WorkLog, action: str, comment: Optional[str]) -> N
     ctx = {"provider": staff.legal_name, "period": period, "comment": comment or ""}
 
     def to_role(role: str, event: str) -> None:
+        # Reviewers get one summary SMS of new timesheets from the worker (1,000+ a region); budget holds still go now.
+        if event in REVIEW_ARRIVAL_EVENTS and not get_setting(db, "reviewer_sms_each_timesheet"):
+            return
         for user in users_in_scope_for(db, role, assignment, cadre_id=log.cadre_id,
                                        strict_cadre=log.workflow_version >= 2 and role in {CSO_TECHNICAL, TECHNICAL_OFFICER, RPM, REGIONAL_FINANCE}):
             notifications.enqueue(db, event, user, None, related=related, **ctx)

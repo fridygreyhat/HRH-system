@@ -95,6 +95,31 @@ def batch_visibility(current: CurrentUser):
     ))
 
 
+def ready_claims(db: Session, current: CurrentUser, route_code: str):
+    """The claims a new batch of this route would take, or None when this person may not batch the route."""
+    from ..models import PaymentRequestFormClaim
+    role = cl.ROUTE_FINANCE_ROLE.get(route_code)
+    if route_code == "B" and CSO_FINANCE in current.roles and FHI360_FINANCE not in current.roles:
+        role = CSO_FINANCE
+    if role is None or role not in current.roles:
+        return None
+    query = db.query(PaymentClaim).filter(PaymentClaim.status == cl.READY, PaymentClaim.route_code == route_code,
+                                         claim_visibility(current), finance_claim_condition(current))
+    query = query.filter(or_(PaymentClaim.workflow_version == 1, PaymentClaim.payment_status == "NOT_STARTED"))
+    # A claim already on a PRF is paid from that PRF: a batch would be a second instruction for the same money.
+    query = query.filter(PaymentClaim.id.notin_(select(PaymentRequestFormClaim.claim_id)))
+    if route_code == "B" and not current.unrestricted and ((FHI360_FINANCE in current.roles) != (CSO_FINANCE in current.roles)):
+        query = query.filter(PaymentClaim.workflow_version >= 2 if role == CSO_FINANCE else PaymentClaim.workflow_version == 1)
+    if role == CSO_FINANCE:
+        query = query.filter(PaymentClaim.executor_org_id.in_(current.scope_values("organization_id")))
+    return query
+
+
+def ready_counts(db: Session, current: CurrentUser) -> dict:
+    """How many claims each route could batch now, so the page offers only a batch that can be made."""
+    return {route: (query.count() if (query := ready_claims(db, current, route)) is not None else 0) for route in ("A", "B", "C")}
+
+
 def create_batches(db: Session, current: CurrentUser, route_code: str) -> list[PayrollBatch]:
     role = cl.ROUTE_FINANCE_ROLE.get(route_code)
     if route_code == "B" and CSO_FINANCE in current.roles and FHI360_FINANCE not in current.roles:
@@ -109,14 +134,7 @@ def create_batches(db: Session, current: CurrentUser, route_code: str) -> list[P
         raise HTTPException(status_code=422, detail="Route must be A, B or C")
     if role not in current.roles:
         raise HTTPException(status_code=403, detail=f"Route {route_code} batches are prepared by {role}")
-    query = db.query(PaymentClaim).filter(PaymentClaim.status == cl.READY, PaymentClaim.route_code == route_code,
-                                         claim_visibility(current), finance_claim_condition(current))
-    query = query.filter(or_(PaymentClaim.workflow_version == 1, PaymentClaim.payment_status == "NOT_STARTED"))
-    if route_code == "B" and not current.unrestricted and ((FHI360_FINANCE in current.roles) != (CSO_FINANCE in current.roles)):
-        query = query.filter(PaymentClaim.workflow_version >= 2 if role == CSO_FINANCE else PaymentClaim.workflow_version == 1)
-    if role == CSO_FINANCE:
-        query = query.filter(PaymentClaim.executor_org_id.in_(current.scope_values("organization_id")))
-    claims = query.order_by(PaymentClaim.id).with_for_update().all()
+    claims = ready_claims(db, current, route_code).order_by(PaymentClaim.id).with_for_update().all()
     if not claims:
         raise HTTPException(status_code=409, detail=f"No Route {route_code} claims are marked ready for payment")
 
@@ -201,11 +219,18 @@ def _csv(lines: list[dict]) -> str:
 
 def to_xlsx(batch: PayrollBatch, lines=None) -> bytes:
     from openpyxl import Workbook
-    from openpyxl.styles import Font
 
     wb = Workbook()
-    ws = wb.active
-    ws.title = batch.reference
+    write_details(wb.active, batch, lines)
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
+def write_details(ws, batch: PayrollBatch, lines=None):
+    """The batch's full line list: claim, route, payor, budget line, payment destination and amount."""
+    from openpyxl.styles import Font
+    ws.title = batch.reference[:31]
     ws.append(CSV_COLUMNS)
     for cell in ws[1]:
         cell.font = Font(bold=True)
@@ -215,9 +240,6 @@ def to_xlsx(batch: PayrollBatch, lines=None) -> bytes:
         ws.append(row)
     ws.append([])
     ws.append(["TOTAL"] + [""] * (len(CSV_COLUMNS) - 3) + [float(batch.total_amount), batch.currency])
-    out = io.BytesIO()
-    wb.save(out)
-    return out.getvalue()
 
 
 def hand_off(db: Session, current: CurrentUser, batch: PayrollBatch) -> PayrollBatch:
