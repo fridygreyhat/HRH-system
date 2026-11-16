@@ -45,11 +45,12 @@ def route_work(api, v22, work, expect=None, **extra):
 
 def test_programme_catalogue_is_available_and_idempotent(api, db, v22):
     names = {item["name"] for item in api.get("/admin/funding-sources", v22["finance"])}
-    assert {"PnP", "Supply Chain", "EpiC"} <= names
+    assert {"PnP", "Supply Chain", "EpiC", "AFGHS"} <= names
     before = {(item.id, item.code, item.name) for item in db.query(FundingSource)}
-    revision = importlib.import_module("backend.alembic.versions.18b6f30d5412_standard_funding_sources")
-    with Operations.context(MigrationContext.configure(db.connection())):
-        revision.upgrade()
+    for name in ("18b6f30d5412_standard_funding_sources", "d5f2b8c93a61_afghs_funding_source"):
+        revision = importlib.import_module(f"backend.alembic.versions.{name}")
+        with Operations.context(MigrationContext.configure(db.connection())):
+            revision.upgrade()  # running again adds nothing
     db.commit()
     assert {(item.id, item.code, item.name) for item in db.query(FundingSource)} == before
 
