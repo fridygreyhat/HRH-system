@@ -4,7 +4,7 @@ import { Alert, AsyncState, Empty } from '../components/ui';
 import { dateTime, num } from '../format';
 import { useApi } from '../hooks';
 import { navigate } from '../nav';
-import { SignoffItem, signoffTarget } from '../signoffs';
+import { SignoffItem, signoffTarget, withdrawnText } from '../signoffs';
 import './finance-monthly-report.css';
 
 const monthText = (month: string, sw: boolean) =>
@@ -48,11 +48,13 @@ export function PayrollToCso() {
                           {sw ? `Watoa huduma ${num(item.providers)} walioidhinishwa na RM` : `${num(item.providers)} RM-approved ${item.providers === 1 ? 'provider' : 'providers'}`}
                           {item.state === 'SIGNED' && item.approved_at
                             ? ` · ${sw ? 'imetumwa' : 'sent'} ${dateTime(item.approved_at)} ${sw ? 'na' : 'by'} ${item.approved_by_name}` : ''}
+                          {item.withdrawn ? ` · ${withdrawnText(item.withdrawn, sw)}` : ''}
                         </span>
                       </span>
                       <span className={`badge ${item.state === 'SIGNED' ? 'badge-success' : 'badge-warn'}`}>
                         {item.state === 'SIGNED' ? (sw ? 'Imetumwa kwa CSO' : 'Sent to CSO')
-                          : item.state === 'CHANGED' ? (sw ? 'Imebadilika: tuma tena' : 'Changed: send again') : (sw ? 'Haijatumwa' : 'Not sent')}
+                          : item.state === 'CHANGED' ? (sw ? 'Imebadilika: tuma tena' : 'Changed: send again')
+                            : item.withdrawn ? (sw ? 'Imechukuliwa tena: tuma upya' : 'Taken back: send again') : (sw ? 'Haijatumwa' : 'Not sent')}
                       </span>
                       {item.to_approve ? (
                         <button type="button" className="btn btn-sm btn-primary" onClick={() => navigate('bulk-approval', `PAYROLL:${item.month}:${item.region_id}`)}>

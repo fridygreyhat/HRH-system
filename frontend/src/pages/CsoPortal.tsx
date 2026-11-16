@@ -196,6 +196,8 @@ interface CsoPayrollStatus {
   signed_providers: number;
   approved_by_name: string | null;
   approved_at: string | null;
+  /** Signed, then taken back by the system because a timesheet on it was returned: not to be paid from. */
+  withdrawn?: { withdrawn_at: string; signed_by_name: string } | null;
 }
 
 export function CsoPortal({ initialSection }: { initialSection?: 'export' } = {}) {
@@ -282,6 +284,7 @@ export function CsoPortal({ initialSection }: { initialSection?: 'export' } = {}
     && ['READY', 'EXPORTED', 'HANDED_OFF'].includes(c.status) && ['NOT_STARTED', 'PENDING', 'FAILED'].includes(c.payment_status));
   const received = (payroll.data || []).filter((row) => row.state === 'SIGNED');
   const waiting = (payroll.data || []).filter((row) => row.state === 'WAITING');
+  const takenBack = waiting.filter((row) => row.withdrawn);
   const show = (k: SectionKey) => section === 'all' || section === k;
   const jump = (k: SectionKey) => setSection(section === k ? 'all' : k);
 
@@ -290,6 +293,21 @@ export function CsoPortal({ initialSection }: { initialSection?: 'export' } = {}
       <header className="page-header fin-title-only">
         <h1>{sw ? 'Malipo ya CSO' : 'CSO payments'}{names.length ? ` — ${names.join(', ')}` : ''}</h1>
       </header>
+
+      {takenBack.length > 0 && (
+        <Alert kind="warn">
+          {takenBack.map((row) => {
+            const month = new Intl.DateTimeFormat(sw ? 'sw-TZ' : 'en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${row.month}-01T00:00:00Z`));
+            return (
+              <p key={`${row.month}-${row.region_id}`} className="taken-back">
+                {sw
+                  ? `Mshahara wa ${month} (${row.region_name}) uliosainiwa na ${row.withdrawn!.signed_by_name} umechukuliwa tena, kwa sababu jedwali lililokuwemo limerudishwa. Usilipe kutoka kwa faili zilizopakuliwa awali; subiri Fedha ya Mkoa isaini upya.`
+                  : `${month} payroll for ${row.region_name}, signed by ${row.withdrawn!.signed_by_name}, was taken back because a timesheet on it was returned. Do not pay from files downloaded earlier; wait for Regional Finance to sign again.`}
+              </p>
+            );
+          })}
+        </Alert>
+      )}
 
       {claims.data && batches.data && (
         <KpiStrip

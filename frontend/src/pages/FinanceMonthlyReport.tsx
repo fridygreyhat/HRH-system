@@ -5,7 +5,7 @@ import { Alert, AsyncState, Field, KpiStrip, Modal } from '../components/ui';
 import { todayLocal, num, payMonth, payMonthDates, previousMonth, workHours } from '../format';
 import { useApi } from '../hooks';
 import { Named } from '../types';
-import { SignoffItem, signoffTarget } from '../signoffs';
+import { notSignedLabel, SignoffItem, signoffTarget, Withdrawal, withdrawnText } from '../signoffs';
 import './finance-monthly-report.css';
 import './polish-finance.css';
 
@@ -55,6 +55,8 @@ interface MonthlyReportResponse {
   approval: Approval | null;
   can_approve: boolean;
   stale: boolean;
+  /** Signed, then taken back because a timesheet on it left approval: sign again. */
+  withdrawn?: Withdrawal | null;
   digest: string | null;
   report: MonthlySummary;
   /** Swahili indicator names, sent beside the report so the signed digest is unchanged. */
@@ -110,7 +112,7 @@ function SignoffChecklist({ items, selected, onOpen, sw }: {
           const payroll = item.work_type === 'PAYROLL';
           const state = item.state === 'SIGNED'
             ? (sw ? `Imesainiwa na ${item.approved_by_name}` : `Signed by ${item.approved_by_name}`)
-            : item.state === 'CHANGED' ? (sw ? 'Imebadilika: saini tena' : 'Changed: sign again') : (sw ? 'Haijasainiwa' : 'Not signed');
+            : item.state === 'CHANGED' ? (sw ? 'Imebadilika: saini tena' : 'Changed: sign again') : notSignedLabel(item, sw);
           return (
             <li key={key} className={`signoff-item is-${item.state.toLowerCase()}${key === selected ? ' is-selected' : ''}`}>
               <button type="button" onClick={() => onOpen(item)} aria-current={key === selected ? 'true' : undefined}>
@@ -394,6 +396,7 @@ export function FinanceMonthlyReport({ initial }: { initial?: string } = {}) {
                 ? (sw ? `Pitia ripoti ya ${workTypeName.toLowerCase()} ya ${monthName(month, sw)} kwa mkoa uliochaguliwa kabla ya kusaini.` : `Review the ${monthName(month)} ${workType.toLowerCase()} report for the selected region before signing.`)
                 : (sw ? 'Chagua mkoa mmoja ili kusaini.' : 'Choose one region to sign off.')}</p>
             )}
+            {reportState.data.withdrawn && <p className="finance-stale-note" role="status">{withdrawnText(reportState.data.withdrawn, sw)}</p>}
             {reportState.data.stale && <p className="finance-stale-note" role="status">{sw ? 'Kuna kazi mpya au iliyobadilika baada ya uidhinishaji. Pakia upya na upitie tena.' : 'New or changed work since this sign-off. Refresh and review again.'}</p>}
             {isCsoOnly && <p className="finance-readonly-note">{sw ? 'Mwonekano wa kusoma tu.' : 'Read-only documentation view.'}</p>}
           </div>

@@ -264,6 +264,9 @@ def reset_provider_period_records(period_id: int, staff_id: int, body: ProviderP
             after={"work_logs_reset": len(logs), "entries_cleared": entries_cleared},
             reason=body.reason,
         )
+        # A reset Payroll timesheet is no longer approved: take back any signed month that still lists this person.
+        from ...services import monthly_report_approval
+        monthly_report_approval.withdraw_stale_payroll(db, current)
         db.commit()
     except OperationalError:
         db.rollback()

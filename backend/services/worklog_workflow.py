@@ -338,8 +338,23 @@ def transition(
         log.approved_at = now if log.status in {APPROVED, ROUTED_FHI360, ROUTED_CSO} else (None if next_status in {RETURNED, REJECTED} else log.approved_at)
     audit(db, current, log, action, role, old, comment, details)
     db.flush()
+    _withdraw_signoffs(db, current, log, old)
     _notify(db, log, action, comment)
     return log
+
+
+def _withdraw_signoffs(db: Session, current: CurrentUser, log: WorkLog, old: str) -> None:
+    """A Payroll timesheet that leaves approval (returned, reopened, cancelled) takes back its region's signed month:
+    the CSO must not pay from a list that still has this person on it. Regional Finance signs the month again."""
+    from ..core.workflow_policy import RM_AUTHORIZED_STATUSES
+    if log.work_type != "PAYROLL" or old not in RM_AUTHORIZED_STATUSES or log.status in RM_AUTHORIZED_STATUSES:
+        return
+    from ..core.period_dates import pay_month_of
+    from . import monthly_report_approval as reports
+    months = {pay_month_of(day) for (day,) in db.query(WorkLogEntry.entry_date).filter(WorkLogEntry.work_log_id == log.id)}
+    if months:
+        region = db.get(StaffAssignment, log.assignment_id).region_id
+        reports.withdraw_stale_payroll(db, current, region_id=region, months=months, work_log_id=log.id)
 
 
 def record_facility_endorsement(db: Session, current: CurrentUser, log: WorkLog, comment: Optional[str]) -> None:

@@ -9,7 +9,7 @@ import {
 import { useApi } from '../hooks';
 import { navigate } from '../nav';
 import { ClaimSummary, Me, PayPeriod, RoutingQueueItem, WorkLogSummary } from '../types';
-import { signoffTarget, SignoffItem } from '../signoffs';
+import { notSignedLabel, signoffTarget, SignoffItem } from '../signoffs';
 import { workMonthLabel } from './workLogStart';
 import { InstallBar } from '../pwa/InstallPrompt';
 import './polish-provider.css';
@@ -418,7 +418,7 @@ function summaries(rows: Rows, me: Me, has: (...roles: string[]) => boolean, lan
             </span>
             <span className="home-row-side home-row-stack">
               <span className="cell-main">{item.work_type === 'PAYROLL' ? (sw ? 'Mshahara' : 'Payroll') : (sw ? 'Huduma' : 'Services')}</span>
-              <span className="cell-sub">{item.state === 'CHANGED' ? (sw ? 'Imebadilika: saini tena' : 'Changed: sign again') : (sw ? 'Haijasainiwa' : 'Not signed')}</span>
+              <span className="cell-sub">{item.state === 'CHANGED' ? (sw ? 'Imebadilika: saini tena' : 'Changed: sign again') : notSignedLabel(item, sw)}</span>
             </span>
           </button>
         )),
@@ -517,8 +517,8 @@ function summaries(rows: Rows, me: Me, has: (...roles: string[]) => boolean, lan
               <span className="cell-sub">{reportMonth(row.month)} · {people(row.state === 'SIGNED' ? row.signed_providers : row.approved_providers)}</span>
             </span>
             <span className="home-row-side home-row-stack">
-              <span className="cell-main">{row.state === 'SIGNED' ? (sw ? 'Imepokelewa' : 'Received') : (sw ? 'Inasubiri' : 'Waiting')}</span>
-              <span className="cell-sub">{row.state === 'SIGNED' ? (sw ? `Imesainiwa na ${row.approved_by_name}` : `Signed by ${row.approved_by_name}`) : (sw ? 'Fedha ya Mkoa haijasaini' : 'Regional Finance has not signed')}</span>
+              <span className="cell-main">{row.state === 'SIGNED' ? (sw ? 'Imepokelewa' : 'Received') : row.withdrawn ? (sw ? 'Imechukuliwa tena' : 'Taken back') : (sw ? 'Inasubiri' : 'Waiting')}</span>
+              <span className="cell-sub">{row.state === 'SIGNED' ? (sw ? `Imesainiwa na ${row.approved_by_name}` : `Signed by ${row.approved_by_name}`) : row.withdrawn ? (sw ? 'Usilipe; subiri saini mpya' : 'Do not pay; wait for the new sign-off') : (sw ? 'Fedha ya Mkoa haijasaini' : 'Regional Finance has not signed')}</span>
             </span>
           </button>
         )),

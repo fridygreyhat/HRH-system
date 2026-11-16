@@ -5,7 +5,8 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlalchemy import or_
-from ..models import Cadre, CadreFormField, CSORegionAssignment, FinanceMonthlyReport, Region, StaffAssignment
+from ..models import (Cadre, CadreFormField, CSORegionAssignment, FinanceMonthlyReport, FinanceMonthlyReportWithdrawal,
+                      Region, StaffAssignment)
 from ..core.roles import REGIONAL_FINANCE, FHI360_FINANCE, CSO_FINANCE
 from ..core import audit
 from ..core.period_dates import pay_month_of, pay_month_range
@@ -65,8 +66,82 @@ def can_approve(db, current, region_id):
         and required_cadres(db).issubset(current.review_cadres)))
 
 
-def latest(db, month, region_id, work_type):
+def _newest(db, month, region_id, work_type):
     return db.query(FinanceMonthlyReport).filter_by(month=month, region_id=region_id, work_type=work_type).order_by(FinanceMonthlyReport.id.desc()).first()
+
+
+def latest(db, month, region_id, work_type):
+    """The sign-off in force: the newest one, unless it was taken back (then nothing is signed until a new one)."""
+    row = _newest(db, month, region_id, work_type)
+    if row and db.query(FinanceMonthlyReportWithdrawal.id).filter_by(report_id=row.id).first():
+        return None
+    return row
+
+
+def withdrawal(db, month, region_id, work_type):
+    """Why the month is no longer signed, when its newest sign-off was taken back: shown to Regional Finance and the CSO."""
+    row = _newest(db, month, region_id, work_type)
+    taken = row and db.query(FinanceMonthlyReportWithdrawal).filter_by(report_id=row.id).first()
+    if not taken:
+        return None
+    return {"withdrawn_at": taken.withdrawn_at.isoformat(), "reason": taken.reason,
+            "signed_by_name": row.snapshot["approved_by_name"], "signed_at": row.approved_at.isoformat()}
+
+
+def withdraw_stale_payroll(db, actor=None, region_id=None, months=None, work_log_id=None):
+    """Take back every Payroll sign-off in force that lists someone whose Payroll timesheet for that month and region is
+    no longer approved (returned, reopened, cancelled or reset). The CSO must not pay from it; Regional Finance signs the
+    month again with the correct list. Returns what was taken back. Does not commit."""
+    from sqlalchemy import func, text
+    from ..core.workflow_policy import RM_AUTHORIZED_STATUSES
+    from ..models import Staff, WorkLog, WorkLogEntry
+    newest = db.query(FinanceMonthlyReport.region_id, FinanceMonthlyReport.month, func.max(FinanceMonthlyReport.id)) \
+        .filter(FinanceMonthlyReport.work_type == "PAYROLL")
+    if region_id:
+        newest = newest.filter(FinanceMonthlyReport.region_id == region_id)
+    if months:
+        newest = newest.filter(FinanceMonthlyReport.month.in_(list(months)))
+    newest = {report_id: (region, month) for region, month, report_id in
+              newest.group_by(FinanceMonthlyReport.region_id, FinanceMonthlyReport.month)}
+    taken = {r for (r,) in db.query(FinanceMonthlyReportWithdrawal.report_id).filter(
+        FinanceMonthlyReportWithdrawal.report_id.in_(list(newest)))} if newest else set()
+    active = {report_id: key for report_id, key in newest.items() if report_id not in taken}
+    if not active:
+        return []
+    # Who each sign-off lists, read from the stored document without loading it whole.
+    signed = {}
+    for report_id, staff_id in db.execute(text(
+            "SELECT r.id, (p->>'staff_id')::int FROM finance_monthly_reports r, "
+            "jsonb_array_elements(r.snapshot->'regional'->'providers') p WHERE r.id = ANY(:ids)"), {"ids": list(active)}):
+        signed.setdefault(report_id, set()).add(staff_id)
+    # Who has approved Payroll in those regions and months now.
+    all_months = sorted({month for _, month in active.values()})
+    start, end = pay_month_range(all_months[0])[0], pay_month_range(all_months[-1])[1]
+    pay_month = pay_month_sql(WorkLogEntry.entry_date)
+    approved = {}
+    for region, month, staff_id in (db.query(StaffAssignment.region_id, pay_month, WorkLog.staff_id)
+            .join(WorkLog, WorkLog.assignment_id == StaffAssignment.id)
+            .join(WorkLogEntry, WorkLogEntry.work_log_id == WorkLog.id)
+            .filter(WorkLog.work_type == "PAYROLL", WorkLog.status.in_(RM_AUTHORIZED_STATUSES),
+                    StaffAssignment.region_id.in_({region for region, _ in active.values()}),
+                    WorkLogEntry.entry_date >= start, WorkLogEntry.entry_date <= end).distinct()):
+        approved.setdefault((region, month), set()).add(staff_id)
+    result = []
+    for report_id, (region, month) in sorted(active.items()):
+        missing = signed.get(report_id, set()) - approved.get((region, month), set())
+        if not missing:
+            continue
+        names = sorted(person.legal_name for person in db.query(Staff).filter(Staff.id.in_(missing)))
+        reason = (f"Timesheet no longer approved for {', '.join(names)}"
+                  if len(names) <= 5 else f"Timesheets no longer approved for {len(names)} providers") + \
+            ". Regional Finance must sign this month again."
+        db.add(FinanceMonthlyReportWithdrawal(report_id=report_id, work_log_id=work_log_id,
+                                              withdrawn_by=actor.id if actor else None, reason=reason))
+        audit.record(db, actor, "finance_monthly_report", report_id, "withdraw", reason=reason,
+                     after={"month": month, "region_id": region, "work_type": "PAYROLL", "staff_ids": sorted(missing)})
+        result.append({"report_id": report_id, "region_id": region, "month": month, "staff_ids": sorted(missing), "reason": reason})
+    db.flush()
+    return result
 
 
 def merge_reports(reports, month, work_type, codes):
@@ -157,6 +232,7 @@ def _view(db, current, month, region_id, work_type):
     report = monthly_summary(db, current, month, region_id, work_type)
     current_digest = digest(report)
     return {"state": "APPROVED" if row else "NOT_APPROVED", "approval": metadata(db, row) if row else None,
+            "withdrawn": None if row or not region_id else withdrawal(db, month, region_id, work_type),
             "can_approve": can_approve(db, current, region_id), "digest": current_digest,
             "stale": bool(row and row.digest != current_digest), "report": report}
 
@@ -205,6 +281,7 @@ def signoff_status(db, current, today=None):
             "approved_by_name": row.snapshot["approved_by_name"] if row else None,
             "can_approve": can_approve(db, current, region_id),
             "to_approve": _to_approve(db, current, month, region_id) if work_type == "PAYROLL" else 0,
+            "withdrawn": None if row else withdrawal(db, month, region_id, work_type),
         })
     # Waiting first, newest month first, Payroll before Services.
     items.sort(key=lambda i: (i["state"] == "SIGNED", -int(i["month"].replace("-", "")),
@@ -237,6 +314,15 @@ def cso_payroll_status(db, current, today=None):
                     WorkLogEntry.entry_date >= start, WorkLogEntry.entry_date <= end)
             .group_by(StaffAssignment.region_id, pay_month))
     approved = {(region, month): count for region, month, count in rows if month in months}
+    # A month signed for this CSO and then taken back stays on the list, even with nobody approved now, so the CSO is
+    # told not to pay from the files it downloaded earlier.
+    for region in regions:
+        for month in months:
+            if (region, month) in approved or not withdrawal(db, month, region, "PAYROLL"):
+                continue
+            newest = _newest(db, month, region, "PAYROLL")
+            if any(str(org) in newest.snapshot["organizations"] for org in organizations):
+                approved[(region, month)] = 0
     names = {r.id: r.name for r in db.query(Region).filter(Region.id.in_(regions))}
     codes = {c.code for c in db.query(Cadre).filter(Cadre.id.in_(current.review_cadres))}
     items = []
@@ -250,7 +336,8 @@ def cso_payroll_status(db, current, today=None):
         items.append({"month": month, "region_id": region, "region_name": names[region], "approved_providers": count,
                       "state": "SIGNED" if row and signed else "WAITING", "signed_providers": signed,
                       "approved_by_name": row.snapshot["approved_by_name"] if row else None,
-                      "approved_at": row.approved_at.isoformat() if row else None})
+                      "approved_at": row.approved_at.isoformat() if row else None,
+                      "withdrawn": None if row else withdrawal(db, month, region, "PAYROLL")})
     items.sort(key=lambda i: (i["state"] == "SIGNED", -int(i["month"].replace("-", "")), i["region_name"]))
     return items
 

@@ -123,13 +123,22 @@ def run_each_timesheet_reminders(db: Session) -> int:
     return sent
 
 
+def check_payroll_signoffs(db: Session) -> int:
+    """Safety net for any way a timesheet leaves approval: a signed Payroll month listing someone whose timesheet is no
+    longer approved is taken back, so the CSO never pays from it. Runs at start-up and hourly."""
+    from .services.monthly_report_approval import withdraw_stale_payroll
+    withdrawn = withdraw_stale_payroll(db)
+    db.commit()
+    return len(withdrawn)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
-    last_reminder = 0.0
+    last_reminder = last_signoff_check = 0.0
     while True:
         with SessionLocal() as db:
             try:
@@ -140,6 +149,15 @@ def main() -> None:
             except Exception:
                 db.rollback()
                 logger.exception("Reminder check failed")  # waiting messages must still go out
+            try:
+                if time.monotonic() - last_signoff_check >= REMINDER_INTERVAL_SECONDS or args.once:
+                    last_signoff_check = time.monotonic()
+                    withdrawn = check_payroll_signoffs(db)
+                    if withdrawn:
+                        logger.info("Took back %s signed Payroll month(s) listing timesheets no longer approved", withdrawn)
+            except Exception:
+                db.rollback()
+                logger.exception("Payroll sign-off check failed")
             try:
                 processed = process_outbox(db)
                 if processed:
