@@ -115,7 +115,8 @@ def _person(provider, **extra):
             "community_area": provider.get("community_area_name"), "days": provider["days"], "hours": provider["hours"],
             "attendance": provider.get("attendance", []), "indicators": provider.get("indicators", []),
             "salary_scale": provider.get("salary_scale"), "currency": "TZS", "claim_id": None, "mobile": "",
-            "bank_name": "", "bank_account_number": "", "bank_branch": "", "checks": [], "breakdown": [], **extra}
+            "bank_name": "", "bank_account_number": "", "bank_branch": "", "tin_number": provider.get("tin_number") or "",
+            "checks": [], "breakdown": [], **extra}
 
 
 def _regional_payroll(db, current, month, region_id, facility_id, staff_id, cadre_id=None):
@@ -384,12 +385,12 @@ def activities_pdf(data, group_by="person"):
 
 # The import file: one header row, one row per person, plain values and IDs to match on. No logos, merged cells or totals.
 IMPORT_COLUMNS = {
-    "PAYROLL": ["Staff ID", "Name", "Cadre", "Region", "Facility", "Month", "Days filled", "Monthly salary", "Total amount",
+    "PAYROLL": ["Staff ID", "Name", "TIN", "Cadre", "Region", "Facility", "Month", "Days filled", "Monthly salary", "Total amount",
                 "Currency", "Bank name", "Account number", "Bank branch", "Status"],
     "SERVICES": ["Staff ID", "Claim ID", "Name", "Cadre", "Region", "Facility", "Month", "Days", "Total amount", "Currency",
                  "Mobile number", "Status"],
 }
-TEXT_COLUMNS = {"Account number", "Mobile number", "Name", "Facility", "Bank name", "Bank branch"}
+TEXT_COLUMNS = {"Account number", "Mobile number", "Name", "Facility", "Bank name", "Bank branch", "TIN"}
 
 
 def import_rows(data):
@@ -397,7 +398,7 @@ def import_rows(data):
         amount = float(Decimal(p["amount"])) if p["amount"] is not None else None
         facility = p["facility"] or p["community_area"] or ""
         if data["work_type"] == "PAYROLL":
-            yield [p["staff_id"], p["name"], p["cadre"], p["region"], facility, data["month"], p["days"], amount, amount,
+            yield [p["staff_id"], p["name"], p["tin_number"], p["cadre"], p["region"], facility, data["month"], p["days"], amount, amount,
                    p["currency"], p["bank_name"], p["bank_account_number"], p["bank_branch"], p["state"]]
         else:
             yield [p["staff_id"], p["claim_id"], p["name"], p["cadre"], p["region"], facility, data["month"], p["days"], amount,

@@ -53,6 +53,7 @@ class Staff(Base):
     middle_name = Column(String(100))
     last_name = Column(String(100), nullable=False)
     verified_phone = Column(String(20), unique=True, nullable=False)
+    tin_number = Column(String(11), unique=True)  # Taxpayer Identification Number, 123-456-789; optional
     occupation = Column(String(100))
     occupation_other = Column(String(100))
     salary_scale = Column(String(50))

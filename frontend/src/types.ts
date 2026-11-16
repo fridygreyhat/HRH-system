@@ -752,6 +752,8 @@ export interface StaffDetail {
   /** Whether the last SMS reached this number (welcome SMS at registration, reminders). */
   phone_check?: import('./phones').PhoneCheck | null;
   verified_phone: string;
+  /** Taxpayer Identification Number, 123-456-789; masked for people who do not see contact details. */
+  tin_number?: string | null;
   occupation: string | null;
   occupation_other: string | null;
   salary_scale: string | null;

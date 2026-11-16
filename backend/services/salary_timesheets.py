@@ -90,7 +90,7 @@ def with_payment(rows, people, amounts):
         if row.get("other_cso"):
             checks.append(OTHER_CSO)
         setting = work_setting(row)
-        row.update(work_setting=setting, community_area_name=row.get("community_area_name"),
+        row.update(work_setting=setting, community_area_name=row.get("community_area_name"), tin_number=person.tin_number or "",
                    facility_name="—" if setting == COMMUNITY and row["facility_name"] == NOT_ASSIGNED else row["facility_name"],
                    days_signed=signed_days, salary_scale=row.get("salary_scale") or person.salary_scale,
                    monthly_salary=str(amount) if amount is not None else None, checks=checks,

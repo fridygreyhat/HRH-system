@@ -8,6 +8,7 @@ import { AssignmentFields, AssignmentValue, EMPTY_ASSIGNMENT, assignmentPayload,
 
 export { TZ_MOBILE_INPUT_PATTERN as PHONE_PATTERN } from '../../phones';
 import { normalizeTzMobile, TZ_MOBILE_HINT, TZ_MOBILE_INPUT_PATTERN, TZ_MOBILE_MESSAGE } from '../../phones';
+import { normalizeTin, TIN_HINT, TIN_INPUT_PATTERN, TIN_LABEL, TIN_MESSAGE } from '../../tin';
 export const PAYMENT_METHODS = ['MOBILE_WALLET', 'BANK'];
 export const ENROLLMENT_SOURCES = ['MANUAL', 'ROSTER_IMPORT', 'ENGAGEMENT_LIST'];
 export const PAYMENT_CRITICAL = ['cadre_id', 'salary_scale', 'payment_method', 'payment_provider', 'payment_account', 'verified_phone', 'status'];
@@ -95,6 +96,7 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
     middle_name: '',
     last_name: '',
     verified_phone: '',
+    tin_number: '',
     occupation: '',
     occupation_other: '',
     salary_scale: '',
@@ -106,12 +108,18 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
   });
   const [assignment, setAssignment] = useState<AssignmentValue>(EMPTY_ASSIGNMENT);
   const [step, setStep] = useState(0);
-  const { busy, error, run } = useAction();
+  const { busy, error, setError, run } = useAction();
   const cadre = cadres.find((c) => String(c.id) === f.cadre_id);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const tin = normalizeTin(f.tin_number);
+    if (tin === null) {
+      setStep(0);
+      setError(TIN_MESSAGE);
+      return;
+    }
     const created = await run(() =>
       api.post<StaffSummary>('/staff', {
         cadre_id: Number(f.cadre_id),
@@ -119,6 +127,7 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
         middle_name: blankToNull(f.middle_name),
         last_name: f.last_name.trim(),
         verified_phone: f.verified_phone.trim(),
+        tin_number: tin || null,
         occupation: blankToNull(f.occupation),
         occupation_other: isOther(f.occupation) ? blankToNull(f.occupation_other) : null,
         salary_scale: blankToNull(f.salary_scale),
@@ -181,6 +190,9 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
             <Field label="Mobile phone (required)" hint={TZ_MOBILE_HINT}>
               <input type="tel" value={f.verified_phone} onChange={set('verified_phone')} required pattern={TZ_MOBILE_INPUT_PATTERN} autoComplete="off" />
             </Field>
+            <Field label={TIN_LABEL} hint={TIN_HINT}>
+              <input inputMode="numeric" value={f.tin_number} onChange={set('tin_number')} pattern={TIN_INPUT_PATTERN} maxLength={13} placeholder="123-456-789" autoComplete="off" />
+            </Field>
             <Field label="Employment start date (required)">
               <input type="date" value={f.employment_start_date} onChange={set('employment_start_date')} required />
             </Field>
@@ -202,7 +214,7 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
         {step === 2 && <>
           <div className="wizard-summary">
             <strong>{[f.first_name, f.middle_name, f.last_name].filter(Boolean).join(' ')}</strong>
-            <span>{cadre?.name} · {f.verified_phone}</span>
+            <span>{cadre?.name} · {f.verified_phone}{f.tin_number.trim() ? ` · TIN ${normalizeTin(f.tin_number) || f.tin_number}` : ''}</span>
           </div>
           {!assignment.organization_id && <Alert kind="warn">No CSO set; this person will not appear in any salary file.</Alert>}
           <div className="grid-2">
@@ -235,6 +247,7 @@ type EditKey =
   | 'last_name'
   | 'occupation'
   | 'occupation_other'
+  | 'tin_number'
   | 'cadre_id'
   | 'salary_scale'
   | 'payment_method'
@@ -271,6 +284,7 @@ export function EditStaffModal({
     last_name: staff.last_name,
     occupation: staff.occupation || '',
     occupation_other: staff.occupation_other || '',
+    tin_number: staff.tin_number || '',
     cadre_id: String(staff.cadre_id),
     salary_scale: staff.salary_scale || '',
     payment_method: staff.payment_method || '',
@@ -298,9 +312,14 @@ export function EditStaffModal({
       setError(TZ_MOBILE_MESSAGE);
       return;
     }
+    if (changed.includes('tin_number') && normalizeTin(f.tin_number) === null) {
+      setError(TIN_MESSAGE);
+      return;
+    }
     const changes: Record<string, string | number | null> = {};
     changed.forEach((k) => {
       if (k === 'cadre_id') changes[k] = Number(f.cadre_id);
+      else if (k === 'tin_number') changes[k] = normalizeTin(f.tin_number) || null;
       else if (k === 'first_name' || k === 'last_name' || k === 'verified_phone' || k === 'status') changes[k] = f[k].trim();
       else changes[k] = blankToNull(f[k]);
     });
@@ -340,6 +359,9 @@ export function EditStaffModal({
             onOccupation={(v) => setF({ ...f, occupation: v })}
             onOther={(v) => setF({ ...f, occupation_other: v })}
           />
+          <Field label={TIN_LABEL} hint={TIN_HINT}>
+            <input inputMode="numeric" value={f.tin_number} onChange={set('tin_number')} pattern={TIN_INPUT_PATTERN} maxLength={13} placeholder="123-456-789" />
+          </Field>
           <Field label={`Cadre${lockedNote}`}>
             <select value={f.cadre_id} onChange={set('cadre_id')}>
               {cadres.map((c) => (

@@ -99,6 +99,7 @@ export function StaffDrawer({ staffId, cadres, onClose, onChanged, startLogin = 
                     ['Last name', s.last_name],
                     ['Verified phone', s.verified_phone],
                     ['SMS to this number', phoneCheckText(s.phone_check)?.text],
+                    ['TIN', s.tin_number || 'Not recorded'],
                     ['Cadre', cadre ? `${cadre.name} (${s.cadre})` : s.cadre],
                     ['Occupation', s.occupation && s.occupation_other ? `${s.occupation}: ${s.occupation_other}` : s.occupation],
                     ['Salary scale', s.salary_scale],

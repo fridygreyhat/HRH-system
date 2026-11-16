@@ -12,6 +12,7 @@ from sqlalchemy.exc import DataError
 from sqlalchemy.orm import Session
 
 from ..core.phones import same_number, tz_mobile
+from ..core.tin import tin_number
 from ..core import audit as system_audit
 from ..core.roles import PROVIDER
 from ..core.security import CurrentUser
@@ -56,6 +57,8 @@ def validate_changes(db: Session, staff: Staff, changes: dict) -> None:
             raise HTTPException(status_code=422, detail=str(error))
         if db.query(Staff).filter(Staff.verified_phone.in_(same_number(phone)), Staff.id != staff.id).first():
             raise HTTPException(status_code=409, detail="Another staff member already has this phone")
+    if "tin_number" in changes:
+        changes["tin_number"] = _checked_tin(db, changes["tin_number"], staff.id)
     for name in ("first_name", "last_name"):
         if name in changes and not str(changes[name] or "").strip():
             raise HTTPException(status_code=422, detail=f"{name} cannot be empty")
@@ -65,12 +68,23 @@ def validate_changes(db: Session, staff: Staff, changes: dict) -> None:
         check_payment_method(db, changes.get("cadre_id", staff.cadre_id), changes.get("payment_method", staff.payment_method))
 
 
+def _checked_tin(db: Session, value, staff_id: Optional[int]) -> Optional[str]:
+    """A valid TIN (or blank), not already on another staff record."""
+    try:
+        tin = tin_number(value)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    if tin and db.query(Staff.id).filter(Staff.tin_number == tin, Staff.id != (staff_id or -1)).first():
+        raise HTTPException(status_code=409, detail="Another staff member already has this TIN. Check the number.")
+    return tin
+
+
 def check_payment_method(db: Session, cadre_id: Optional[int], method: Optional[str]) -> None:
     """Cadres listed in the bank_only_cadres setting (HCP by default) are paid into a bank account only."""
     cadre = db.get(Cadre, cadre_id) if cadre_id else None
     if cadre and method and method != "BANK" and cadre.code in get_setting(db, "bank_only_cadres"):
         raise HTTPException(status_code=422, detail=f"{cadre.name} staff must be paid into a bank account, not a mobile wallet")
-EDITABLE_FIELDS = {"first_name", "middle_name", "last_name", "occupation", "occupation_other"} | PAYMENT_CRITICAL_FIELDS
+EDITABLE_FIELDS = {"first_name", "middle_name", "last_name", "occupation", "occupation_other", "tin_number"} | PAYMENT_CRITICAL_FIELDS
 
 
 def apply_payment_correction(staff: Staff, changes: dict) -> None:
@@ -141,8 +155,8 @@ def exit_staff(db: Session, current: CurrentUser, staff: Staff, end_date: date, 
     system_audit.record(db, current, "staff", staff.id, "exit", after={"end_date": end_date}, reason=reason)
 
 
-ROSTER_COLUMNS = ["first_name", "middle_name", "last_name", "phone", "cadre", "occupation", "salary_scale", "region", "district",
-                  "ward", "facility", "community_area", "section", "organization", "start_date"]
+ROSTER_COLUMNS = ["first_name", "middle_name", "last_name", "phone", "tin_number", "cadre", "occupation", "salary_scale", "region",
+                  "district", "ward", "facility", "community_area", "section", "organization", "start_date"]
 ROSTER_REQUIRED = ["first_name", "last_name", "phone", "cadre", "region", "start_date"]
 
 
@@ -224,12 +238,22 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
                     "organization_id": org.id if org else None,
                 }
                 staff = db.query(Staff).filter(Staff.verified_phone.in_(same_number(phone))).first()
+                tin = _checked_tin(db, row.get("tin_number"), staff.id if staff else None)
                 if staff:
                     current_row = db.query(StaffAssignment).filter(StaffAssignment.staff_id == staff.id, StaffAssignment.end_date.is_(None)).first()
+                    # A regional admin may only change people who currently work in their own region.
+                    outside = allowed_region_ids is not None and (current_row is None or current_row.region_id not in allowed_region_ids)
+                    if tin and staff.tin_number != tin:
+                        if outside:
+                            raise ValueError("This phone belongs to a staff member outside your administrative region")
+                        if staff.tin_number:  # a correction is made on the staff record, where it is audited with a reason
+                            raise ValueError("This person already has a different TIN on file; correct it on their staff record")
+                        staff.tin_number = tin  # a TIN given for someone who had none is filled in
+                        system_audit.record(db, current, "staff", staff.id, "update", after={"tin_number": tin},
+                                            reason=f"Roster import {filename} line {line_no}")
                     if current_row and all(getattr(current_row, k) == v for k, v in assignment.items()):
-                        continue  # unchanged
-                    # A regional admin may only move people who currently work in their own region.
-                    if allowed_region_ids is not None and (current_row is None or current_row.region_id not in allowed_region_ids):
+                        continue  # same place
+                    if outside:
                         raise ValueError("This phone belongs to a staff member outside your administrative region")
                     rotate(db, current, staff, assignment, start, f"Roster import {filename} line {line_no}")
                     result.updated_count += 1
@@ -240,6 +264,7 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
                         middle_name=(row.get("middle_name") or "").strip() or None,
                         last_name=row["last_name"].strip(),
                         verified_phone=phone,
+                        tin_number=tin,
                         occupation=(row.get("occupation") or "").strip() or None,
                         salary_scale=(row.get("salary_scale") or "").strip() or None,
                         employment_start_date=start,

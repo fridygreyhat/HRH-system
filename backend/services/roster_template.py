@@ -28,6 +28,7 @@ GUIDE = {  # column: (what to enter, example)
     "last_name": ("Last name (surname).", "Mwakyusa"),
     "phone": ("Mobile number. It identifies the person: a number already registered moves that person to the "
               "place on this row instead of adding someone new. Spaces and dashes are ignored.", "0712345678"),
+    "tin_number": ("Taxpayer Identification Number (TIN), 9 digits, if the person has one. Leave blank otherwise.", "123-456-789"),
     "cadre": ("Cadre code from the list (not the full name).", "CHW"),
     "occupation": ("Occupation within the cadre. See Accepted values for each cadre's options.", ""),
     "salary_scale": ("Salary scale, if the approved list gives one.", ""),

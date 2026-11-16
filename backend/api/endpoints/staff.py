@@ -11,6 +11,7 @@ from ...core import audit as system_audit
 from ...core.roles import CENTRAL_ADMIN, CSO_FINANCE, FHI360_FINANCE, PROVIDER, REGIONAL_ADMIN, SYSTEM_ADMIN
 from ...core.security import CurrentUser, get_current_user, hash_password, require_roles
 from ...core.phones import same_number, tz_mobile
+from ...core.tin import mask_tin, tin_number
 from ...core.serialize import mask_phone, to_dict
 from ...core.timeutil import local_today
 from ...core.uploads import read_csv_upload, read_upload_bytes
@@ -47,6 +48,12 @@ class StaffCreate(BaseModel):
     @classmethod
     def active_mobile(cls, value):
         return tz_mobile(value)
+    tin_number: Optional[str] = Field(default=None, max_length=20)
+
+    @field_validator("tin_number")
+    @classmethod
+    def valid_tin(cls, value):
+        return tin_number(value)
     occupation: Optional[str] = None
     occupation_other: Optional[str] = None
     salary_scale: Optional[str] = None
@@ -243,6 +250,8 @@ def new_staff_record(db: Session, current: CurrentUser, body: StaffCreate) -> St
     assignment = _assignment_columns(db, body.assignment)
     if db.query(Staff).filter(Staff.verified_phone.in_(same_number(body.verified_phone))).first():
         raise HTTPException(status_code=409, detail="A staff member with this phone already exists. Use a rotation instead of creating a second identity.")
+    if body.tin_number and db.query(Staff.id).filter(Staff.tin_number == body.tin_number).first():
+        raise HTTPException(status_code=409, detail="Another staff member already has this TIN. Check the number.")
     staff = Staff(**body.model_dump(exclude={"assignment"}), created_by=current.id)
     db.add(staff)
     db.flush()
@@ -290,6 +299,7 @@ def get_staff(staff_id: int, db: Session = Depends(get_db), current: CurrentUser
         "legal_name": staff.legal_name,
         "cadre": db.get(Cadre, staff.cadre_id).code,
         "verified_phone": staff.verified_phone if _sees_contact(current) or current.staff_id == staff.id else mask_phone(staff.verified_phone),
+        "tin_number": staff.tin_number if _sees_contact(current) or current.staff_id == staff.id else mask_tin(staff.tin_number),
         "assignments": [{**assignment_out(db, a), "end_reason": a.end_reason, "is_primary": a.is_primary} for a in assignments],
         "username": db.get(User, staff.user_id).username if staff.user_id else None,
     }
