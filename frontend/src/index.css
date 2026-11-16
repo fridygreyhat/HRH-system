@@ -1597,3 +1597,24 @@ details[open].card > summary::before, details[open].folded > summary::before { t
 :root[data-theme='dark'] .indicator-group-violet { --group-accent: #b9a0e0; }
 :root[data-theme='dark'] .indicator-group-rose { --group-accent: #e59ab0; }
 .table-note { margin: 0.6rem 0 0; }
+
+/* New user: choose who the account is for, then only that kind's fields */
+.account-types { border: 0; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
+.account-types legend { font-weight: 700; margin-bottom: 0.5rem; }
+.account-type-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0.6rem; }
+.account-type { position: relative; display: grid; gap: 0.25rem; padding: 0.8rem 0.9rem; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); cursor: pointer; }
+.account-type input { position: absolute; opacity: 0; pointer-events: none; }
+.account-type span { color: var(--muted); font-size: 0.85rem; line-height: 1.4; }
+.account-type:hover { border-color: var(--border-strong); }
+.account-type:has(input:focus-visible) { outline: 2px solid var(--primary); outline-offset: 2px; }
+.account-type.is-selected { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 9%, var(--surface)); }
+.account-form-title { margin: 0.25rem 0 0; font-size: 1rem; }
+.kind-list { display: grid; gap: 0.45rem; }
+.kind-option { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.55rem 0.7rem; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
+.kind-option > span { display: grid; gap: 0.1rem; }
+.kind-option.is-selected { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 7%, var(--surface)); }
+.check-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0.35rem 1rem; }
+.picked-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3rem; }
+.picked-list li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.35rem 0.6rem; border: 1px solid var(--border); border-radius: 8px; }
+.provider-pay { border: 1px solid var(--border); border-radius: 12px; padding: 0.8rem 0.9rem; }
+.provider-pay legend { font-weight: 700; padding: 0 0.3rem; }

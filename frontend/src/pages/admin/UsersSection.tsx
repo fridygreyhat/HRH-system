@@ -32,6 +32,7 @@ const DIMS: { key: Dim; label: string; path: string }[] = [
 const DIM_PATHS = DIMS.map((d) => d.path);
 import { normalizeTzMobile, TZ_MOBILE_INPUT_PATTERN, TZ_MOBILE_MESSAGE } from '../../phones';
 import { confirmAction } from '../../components/ConfirmDialog';
+import { ACCOUNT_TYPES, AccountType, AccountTypeCards, EMPTY_ACCESS, OfficeAccess, OfficeAccessFields, officePayload } from './AccountTypes';
 /** Granted automatically with a staff record; never ticked by hand. */
 const PROVIDER = 'PROVIDER';
 const SUPER_ADMIN = 'SUPER_ADMIN';
@@ -227,33 +228,33 @@ function RoleChecks({
   );
 }
 
-function CreateUser({ roles, onDone, onCancel }: { roles: RoleInfo[] | null; onDone: (u: AdminUser) => void; onCancel: () => void }) {
-  const { lists, maps, error: lookupError } = useScopeMaps();
+function CreateUser({ onDone, onCancel }: { roles: RoleInfo[] | null; onDone: (u: AdminUser) => void; onCancel: () => void }) {
   const unlinked = useApi<UnlinkedStaff[]>('/admin/unlinked-staff');
-  const [kind, setKind] = useState<'worker' | 'office'>('worker');
+  const cadres = useApi<Cadre[]>('/admin/cadres');
+  const [type, setType] = useState<AccountType | null>(null);
   const [form, setForm] = useState({ username: '', password: '', full_name: '', phone: '', email: '', preferred_language: 'sw' });
   const [worker, setWorker] = useState<HealthWorkerValue>(emptyHealthWorker);
-  const [userRoles, setUserRoles] = useState<string[]>([]);
-  const [scopes, setScopes] = useState<ScopeIn[]>([]);
-  const [reviewCadres, setReviewCadres] = useState<number[]>([]);
+  const [access, setAccess] = useState<OfficeAccess>(EMPTY_ACCESS);
   const { busy, error, setError, run } = useAction();
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
-  const isWorker = kind === 'worker';
+  const isWorker = type === 'provider';
   const fullName = isWorker ? healthWorkerName(worker, unlinked.data) : form.full_name.trim();
-  const otherRoles = userRoles.filter((r) => r !== PROVIDER);
+  const chooseType = (next: AccountType) => {
+    setType(next);
+    setAccess(EMPTY_ACCESS);
+    setError(null);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!type) return setError('Choose who this account is for.');
     if (form.password.length < 8) return setError('The password must be at least 8 characters.');
     if (!normalizeTzMobile(form.phone)) return setError(TZ_MOBILE_MESSAGE);
-    if (!isWorker && !otherRoles.length) return setError('Choose at least one role.');
     const link = isWorker ? healthWorkerPayload(worker, form.phone) : null;
     if (typeof link === 'string') return setError(link);
+    const office = isWorker ? null : officePayload(type, access, (cadres.data || []).map((c) => c.id));
+    if (typeof office === 'string') return setError(office);
     if (!fullName) return setError('Enter the full name.');
-    const cleaned = cleanScopes(scopes);
-    if (cleaned.error) return setError(cleaned.error);
-    const hasReviewCadreRole = otherRoles.some((role) => REVIEW_CADRE_ROLES.includes(role));
-    if (hasReviewCadreRole && !reviewCadres.length) return setError('Choose the cadres this reviewer may review.');
     const created = await run(() =>
       api.post<AdminUser>('/admin/users', {
         username: form.username.trim(),
@@ -262,9 +263,9 @@ function CreateUser({ roles, onDone, onCancel }: { roles: RoleInfo[] | null; onD
         phone: form.phone.trim(),
         email: form.email.trim() || null,
         preferred_language: form.preferred_language,
-        roles: isWorker ? [PROVIDER, ...otherRoles] : otherRoles,
-        scopes: cleaned.scopes,
-        review_cadre_ids: hasReviewCadreRole ? reviewCadres : [],
+        roles: office ? office.roles : [PROVIDER],
+        scopes: office ? office.scopes : [],
+        review_cadre_ids: office ? office.review_cadre_ids : [],
         staff_id: link?.staff_id ?? null,
         staff: link?.staff ?? null,
       }),
@@ -273,69 +274,57 @@ function CreateUser({ roles, onDone, onCancel }: { roles: RoleInfo[] | null; onD
     return undefined;
   };
 
+  const chosen = ACCOUNT_TYPES.find((t) => t.key === type);
   return (
     <form className="stack" onSubmit={submit}>
-      <Field label="Account type">
-        <Tabs
-          label="Account type"
-          value={kind}
-          onChange={setKind}
-          tabs={[
-            { key: 'worker', label: 'Health worker (CHW, Data Clerk, HCP)' },
-            { key: 'office', label: 'Office / reviewer' },
-          ]}
-        />
-      </Field>
-      {isWorker && <p className="muted small">Gets the Provider role and a linked staff record.</p>}
-      <div className="grid-2">
-        <Field label="Username *">
-          <input value={form.username} onChange={set('username')} required minLength={3} maxLength={100} autoComplete="off" />
-        </Field>
-        <Field label="Initial password *" hint="At least 8 characters.">
-          <input type="password" value={form.password} onChange={set('password')} required minLength={8} maxLength={72} autoComplete="new-password" />
-        </Field>
-        {!isWorker && (
-          <Field label="Full name *">
-            <input value={form.full_name} onChange={set('full_name')} required maxLength={255} />
+      <AccountTypeCards value={type} onChange={chooseType} disabled={busy} />
+      {type && <>
+        <h3 className="account-form-title">{chosen?.title}: account</h3>
+        <div className="grid-2">
+          {!isWorker && (
+            <Field label="Full name *">
+              <input value={form.full_name} onChange={set('full_name')} required maxLength={255} />
+            </Field>
+          )}
+          <Field label="Username *">
+            <input value={form.username} onChange={set('username')} required minLength={3} maxLength={100} autoComplete="off" />
           </Field>
+          <Field label="Initial password *" hint="At least 8 characters. They change it at first sign-in.">
+            <input type="password" value={form.password} onChange={set('password')} required minLength={8} maxLength={72} autoComplete="new-password" />
+          </Field>
+          <Field label="Mobile phone *" hint={isWorker
+            ? 'Active Tanzanian mobile, e.g. 0712 345 678. Codes, reminders and the welcome SMS go to it.'
+            : 'Active Tanzanian mobile, e.g. 0712 345 678. Review alerts and reminders go to it; a welcome SMS is sent now.'}>
+            <input type="tel" value={form.phone} onChange={set('phone')} required pattern={TZ_MOBILE_INPUT_PATTERN} />
+          </Field>
+          <Field label="Email">
+            <input type="email" value={form.email} onChange={set('email')} />
+          </Field>
+          <Field label="Preferred language">
+            <select value={form.preferred_language} onChange={set('preferred_language')}>
+              <option value="sw">Kiswahili</option>
+              <option value="en">English</option>
+            </select>
+          </Field>
+        </div>
+        {isWorker ? (
+          <>
+            <Alert>{unlinked.error}</Alert>
+            <HealthWorkerFields value={worker} onChange={setWorker} unlinked={unlinked.data} disabled={busy} />
+          </>
+        ) : (
+          <>
+            <h3 className="account-form-title">What they work on</h3>
+            <Alert>{cadres.error}</Alert>
+            <OfficeAccessFields type={type as Exclude<AccountType, 'provider'>} value={access} onChange={setAccess} disabled={busy} />
+            <p className="muted small">No TIN or bank details: only providers give these. More roles can be added later under Manage.</p>
+          </>
         )}
-        <Field label="Mobile phone *" hint="Active Tanzanian mobile, e.g. 0712 345 678. Review alerts, reminders and codes go to it; a welcome SMS is sent now.">
-          <input type="tel" value={form.phone} onChange={set('phone')} required pattern={TZ_MOBILE_INPUT_PATTERN} />
-        </Field>
-        <Field label="Email">
-          <input type="email" value={form.email} onChange={set('email')} />
-        </Field>
-        <Field label="Preferred language">
-          <select value={form.preferred_language} onChange={set('preferred_language')}>
-            <option value="sw">Kiswahili</option>
-            <option value="en">English</option>
-          </select>
-        </Field>
-      </div>
-      {isWorker && (
-        <>
-          <Alert>{unlinked.error}</Alert>
-          <HealthWorkerFields value={worker} onChange={setWorker} unlinked={unlinked.data} disabled={busy} />
-        </>
-      )}
-      <RoleChecks
-        roles={roles}
-        value={otherRoles}
-        onChange={setUserRoles}
-        disabled={busy}
-        legend={isWorker ? 'Additional roles (optional, e.g. a CHW who is also a supervisor)' : 'Roles'}
-      />
-      {(!isWorker || otherRoles.length > 0) && (
-        <>
-          <Alert>{lookupError}</Alert>
-          <ScopeEditor scopes={scopes} onChange={setScopes} lists={lists} maps={maps} disabled={busy} />
-        </>
-      )}
-      {otherRoles.some((role) => REVIEW_CADRE_ROLES.includes(role)) && <TechnicalArea value={reviewCadres} onChange={setReviewCadres} disabled={busy} />}
+      </>}
       <Alert>{error}</Alert>
       <div className="row">
-        <button className="btn btn-primary" disabled={busy}>
-          {busy ? 'Creating…' : 'Create user'}
+        <button className="btn btn-primary" disabled={busy || !type}>
+          {busy ? 'Creating…' : chosen ? `Create ${chosen.title.toLowerCase()} account` : 'Create user'}
         </button>
         <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={busy}>
           Cancel
@@ -345,7 +334,6 @@ function CreateUser({ roles, onDone, onCancel }: { roles: RoleInfo[] | null; onD
   );
 }
 
-/** For accounts with no staff record: register one (cadre + placement) or link an existing one. */
 function LinkStaff({ user, onChanged }: { user: AdminUser; onChanged: (u: AdminUser) => void }) {
   const unlinked = useApi<UnlinkedStaff[]>('/admin/unlinked-staff');
   const [worker, setWorker] = useState<HealthWorkerValue>(emptyHealthWorker);

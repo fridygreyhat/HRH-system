@@ -83,6 +83,17 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "real_payment_code: run the real SMS-code check on payment details")
 
 
+_tins = itertools.count(900_000_001)
+
+
+def provider_pay(staff: dict) -> dict:
+    """Fill in a unique TIN and bank details where a test registers a provider without them."""
+    if "tin_number" in staff and "bank_account_number" in staff:
+        return staff
+    tin = str(next(_tins))
+    return {"tin_number": tin, "bank_name": "NMB", "bank_account_number": f"40{tin}", **staff}
+
+
 class Api:
     def __init__(self, client):
         self.client = client
@@ -126,6 +137,11 @@ class Api:
             self._approve_payroll_month(user, json["month"], json["region_id"])
         if path == "/rates" and isinstance(json, dict):
             json = {"min_days_per_month": 0, **json}  # required of real users; only test_service_targets.py is about it
+        # A provider is registered with a TIN and bank details; only test_user_registration_types.py is about that rule.
+        if isinstance(json, dict) and path == "/staff":
+            json = provider_pay(json)
+        elif isinstance(json, dict) and isinstance(json.get("staff"), dict) and path.startswith("/admin/users"):
+            json = {**json, "staff": provider_pay(json["staff"])}
         return self.call("POST", path, user, json=json if json is not None else {}, **kw)
 
     def _approve_finance_timesheet(self, log_path, user):

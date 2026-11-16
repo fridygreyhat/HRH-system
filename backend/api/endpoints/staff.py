@@ -1,4 +1,5 @@
 from datetime import date
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
@@ -37,6 +38,9 @@ class AssignmentIn(BaseModel):
     organization_id: Optional[int] = None
 
 
+ACCOUNT_NUMBER = re.compile(r"^[A-Za-z0-9]{6,34}$")
+
+
 class StaffCreate(BaseModel):
     cadre_id: int
     first_name: str = Field(min_length=1, max_length=100)
@@ -54,6 +58,23 @@ class StaffCreate(BaseModel):
     @classmethod
     def valid_tin(cls, value):
         return tin_number(value)
+    # Payroll is paid by the CSO into this account; Services go to the verified phone's mobile wallet.
+    bank_name: Optional[str] = Field(default=None, max_length=100)
+    bank_account_number: Optional[str] = Field(default=None, max_length=40)
+    bank_branch: Optional[str] = Field(default=None, max_length=100)
+
+    @field_validator("bank_name", "bank_branch")
+    @classmethod
+    def trimmed(cls, value):
+        return (value or "").strip() or None
+
+    @field_validator("bank_account_number")
+    @classmethod
+    def account_number(cls, value):
+        digits = re.sub(r"[\s\-]", "", value or "")
+        if digits and not ACCOUNT_NUMBER.fullmatch(digits):
+            raise ValueError("Bank account number: 6 to 34 letters or digits, as on the bank statement.")
+        return digits or None
     occupation: Optional[str] = None
     occupation_other: Optional[str] = None
     salary_scale: Optional[str] = None
@@ -250,6 +271,10 @@ def new_staff_record(db: Session, current: CurrentUser, body: StaffCreate) -> St
     assignment = _assignment_columns(db, body.assignment)
     if db.query(Staff).filter(Staff.verified_phone.in_(same_number(body.verified_phone))).first():
         raise HTTPException(status_code=409, detail="A staff member with this phone already exists. Use a rotation instead of creating a second identity.")
+    missing = [label for label, value in (("TIN", body.tin_number), ("bank name", body.bank_name),
+                                          ("bank account number", body.bank_account_number)) if not value]
+    if missing:
+        raise HTTPException(status_code=422, detail=f"A provider is registered with their {', '.join(missing)}: the CSO pays salaries into this bank account.")
     if body.tin_number and db.query(Staff.id).filter(Staff.tin_number == body.tin_number).first():
         raise HTTPException(status_code=409, detail="Another staff member already has this TIN. Check the number.")
     staff = Staff(**body.model_dump(exclude={"assignment"}), created_by=current.id)

@@ -16,11 +16,17 @@ from ...core.roles import (
     CSO_FINANCE,
     FHI360_FINANCE,
     OVERSIGHT,
+    CSO_TECHNICAL,
+    FACILITY_IN_CHARGE,
     PROVIDER,
+    REGIONAL_ADMIN,
+    REGIONAL_FINANCE,
     ROLE_DESCRIPTIONS,
     RPM,
     SUPER_ADMIN,
+    SUPERVISOR,
     SYSTEM_ADMIN,
+    TECHNICAL_OFFICER,
 )
 from ...core.security import CurrentUser, get_current_user, get_user_roles, hash_password, load_current_user, require_roles
 from ...core.phones import tz_mobile
@@ -586,6 +592,7 @@ def create_user(body: UserCreate, db: Session = Depends(get_db), current: Curren
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail="Username or phone already in use")
+    _check_role_setup(db, body)
     _set_roles(db, user, [r for r in body.roles if r != PROVIDER], current)
     _set_scopes(db, user, body.scopes, current)
     _set_review_cadres(db, user, body.review_cadre_ids, current)
@@ -596,9 +603,40 @@ def create_user(body: UserCreate, db: Session = Depends(get_db), current: Curren
     if not body.staff:  # a new staff record already sent its own welcome
         from ...services import notifications
         notifications.welcome(db, user, user.phone, user.full_name)
-    system_audit.record(db, current, "user", user.id, "create", after=body.model_dump(exclude={"password": True, "staff": {"payment_account"}}, mode="json"))
+    system_audit.record(db, current, "user", user.id, "create", after=body.model_dump(exclude={"password": True, "staff": {"payment_account", "bank_account_number"}}, mode="json"))
     _commit(db)
     return _user_out(db, user)
+
+
+ROLE_NAMES = {SUPERVISOR: "CTC In-Charge", FACILITY_IN_CHARGE: "Facility In-Charge", TECHNICAL_OFFICER: "FHI360 technical officer",
+              CSO_TECHNICAL: "CSO technical officer", RPM: "Regional Manager", REGIONAL_FINANCE: "Regional Finance officer",
+              CSO_FINANCE: "CSO Finance officer", REGIONAL_ADMIN: "regional administrator"}
+# What each office role must be registered with, or its work never reaches it (see services/scope.py).
+ROLE_NEEDS = {
+    SUPERVISOR: ({"facility_id"}, False, "the facility (or facilities) where they verify work"),
+    FACILITY_IN_CHARGE: ({"facility_id"}, False, "the facility (or facilities) they endorse"),
+    TECHNICAL_OFFICER: ({"region_id", "cluster_id"}, True, "a region or cluster, and the cadres in their technical area"),
+    CSO_TECHNICAL: (None, True, "their CSO, the regions they cover and the cadres they review"),
+    RPM: ({"region_id"}, False, "the region (or regions) they authorize"),
+    REGIONAL_FINANCE: ({"region_id"}, False, "the region (or regions) they cover"),
+    CSO_FINANCE: ({"organization_id"}, False, "their CSO"),
+    REGIONAL_ADMIN: ({"region_id"}, False, "the region (or regions) they administer"),
+}
+
+
+def _check_role_setup(db: Session, body) -> None:
+    """A new account gets each role together with the places and cadres the role works on."""
+    dims = {dim for scope in body.scopes for dim, value in scope.model_dump().items() if value is not None}
+    for role in body.roles:
+        if role not in ROLE_NEEDS:
+            continue
+        needs, cadres, what = ROLE_NEEDS[role]
+        if role == CSO_TECHNICAL:
+            ok = {"organization_id", "region_id"} <= dims
+        else:
+            ok = bool(needs & dims)
+        if not ok or (cadres and not body.review_cadre_ids):
+            raise HTTPException(status_code=422, detail=f"Register the {ROLE_NAMES[role]} with {what}.")
 
 
 @router.post("/users/{user_id}/staff")

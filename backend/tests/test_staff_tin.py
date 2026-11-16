@@ -1,4 +1,4 @@
-"""Taxpayer Identification Number (TIN) when registering staff and users: optional, 9 digits, one per person."""
+"""Taxpayer Identification Number (TIN) of providers: 9 digits, one per person (required at registration: test_user_registration_types.py)."""
 import io
 
 from openpyxl import load_workbook
@@ -20,12 +20,11 @@ def test_tin_is_checked_and_kept_in_one_form():
     assert mask_tin("123-456-789") == "***-***-789"
 
 
-def test_registering_staff_takes_an_optional_tin_that_no_one_else_has(api, db):
+def test_registering_staff_takes_a_tin_that_no_one_else_has(api, db):
     with_tin = api.post("/staff", "central1", {**_staff(api, "CHW", "0755 123 501", "MOBILE_WALLET"), "tin_number": "100 200 301"}, expect=201)
     assert db.get(Staff, with_tin["id"]).tin_number == "100-200-301"
     assert api.get(f"/staff/{with_tin['id']}", "central1")["tin_number"] == "100-200-301"
-    without = api.post("/staff", "central1", _staff(api, "CHW", "0755 123 502", "MOBILE_WALLET"), expect=201)
-    assert db.get(Staff, without["id"]).tin_number is None  # many CHWs have none yet: registration is not blocked
+    without = api.post("/staff", "central1", {**_staff(api, "CHW", "0755 123 502", "MOBILE_WALLET"), "tin_number": "100 200 399"}, expect=201)
     refused = api.post("/staff", "central1", {**_staff(api, "CHW", "0755 123 503", "MOBILE_WALLET"), "tin_number": "1234"}, expect=422)
     assert "9-digit" in str(refused)
     taken = api.post("/staff", "central1", {**_staff(api, "CHW", "0755 123 504", "MOBILE_WALLET"), "tin_number": "100200301"}, expect=409)

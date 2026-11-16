@@ -5,7 +5,7 @@ import { Cadre } from '../../types';
 import { Alert, Field, Tabs } from '../ui';
 import { AssignmentFields, AssignmentPayload, AssignmentValue, EMPTY_ASSIGNMENT, assignmentPayload } from './AssignmentFields';
 import { OccupationFields } from './StaffForms';
-import { normalizeTin, TIN_HINT, TIN_INPUT_PATTERN, TIN_LABEL, TIN_MESSAGE } from '../../tin';
+import { EMPTY_PROVIDER_PAY, ProviderPay, ProviderPayFields, providerPayPayload } from './ProviderPayFields';
 
 /** Active staff record that has no login yet (GET /admin/unlinked-staff). */
 export interface UnlinkedStaff {
@@ -24,7 +24,8 @@ export interface HealthWorkerValue {
   last_name: string;
   occupation: string;
   occupation_other: string;
-  tin_number: string;
+  /** TIN and bank details: required of every provider registered here. */
+  pay: ProviderPay;
   employment_start_date: string;
   assignment: AssignmentValue;
 }
@@ -39,7 +40,9 @@ export type HealthWorkerPayload =
         middle_name: string | null;
         last_name: string;
         verified_phone: string;
-        tin_number: string | null;
+        tin_number: string;
+        bank_name: string;
+        bank_account_number: string;
         occupation: string | null;
         occupation_other: string | null;
         employment_start_date: string;
@@ -57,7 +60,7 @@ export const emptyHealthWorker = (): HealthWorkerValue => ({
   last_name: '',
   occupation: '',
   occupation_other: '',
-  tin_number: '',
+  pay: EMPTY_PROVIDER_PAY,
   employment_start_date: todayLocal(),
   assignment: EMPTY_ASSIGNMENT,
 });
@@ -83,8 +86,8 @@ export function healthWorkerPayload(v: HealthWorkerValue, phone: string): Health
   if (!v.first_name.trim() || !v.last_name.trim()) return 'Enter the first and last name.';
   if (!v.assignment.region_id) return 'Choose the region where this health worker is placed.';
   if (!v.employment_start_date) return 'Enter the employment start date.';
-  const tin = normalizeTin(v.tin_number);
-  if (tin === null) return TIN_MESSAGE;
+  const payment = providerPayPayload(v.pay);
+  if (typeof payment === 'string') return payment;
   const other = v.occupation.trim().toLowerCase() === 'other';
   return {
     staff_id: null,
@@ -94,7 +97,7 @@ export function healthWorkerPayload(v: HealthWorkerValue, phone: string): Health
       middle_name: v.middle_name.trim() || null,
       last_name: v.last_name.trim(),
       verified_phone: phone.trim(),
-      tin_number: tin || null,
+      ...payment,
       occupation: v.occupation.trim() || null,
       occupation_other: other ? v.occupation_other.trim() || null : null,
       employment_start_date: v.employment_start_date,
@@ -122,7 +125,7 @@ export function HealthWorkerFields({
   const cadres = useApi<Cadre[]>('/admin/cadres');
   const cadre = (cadres.data || []).find((c) => String(c.id) === value.cadre_id);
   const set = (patch: Partial<HealthWorkerValue>) => onChange({ ...value, ...patch });
-  const text = (k: 'first_name' | 'middle_name' | 'last_name' | 'tin_number' | 'employment_start_date') => (e: React.ChangeEvent<HTMLInputElement>) => set({ [k]: e.target.value });
+  const text = (k: 'first_name' | 'middle_name' | 'last_name' | 'employment_start_date') => (e: React.ChangeEvent<HTMLInputElement>) => set({ [k]: e.target.value });
 
   return (
     <fieldset className="stack" disabled={disabled}>
@@ -192,14 +195,12 @@ export function HealthWorkerFields({
               onOccupation={(v) => set({ occupation: v })}
               onOther={(v) => set({ occupation_other: v })}
             />
-            <Field label={TIN_LABEL} hint={TIN_HINT}>
-              <input inputMode="numeric" value={value.tin_number} onChange={text('tin_number')} pattern={TIN_INPUT_PATTERN} maxLength={13} placeholder="123-456-789" autoComplete="off" />
-            </Field>
             <Field label="Employment start date *">
               <input type="date" value={value.employment_start_date} onChange={text('employment_start_date')} />
             </Field>
           </div>
-          <p className="muted small">The phone above receives confirmation codes.</p>
+          <p className="muted small">The phone above receives confirmation codes, and Services are paid to its mobile wallet.</p>
+          <ProviderPayFields value={value.pay} onChange={(pay) => set({ pay })} disabled={disabled} />
           <h4>Placement</h4>
           <AssignmentFields value={value.assignment} onChange={(assignment) => set({ assignment })} showSection={cadre ? cadre.uses_section : true} />
         </>

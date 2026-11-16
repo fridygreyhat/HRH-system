@@ -85,7 +85,7 @@ def with_payment(rows, people, amounts):
             checks.append(SALARY_MISSING)
         else:
             paid.add(row["staff_id"])
-        if not all(bank[key] for key in ("bank_name", "bank_account_number", "bank_branch")):
+        if not all(bank[key] for key in ("bank_name", "bank_account_number")):
             checks.append(BANK_MISSING)
         if row.get("other_cso"):
             checks.append(OTHER_CSO)

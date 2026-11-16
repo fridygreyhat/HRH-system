@@ -427,6 +427,9 @@ def test_missing_bank_details_are_flagged_without_blocking_the_download(api, db,
     set_amount(api, setup)
     setup["person"].bank_branch = None
     db.commit()
+    assert api.get(setup["summary"], "csofin1")["missing_bank"] == []  # the branch is not asked for: name and account are enough
+    setup["person"].bank_account_number = setup["person"].payment_account = None
+    db.commit()
     assert api.get(setup["summary"], "csofin1")["missing_bank"] == [setup["person"].legal_name]
     row = file_rows(api, setup)[0]
     assert row["Payment check"] == "Bank details missing" and row["Monthly salary (TZS)"] == "750000.00"

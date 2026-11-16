@@ -9,6 +9,7 @@ import { AssignmentFields, AssignmentValue, EMPTY_ASSIGNMENT, assignmentPayload,
 export { TZ_MOBILE_INPUT_PATTERN as PHONE_PATTERN } from '../../phones';
 import { normalizeTzMobile, TZ_MOBILE_HINT, TZ_MOBILE_INPUT_PATTERN, TZ_MOBILE_MESSAGE } from '../../phones';
 import { normalizeTin, TIN_HINT, TIN_INPUT_PATTERN, TIN_LABEL, TIN_MESSAGE } from '../../tin';
+import { EMPTY_PROVIDER_PAY, ProviderPay, ProviderPayFields, providerPayPayload } from './ProviderPayFields';
 export const PAYMENT_METHODS = ['MOBILE_WALLET', 'BANK'];
 export const ENROLLMENT_SOURCES = ['MANUAL', 'ROSTER_IMPORT', 'ENGAGEMENT_LIST'];
 export const PAYMENT_CRITICAL = ['cadre_id', 'salary_scale', 'payment_method', 'payment_provider', 'payment_account', 'verified_phone', 'status'];
@@ -96,16 +97,13 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
     middle_name: '',
     last_name: '',
     verified_phone: '',
-    tin_number: '',
     occupation: '',
     occupation_other: '',
     salary_scale: '',
     employment_start_date: todayLocal(),
     enrollment_source: 'MANUAL',
-    payment_method: '',
-    payment_provider: '',
-    payment_account: '',
   });
+  const [pay, setPay] = useState<ProviderPay>(EMPTY_PROVIDER_PAY);
   const [assignment, setAssignment] = useState<AssignmentValue>(EMPTY_ASSIGNMENT);
   const [step, setStep] = useState(0);
   const { busy, error, setError, run } = useAction();
@@ -114,10 +112,9 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const tin = normalizeTin(f.tin_number);
-    if (tin === null) {
-      setStep(0);
-      setError(TIN_MESSAGE);
+    const payment = providerPayPayload(pay);
+    if (typeof payment === 'string') {
+      setError(payment);
       return;
     }
     const created = await run(() =>
@@ -127,15 +124,12 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
         middle_name: blankToNull(f.middle_name),
         last_name: f.last_name.trim(),
         verified_phone: f.verified_phone.trim(),
-        tin_number: tin || null,
+        ...payment,
         occupation: blankToNull(f.occupation),
         occupation_other: isOther(f.occupation) ? blankToNull(f.occupation_other) : null,
         salary_scale: blankToNull(f.salary_scale),
         employment_start_date: f.employment_start_date,
         enrollment_source: f.enrollment_source,
-        payment_method: blankToNull(f.payment_method),
-        payment_provider: blankToNull(f.payment_provider),
-        payment_account: blankToNull(f.payment_account),
         assignment: assignmentPayload(assignment),
       }),
     );
@@ -190,9 +184,6 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
             <Field label="Mobile phone (required)" hint={TZ_MOBILE_HINT}>
               <input type="tel" value={f.verified_phone} onChange={set('verified_phone')} required pattern={TZ_MOBILE_INPUT_PATTERN} autoComplete="off" />
             </Field>
-            <Field label={TIN_LABEL} hint={TIN_HINT}>
-              <input inputMode="numeric" value={f.tin_number} onChange={set('tin_number')} pattern={TIN_INPUT_PATTERN} maxLength={13} placeholder="123-456-789" autoComplete="off" />
-            </Field>
             <Field label="Employment start date (required)">
               <input type="date" value={f.employment_start_date} onChange={set('employment_start_date')} required />
             </Field>
@@ -214,21 +205,16 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
         {step === 2 && <>
           <div className="wizard-summary">
             <strong>{[f.first_name, f.middle_name, f.last_name].filter(Boolean).join(' ')}</strong>
-            <span>{cadre?.name} · {f.verified_phone}{f.tin_number.trim() ? ` · TIN ${normalizeTin(f.tin_number) || f.tin_number}` : ''}</span>
+            <span>{cadre?.name} · {f.verified_phone}</span>
           </div>
           {!assignment.organization_id && <Alert kind="warn">No CSO set; this person will not appear in any salary file.</Alert>}
           <div className="grid-2">
             <Field label="Salary scale" hint="Type it exactly as on Salary amounts">
               <input value={f.salary_scale} onChange={set('salary_scale')} maxLength={50} />
             </Field>
-            <PaymentMethodSelect value={f.payment_method} onChange={(v) => setF({ ...f, payment_method: v })} />
-            <Field label="Payment provider" hint="e.g. M-Pesa, CRDB">
-              <input value={f.payment_provider} onChange={set('payment_provider')} maxLength={100} />
-            </Field>
-            <Field label="Payment account / wallet number">
-              <input value={f.payment_account} onChange={set('payment_account')} maxLength={100} autoComplete="off" />
-            </Field>
           </div>
+          <ProviderPayFields value={pay} onChange={setPay} disabled={busy} />
+          <p className="muted small">Services are paid to the mobile wallet of the phone above.</p>
         </>}
         <Alert>{error}</Alert>
         <div className="row">
