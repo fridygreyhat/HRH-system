@@ -322,6 +322,8 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
       const result = await api.post<WorkLogDetail>(`/worklogs/${log.id}/actions/${action}`, {
         comment: comment || null,
         expected_version: log.version,
+        // The server refuses if the provider resubmitted changed numbers after this screen loaded them.
+        ...(log.submitted_at ? { expected_submitted_at: log.submitted_at } : {}),
         ...(action === 'release' ? { expected_review_token: log.finance_snapshot?.review_token } : {}),
         flags: action === 'return' ? flags : [],
         ...(log.workflow_version === 2 ? {

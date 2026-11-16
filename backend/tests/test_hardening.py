@@ -151,11 +151,11 @@ def test_admin_edit_saves_the_name_and_requests_the_rest(api, db):
     from backend.models import Staff
 
     staff = _chw(db)
-    result = api.call("PATCH", f"/staff/{staff.id}", "central1", json={"changes": {"middle_name": "Split", "salary_scale": "TGS-Z"}, "reason": "Update"})
+    result = api.call("PATCH", f"/staff/{staff.id}", "central1", json={"changes": {"occupation": "Split", "salary_scale": "TGS-Z"}, "reason": "Update"})
     assert result["applied"] is True and result["change_request_id"]
     db.expire_all()
     row = db.get(Staff, staff.id)
-    assert row.middle_name == "Split" and row.salary_scale != "TGS-Z"
+    assert row.occupation == "Split" and row.salary_scale != "TGS-Z"  # names, TIN and pay need a second admin
 
 
 def test_regional_admin_sees_only_change_requests_for_their_region(api, db):
@@ -308,7 +308,7 @@ def test_measures_must_be_finite(api, client, period, value):
 def test_an_older_wallet_on_file_does_not_block_other_staff_edits(api):
     staff_id = api.get("/auth/me", "hcp1")["staff"]["id"]
     assert api.get(f"/staff/{staff_id}", "central1")["payment_method"] == "MOBILE_WALLET"
-    assert api.call("PATCH", f"/staff/{staff_id}", "central1", json={"changes": {"middle_name": "Edited"}, "reason": "Spelling"})["applied"] is True
+    assert api.call("PATCH", f"/staff/{staff_id}", "central1", json={"changes": {"occupation": "Edited"}, "reason": "Spelling"})["applied"] is True
     api.call("PATCH", f"/staff/{staff_id}", "central1", json={"changes": {"payment_method": "MOBILE_WALLET"}, "reason": "Still refused"}, expect=422)
 
 

@@ -121,6 +121,18 @@ EVENTS: dict[str, dict] = {
         "en": "HRH: Reminder: submit your {period} timesheet by {deadline}. Open the HRH system to complete and submit it.",
         "sw": "HRH: Ukumbusho: wasilisha jedwali lako la {period} kabla ya {deadline}. Fungua mfumo wa HRH kulikamilisha na kuliwasilisha.",
     },
+    "PHONE_CHANGED": {
+        "recipient": "The previous number of a staff member whose phone was changed",
+        "variables": ["name"],
+        "en": "HRH: The phone number on {name}'s HRH Pay record was changed from this number. If you did not ask for this, tell your supervisor or the HRH office now.",
+        "sw": "HRH: Namba ya simu kwenye taarifa za HRH Pay za {name} imebadilishwa kutoka namba hii. Kama hukuomba hivi, mjulishe msimamizi wako au ofisi ya HRH sasa.",
+    },
+    "PASSWORD_RESET": {
+        "recipient": "A user whose password an administrator reset",
+        "variables": ["name"],
+        "en": "HRH: {name}, an administrator reset your HRH Pay password. If you did not ask for this, tell the HRH office now.",
+        "sw": "HRH: {name}, msimamizi wa mfumo amebadilisha nenosiri lako la HRH Pay. Kama hukuomba hivi, ijulishe ofisi ya HRH sasa.",
+    },
     "WELCOME": {
         "recipient": "Newly registered provider or reviewer",
         "variables": ["name"],

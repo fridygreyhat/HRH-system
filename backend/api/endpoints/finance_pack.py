@@ -1,4 +1,5 @@
 """Finance downloads: timesheets, activity totals, payment summary and import file, Payroll and Services separate."""
+import re
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -75,7 +76,7 @@ def download(what: Literal["timesheets", "activities", "summary", "import"], for
                         "cadre_id": cadre_id, "group_by": group_by if what == "activities" else None,
                         "people": len(data["people"]), "bank_or_phone": what in ("timesheets", "summary", "import")})
     db.commit()
-    place = "-".join(filter(None, (data["region"], data["facility"], data["cadre"]))).lower().replace(" ", "-") or "all"
+    place = re.sub(r"[^a-z0-9]+", "-", "-".join(filter(None, (data["region"], data["facility"], data["cadre"]))).lower()).strip("-") or "all"
     name = f"{work_type.lower()}-{what}{'-by-' + group_by if what == 'activities' else ''}-{month}-{place}.{format}"
     return Response(payload, media_type=media, headers={"Content-Disposition": f'attachment; filename="{name}"',
                                                         "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})

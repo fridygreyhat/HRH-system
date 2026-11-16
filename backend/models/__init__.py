@@ -29,7 +29,7 @@ from .claims import (
 )
 from .budgets import BudgetLine, BudgetTransaction, BudgetSyncLog
 from .notifications import SMSTemplate, SMSOutbox
-from .audit import AuditEvent, SystemSetting
+from .audit import AuditEvent, LoginFailure, SystemSetting
 from .activities import ActivityRate
 from .finance_reports import FinanceMonthlyReport, FinanceMonthlyReportWithdrawal
 from .monthly_budgets import MonthlyServiceBudget, MonthlyServiceBudgetCharge

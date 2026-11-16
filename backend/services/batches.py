@@ -135,6 +135,12 @@ def create_batches(db: Session, current: CurrentUser, route_code: str) -> list[P
     if role not in current.roles:
         raise HTTPException(status_code=403, detail=f"Route {route_code} batches are prepared by {role}")
     claims = ready_claims(db, current, route_code).order_by(PaymentClaim.id).with_for_update().all()
+    if claims:
+        # Asked again after the lock, in a new statement: a PRF recorded while we waited must not get a batch as well.
+        from ..models import PaymentRequestFormClaim
+        on_prf = {cid for (cid,) in db.query(PaymentRequestFormClaim.claim_id).filter(
+            PaymentRequestFormClaim.claim_id.in_([c.id for c in claims]))}
+        claims = [c for c in claims if c.id not in on_prf]
     if not claims:
         raise HTTPException(status_code=409, detail=f"No Route {route_code} claims are marked ready for payment")
 

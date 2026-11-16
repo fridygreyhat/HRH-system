@@ -1,4 +1,6 @@
 """Configuration and administration. Every change is written to the append-only audit_events table."""
+import logging
+import secrets
 from datetime import date
 from typing import Any, List, Optional
 
@@ -69,6 +71,7 @@ from ...services.templates import EVENTS, LANGUAGES, PROTECTED_EVENTS
 from .staff import StaffCreate, new_staff_record
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 AUTO_COLUMNS = {"id", "created_at", "updated_at"}
 
 
@@ -77,7 +80,8 @@ def _commit(db: Session) -> None:
         db.commit()
     except IntegrityError as e:
         db.rollback()
-        raise HTTPException(status_code=409, detail=f"Conflicts with existing data: {e.orig.diag.message_primary if hasattr(e.orig, 'diag') else e.orig}")
+        logger.warning("Integrity error on save: %s", getattr(getattr(e.orig, "diag", None), "message_primary", None) or type(e.orig).__name__)
+        raise HTTPException(status_code=409, detail="This conflicts with a record that already exists (for example the same name, number or code). Check the values and try again.")
 
 
 def _schema(model) -> type[BaseModel]:
@@ -436,7 +440,7 @@ class PasswordReset(BaseModel):
     new_password: str = Field(min_length=8, max_length=72)
 
 
-class BulkPasswordReset(PasswordReset):
+class BulkPasswordReset(BaseModel):  # each account gets its own random password; none is typed in
     confirmation: str = Field(pattern=r"^RESET NON-SUPER-ADMIN PASSWORDS$")
     expected_count: int = Field(ge=0)
     reason: str = Field(min_length=10, max_length=500)
@@ -451,8 +455,11 @@ def reset_non_super_admin_passwords(body: BulkPasswordReset, db: Session = Depen
     targets = [user for user in users if user.id not in protected]
     if len(targets) != body.expected_count:
         raise HTTPException(status_code=409, detail="The account list changed. Refresh Users and review the reset again.")
+    issued = []
     for user in targets:
-        user.hashed_password = hash_password(body.new_password)
+        temporary = _temporary_password()
+        issued.append({"username": user.username, "full_name": user.full_name, "phone": user.phone, "temporary_password": temporary})
+        user.hashed_password = hash_password(temporary)
         user.must_change_password = True
         user.password_changed_at = utcnow()
         user.failed_login_count, user.locked_until = 0, None
@@ -462,7 +469,14 @@ def reset_non_super_admin_passwords(body: BulkPasswordReset, db: Session = Depen
     system_audit.record(db, current, "user", None, "bulk_password_reset",
                         after={"reset_count": len(targets), "super_admins_unchanged": len(protected)}, reason=body.reason)
     _commit(db)
-    return {"reset_count": len(targets), "super_admins_unchanged": len(protected)}
+    # Shown once and never stored: hand each person their own password privately.
+    return {"reset_count": len(targets), "super_admins_unchanged": len(protected), "passwords": issued}
+
+
+def _temporary_password() -> str:
+    """12 characters from an alphabet without look-alikes (no 0/O, 1/l/I), easy to read out and type."""
+    alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(12))
 
 
 @router.get("/login-failures")
@@ -523,12 +537,26 @@ def _guard_super_admin(db: Session, current: CurrentUser, user: User) -> None:
         raise HTTPException(status_code=403, detail="Only a super administrator can change a super administrator's account")
 
 
+# Roles that administer accounts or handle money. A system administrator alone could otherwise create a second account,
+# give it these roles and approve their own payment-detail changes through it.
+SUPER_ADMIN_GRANTS = {SYSTEM_ADMIN, CENTRAL_ADMIN, REGIONAL_ADMIN, REGIONAL_FINANCE, FHI360_FINANCE, CSO_FINANCE}
+
+
+def _not_self(user: User, current: CurrentUser, what: str) -> None:
+    if user.id == current.id:
+        raise HTTPException(status_code=403, detail=f"You cannot change your own {what}; ask another administrator.")
+
+
 def _set_roles(db: Session, user: User, roles: list[str], actor: CurrentUser) -> None:
     unknown = set(roles) - set(ALL_ROLES)
     if unknown:
         raise HTTPException(status_code=422, detail=f"Unknown roles {sorted(unknown)}")
     if SUPER_ADMIN in roles and not actor.unrestricted:
         raise HTTPException(status_code=403, detail="Only a super administrator can grant the super administrator role")
+    added = set(roles) - set(get_user_roles(db, user.id))
+    if added & SUPER_ADMIN_GRANTS and not actor.unrestricted:
+        names = ", ".join(sorted(r.replace("_", " ").title() for r in added & SUPER_ADMIN_GRANTS))
+        raise HTTPException(status_code=403, detail=f"Only a super administrator can grant {names}: these roles administer accounts or handle payments.")
     db.query(UserRole).filter(UserRole.user_id == user.id).delete()
     for role in db.query(Role).filter(Role.name.in_(roles)):
         db.add(UserRole(user_id=user.id, role_id=role.id, assigned_by=actor.id))
@@ -603,7 +631,7 @@ def create_user(body: UserCreate, db: Session = Depends(get_db), current: Curren
     if not body.staff:  # a new staff record already sent its own welcome
         from ...services import notifications
         notifications.welcome(db, user, user.phone, user.full_name)
-    system_audit.record(db, current, "user", user.id, "create", after=body.model_dump(exclude={"password": True, "staff": {"payment_account", "bank_account_number"}}, mode="json"))
+    system_audit.record(db, current, "user", user.id, "create", after=body.model_dump(exclude={"password": True, "staff": {"payment_account", "bank_account_number", "tin_number"}}, mode="json"))
     _commit(db)
     return _user_out(db, user)
 
@@ -660,10 +688,7 @@ def set_roles(user_id: int, body: RolesIn, db: Session = Depends(get_db), curren
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     _guard_super_admin(db, current, user)
-    if user.id == current.id and not ({SYSTEM_ADMIN, SUPER_ADMIN} & set(body.roles)):
-        raise HTTPException(status_code=422, detail="You cannot remove your own administrator role")
-    if user.id == current.id and current.unrestricted and SUPER_ADMIN not in body.roles:
-        raise HTTPException(status_code=422, detail="You cannot remove your own super administrator role")
+    _not_self(user, current, "roles")
     before = sorted(get_user_roles(db, user.id))
     _set_roles(db, user, body.roles, current)
     system_audit.record(db, current, "user_roles", user.id, "set", before={"roles": before}, after={"roles": body.roles}, reason=body.reason)
@@ -677,6 +702,7 @@ def set_scopes(user_id: int, body: ScopesIn, db: Session = Depends(get_db), curr
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     _guard_super_admin(db, current, user)
+    _not_self(user, current, "regions, facilities or organizations")
     before = [to_dict(s) for s in load_current_user(db, user).scopes]
     _set_scopes(db, user, body.scopes, current)
     system_audit.record(db, current, "user_scopes", user.id, "set", before={"scopes": before}, after={"scopes": [s.model_dump() for s in body.scopes]}, reason=body.reason)
@@ -691,6 +717,7 @@ def set_review_cadres(user_id: int, body: ReviewCadresIn, db: Session = Depends(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     _guard_super_admin(db, current, user)
+    _not_self(user, current, "technical area")
     before = sorted(load_current_user(db, user).review_cadres)
     _set_review_cadres(db, user, body.cadre_ids, current)
     system_audit.record(db, current, "user_review_cadres", user.id, "set", before={"cadre_ids": before}, after={"cadre_ids": sorted(set(body.cadre_ids))}, reason=body.reason)
@@ -763,6 +790,8 @@ def reset_password(user_id: int, body: PasswordReset, db: Session = Depends(get_
     user.password_changed_at = utcnow()
     user.failed_login_count, user.locked_until = 0, None
     system_audit.record(db, current, "user", user.id, "reset_password")
+    from ...services import notifications
+    notifications.enqueue(db, "PASSWORD_RESET", user, None, name=(user.full_name or user.username).split(" ")[0])
     _commit(db)
 
 
@@ -773,6 +802,8 @@ def unlock(user_id: int, db: Session = Depends(get_db), current: CurrentUser = D
         raise HTTPException(status_code=404, detail="User not found")
     _guard_super_admin(db, current, user)
     user.failed_login_count, user.locked_until = 0, None
+    from ...models import LoginFailure
+    db.query(LoginFailure).filter(LoginFailure.username == user.username).delete()  # every device may try again
     system_audit.record(db, current, "user", user.id, "unlock")
     _commit(db)
     return _user_out(db, user)
@@ -791,14 +822,38 @@ class SettingIn(BaseModel):
     reason: str = Field(min_length=3)
 
 
-SETTING_LIMITS = {"login_max_failures": (1, 100), "login_lockout_minutes": (1, 1440), "reminder_after_hours": (1, 720),
-                  "reminder_repeat_hours": (1, 720), "sms_max_attempts": (1, 20)}
+SETTING_LIMITS = {"login_max_failures": (3, 20), "login_lockout_minutes": (5, 1440), "reminder_after_hours": (1, 720),
+                  "reminder_repeat_hours": (1, 720), "sms_max_attempts": (1, 20),
+                  # Codes: long enough to guess only rarely, valid long enough to type, never unlimited tries.
+                  "otp_length": (4, 8), "otp_ttl_minutes": (2, 60), "otp_max_attempts": (1, 10),
+                  "otp_resend_cooldown_seconds": (10, 3600), "otp_max_sends_per_version": (1, 20),
+                  "review_digest_hours": (1, 48), "sms_send_from_hour": (0, 23), "sms_send_until_hour": (1, 24),
+                  "submit_reminder_hour": (0, 23), "backdate_grace_hours": (0, 1_000_000)}
+# Payment rules: a system administrator alone must not be able to drop proof of payment or bank-only payment.
+SUPER_ADMIN_SETTINGS = {"payment_requires_proof", "bank_only_cadres"}
+
+
+def _check_list_setting(db: Session, key: str, value) -> None:
+    allowed = {
+        "gps_capture_events": {"ENTRY", "SUBMIT"},
+        "bank_only_cadres": {code for (code,) in db.query(Cadre.code)},
+        "escalation_recipient_roles": set(ALL_ROLES),
+    }.get(key)
+    if key == "submit_reminder_days":
+        if not all(isinstance(day, int) and not isinstance(day, bool) and 1 <= day <= 31 for day in value) or len(value) > 10:
+            raise HTTPException(status_code=422, detail="submit_reminder_days: up to 10 days of the month, each from 1 to 31")
+    elif allowed is not None and not (all(isinstance(item, str) for item in value) and set(value) <= allowed):
+        raise HTTPException(status_code=422, detail=f"{key}: use only {', '.join(sorted(allowed))}")
 
 
 @router.put("/settings/{key}")
 def put_setting(key: str, body: SettingIn, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(SYSTEM_ADMIN))):
     if key not in DEFAULTS:
         raise HTTPException(status_code=404, detail="Unknown setting")
+    if key in SUPER_ADMIN_SETTINGS and not current.unrestricted:
+        raise HTTPException(status_code=403, detail="Only a super administrator can change payment rules.")
+    if isinstance(DEFAULTS[key], list) and isinstance(body.value, list):
+        _check_list_setting(db, key, body.value)
     if key in SETTING_LIMITS:
         low, high = SETTING_LIMITS[key]
         if isinstance(body.value, bool) or not isinstance(body.value, int) or not low <= body.value <= high:

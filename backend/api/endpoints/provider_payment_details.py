@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.orm import Session
 
 from ...core import audit as system_audit
+from ...core.bank import bank_text
 from ...core.roles import PROVIDER, CSO_FINANCE, FHI360_FINANCE
 from ...core.security import CurrentUser, require_roles
 from ...db.session import get_db
@@ -31,6 +32,11 @@ class DetailsIn(BaseModel):
     @classmethod
     def trim(cls, value):
         return value.strip() or None if isinstance(value, str) else value
+
+    @field_validator("bank_name", "bank_branch")
+    @classmethod
+    def plain_bank_text(cls, value):
+        return bank_text(value)
 
     @field_validator("bank_account_number")
     @classmethod

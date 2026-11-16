@@ -88,6 +88,43 @@ def withdrawal(db, month, region_id, work_type):
             "signed_by_name": row.snapshot["approved_by_name"], "signed_at": row.approved_at.isoformat()}
 
 
+def signed_with_scale(db, scale: str, start_month: str) -> list:
+    """Sign-offs in force, from start_month on, that list someone paid on this salary scale."""
+    rows = []
+    keys = db.query(FinanceMonthlyReport.month, FinanceMonthlyReport.region_id).filter(
+        FinanceMonthlyReport.work_type == "PAYROLL", FinanceMonthlyReport.month >= start_month).distinct()
+    for month, region in keys:
+        row = latest(db, month, region, "PAYROLL")
+        if row and scale in {(p.get("salary_scale") or "").strip() for report in row.snapshot["organizations"].values()
+                             for p in report["providers"]}:
+            rows.append(row)
+    return rows
+
+
+def withdraw_for_salary_change(db, actor, scale: str, start_month: str, before: dict) -> list[dict]:
+    """A salary amount changed for months already signed: those sign-offs are taken back, so Regional Finance signs again
+    and the CSO never pays an amount changed after signing. `before` is each signed month's amount before the change;
+    a month that had no amount (salary missing, nothing payable) is not taken back when its first amount is set."""
+    from .salary_amounts import amounts_for
+    result = []
+    for row in signed_with_scale(db, scale, start_month):
+        old, new = before.get(row.id), amounts_for(db, row.month).get(scale)
+        if old is None or old == new:
+            continue
+        reason = (f"The salary amount for scale {scale} in {row.month} changed from {old} to {new}. "
+                  "Regional Finance must sign this month again so the CSO pays the new amount.")
+        _take_back(db, actor, row, reason, after={"month": row.month, "region_id": row.region_id, "work_type": "PAYROLL", "scale": scale})
+        result.append({"report_id": row.id, "region_id": row.region_id, "month": row.month, "reason": reason})
+    db.flush()
+    return result
+
+
+def _take_back(db, actor, row, reason, work_log_id=None, after=None):
+    db.add(FinanceMonthlyReportWithdrawal(report_id=row.id, work_log_id=work_log_id,
+                                          withdrawn_by=actor.id if actor else None, reason=reason))
+    audit.record(db, actor, "finance_monthly_report", row.id, "withdraw", reason=reason, after=after or {})
+
+
 def withdraw_stale_payroll(db, actor=None, region_id=None, months=None, work_log_id=None):
     """Take back every Payroll sign-off in force that lists someone whose Payroll timesheet for that month and region is
     no longer approved (returned, reopened, cancelled or reset). The CSO must not pay from it; Regional Finance signs the
@@ -353,6 +390,10 @@ def approve(db, current, data):
         if waiting:
             raise HTTPException(409, f"{waiting} Payroll {'timesheet is' if waiting == 1 else 'timesheets are'} not approved yet. "
                                      "Approve them (or return the ones that should not be paid) before signing and sending to the CSO.")
+        from .finance_bulk import own_payroll_waiting
+        if own_payroll_waiting(db, current, data.month, data.region_id):
+            raise HTTPException(409, "Your own Payroll timesheet is in this month and nobody may approve their own. "
+                                     "Another Regional Finance officer approves it (or signs the month).")
     region = db.query(Region).filter_by(id=data.region_id).with_for_update().one_or_none()
     if not region:
         raise HTTPException(404, "Region not found.")

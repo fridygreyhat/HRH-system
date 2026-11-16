@@ -28,6 +28,9 @@ HEADERS = ["Region", "Facility", "Provider name", "Services name", "Days worked"
 CLAIM_ID = HEADERS.index("Claim ID")
 
 
+UNPAID = ("NOT_STARTED", "FAILED")
+
+
 def rows(db, current, month, region_id=None, include_prf=False):
     """Claims already on a PRF are left out unless asked for, so the next PRF never requests the same money twice."""
     try:
@@ -51,7 +54,9 @@ def rows(db, current, month, region_id=None, include_prf=False):
                      PaymentClaim.work_log_id.in_(select(WorkLogEntry.work_log_id).where(
                          WorkLogEntry.entry_date.between(start, end)))))
     if not include_prf:
-        query = query.filter(PaymentClaim.id.notin_(select(PaymentRequestFormClaim.claim_id)))
+        # Each claim gets one payment instruction: not on a PRF already, not in a batch, not paid.
+        query = query.filter(PaymentClaim.id.notin_(select(PaymentRequestFormClaim.claim_id)),
+                             PaymentClaim.batch_id.is_(None), PaymentClaim.payment_status.in_(UNPAID))
     if region_id:
         from .v22_scope import regions_for
         if not current.unrestricted and region_id not in regions_for(current):
@@ -110,7 +115,7 @@ def rows(db, current, month, region_id=None, include_prf=False):
             except HTTPException:
                 pass
             else:
-                raise HTTPException(404, "Every routed Services claim for this month already has a PRF. Include them to download the full report.")
+                raise HTTPException(404, "Every routed Services claim for this month already has a payment instruction (a PRF or a payment batch) or is paid. Include PRF claims to download the full report.")
         raise HTTPException(404, "No routed Services are available for this month and finance scope.")
     return output
 

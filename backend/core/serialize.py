@@ -34,8 +34,13 @@ def mask_account(account: str | None) -> str | None:
 def mask_payment_fields(values: dict) -> dict:
     """Copy of a change set safe to store in the audit log."""
     out = dict(values)
-    if "payment_account" in out:
-        out["payment_account"] = mask_account(out["payment_account"])
-    if "verified_phone" in out:
-        out["verified_phone"] = mask_phone(out["verified_phone"])
+    # The audit log is permanent and read by administrators: account numbers, phones and TINs keep their last digits only.
+    for key in ("payment_account", "bank_account_number"):
+        if key in out:
+            out[key] = mask_account(out[key])
+    for key in ("verified_phone", "mobile_money_number"):
+        if key in out:
+            out[key] = mask_phone(out[key])
+    if out.get("tin_number"):
+        out["tin_number"] = "***-***-" + str(out["tin_number"])[-3:]
     return out

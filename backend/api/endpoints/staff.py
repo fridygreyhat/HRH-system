@@ -2,7 +2,7 @@ from datetime import date
 import re
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
@@ -13,11 +13,12 @@ from ...core.roles import CENTRAL_ADMIN, CSO_FINANCE, FHI360_FINANCE, PROVIDER, 
 from ...core.security import CurrentUser, get_current_user, hash_password, require_roles
 from ...core.phones import same_number, tz_mobile
 from ...core.tin import mask_tin, tin_number
-from ...core.serialize import mask_phone, to_dict
+from ...core.bank import bank_text
+from ...core.serialize import mask_payment_fields, mask_phone, to_dict
 from ...core.timeutil import local_today
 from ...core.uploads import read_csv_upload, read_upload_bytes
 from ...db.session import get_db
-from ...models import Cadre, District, Facility, Role, RosterImport, Section, Staff, StaffAssignment, StaffChangeRequest, User, UserRole, Ward, WorkLog, WorkLogEntry
+from ...models import Cadre, CommunityArea, CSORegionAssignment, District, Facility, Organization, Role, RosterImport, Section, Staff, StaffAssignment, StaffChangeRequest, User, UserRole, Ward, WorkLog, WorkLogEntry
 from ...services import roster_template, staff_registry as reg
 from ...services.forms import assignment_out
 from ...services.scope import current_assignment, staff_visibility
@@ -38,7 +39,7 @@ class AssignmentIn(BaseModel):
     organization_id: Optional[int] = None
 
 
-ACCOUNT_NUMBER = re.compile(r"^[A-Za-z0-9]{6,34}$")
+ACCOUNT_NUMBER = re.compile(r"^[0-9]{6,34}$")  # as on the provider's own payment-details form
 
 
 class StaffCreate(BaseModel):
@@ -66,14 +67,14 @@ class StaffCreate(BaseModel):
     @field_validator("bank_name", "bank_branch")
     @classmethod
     def trimmed(cls, value):
-        return (value or "").strip() or None
+        return bank_text(value)
 
     @field_validator("bank_account_number")
     @classmethod
     def account_number(cls, value):
         digits = re.sub(r"[\s\-]", "", value or "")
         if digits and not ACCOUNT_NUMBER.fullmatch(digits):
-            raise ValueError("Bank account number: 6 to 34 letters or digits, as on the bank statement.")
+            raise ValueError("Bank account number: 6 to 34 digits, as on the bank statement.")
         return digits or None
     occupation: Optional[str] = None
     occupation_other: Optional[str] = None
@@ -173,12 +174,31 @@ def _assignment_columns(db: Session, body: AssignmentIn) -> dict:
         facility = db.get(Facility, body.facility_id)
         if not facility or (body.ward_id and facility.ward_id != body.ward_id):
             raise HTTPException(status_code=422, detail="The facility is not in the chosen ward")
+    # Every part of the placement must be in the chosen region: the reviewers of that place approve this person's work.
+    if columns.get("facility_id"):
+        region = (db.query(District.region_id).join(Ward, Ward.district_id == District.id).join(Facility, Facility.ward_id == Ward.id)
+                  .filter(Facility.id == columns["facility_id"]).scalar())
+        if region != body.region_id:
+            raise HTTPException(status_code=422, detail="The facility is not in the chosen region")
+    if body.community_area_id:
+        area = db.get(CommunityArea, body.community_area_id)
+        area_district = db.get(District, area.district_id) if area and area.district_id else None
+        area_ward = db.get(Ward, area.ward_id) if area and area.ward_id else None
+        area_region = area_district.region_id if area_district else (db.get(District, area_ward.district_id).region_id if area_ward else None)
+        if not area or area_region not in (None, body.region_id):
+            raise HTTPException(status_code=422, detail="The community area is not in the chosen region")
+    if body.organization_id:
+        org = db.get(Organization, body.organization_id)
+        if not org or not org.is_active or org.type != "CSO":
+            raise HTTPException(status_code=422, detail="Choose an active CSO as the implementing organization")
+        if not db.query(CSORegionAssignment.id).filter_by(organization_id=org.id, region_id=body.region_id, is_active=True).first():
+            raise HTTPException(status_code=422, detail=f"{org.name} is not assigned to work in this region. Assign the CSO to the region first (Organizations).")
     return columns
 
 
 @router.get("")
 def list_staff(
-    search: Optional[str] = None,
+    search: Optional[str] = Query(default=None, max_length=100),
     status: Optional[str] = None,
     cadre: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -186,8 +206,12 @@ def list_staff(
 ):
     query = db.query(Staff).filter(staff_visibility(current))
     if search:
-        like = f"%{search.strip()}%"
-        query = query.filter(or_(Staff.first_name.ilike(like), Staff.last_name.ilike(like), Staff.verified_phone.ilike(like)))
+        # % and _ typed in the search box are matched as themselves, not as wildcards.
+        like = "%" + search.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        matches = [Staff.first_name.ilike(like, escape="\\"), Staff.last_name.ilike(like, escape="\\")]
+        if _sees_contact(current):  # others see masked phones, so searching by digits would reveal them
+            matches.append(Staff.verified_phone.ilike(like, escape="\\"))
+        query = query.filter(or_(*matches))
     if status:
         query = query.filter(Staff.status == status)
     if cadre:
@@ -281,7 +305,7 @@ def new_staff_record(db: Session, current: CurrentUser, body: StaffCreate) -> St
     db.add(staff)
     db.flush()
     db.add(StaffAssignment(staff_id=staff.id, start_date=body.employment_start_date, created_by=current.id, **assignment))
-    system_audit.record(db, current, "staff", staff.id, "create", after=body.model_dump(exclude={"payment_account"}))
+    system_audit.record(db, current, "staff", staff.id, "create", after=mask_payment_fields(body.model_dump(mode="json", exclude={"payment_account"})))
     from ...services import notifications
     notifications.welcome(db, None, staff.verified_phone, staff.first_name)
     return staff
@@ -317,6 +341,13 @@ def get_staff(staff_id: int, db: Session = Depends(get_db), current: CurrentUser
                                             else effective["mobile_money_number"])
         if staff.payment_method == "BANK":
             legacy_values["payment_provider"] = effective["bank_name"]
+        pays = (staff.payment_method == "BANK" and "bank_account_number" in visible) or (
+            staff.payment_method == "MOBILE_WALLET" and "mobile_money_number" in visible)
+        if not own_profile and not pays:
+            # Administrators manage the record but do not pay: they see the last digits only. Changes still go through
+            # a change request that another administrator decides.
+            from ...core.serialize import mask_account
+            legacy_values["payment_account"] = mask_account(legacy_values["payment_account"])
     out = {
         **to_dict(staff, exclude=(*pd.FIELDS, *pd.LEGACY_FIELDS, "payment_details_updated_at")),
         **{key: value for key, value in visible.items() if key != "staff_id"},

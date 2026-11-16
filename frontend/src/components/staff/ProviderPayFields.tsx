@@ -15,7 +15,8 @@ export const EMPTY_PROVIDER_PAY: ProviderPay = { tin_number: '', bank_name: '', 
 const BANKS = ['CRDB Bank', 'NMB Bank', 'NBC Bank', 'Stanbic Bank', 'Exim Bank', 'Absa Bank', 'Equity Bank', 'DTB Bank',
   'Azania Bank', 'TCB Bank', 'Akiba Commercial Bank', 'Mwanga Hakika Bank', 'Amana Bank', 'I&M Bank', 'KCB Bank'];
 
-const ACCOUNT_MESSAGE = 'Bank account number: 6 to 34 letters or digits, as on the bank statement.';
+const BANK_MESSAGE = "Bank name: letters, digits, spaces and . , ' & / ( ) - only.";
+const ACCOUNT_MESSAGE = 'Bank account number: 6 to 34 digits, as on the bank statement.';
 
 /** The request fields, or a message saying what is missing or wrong. Matches backend/api/endpoints/staff.py. */
 export function providerPayPayload(v: ProviderPay): { tin_number: string; bank_name: string; bank_account_number: string } | string {
@@ -24,7 +25,8 @@ export function providerPayPayload(v: ProviderPay): { tin_number: string; bank_n
   const missing = [!tin && tin !== null ? 'TIN' : null, !v.bank_name.trim() ? 'bank name' : null, !account ? 'bank account number' : null].filter(Boolean);
   if (missing.length) return `Enter the provider's ${missing.join(', ')}: the CSO pays their salary into this bank account.`;
   if (tin === null) return TIN_MESSAGE;
-  if (!/^[A-Za-z0-9]{6,34}$/.test(account)) return ACCOUNT_MESSAGE;
+  if (!/^[0-9]{6,34}$/.test(account)) return ACCOUNT_MESSAGE;
+  if (!/^[A-Za-z0-9][A-Za-z0-9 .,'&/()-]{0,99}$/.test(v.bank_name.trim())) return BANK_MESSAGE;
   return { tin_number: tin, bank_name: v.bank_name.trim(), bank_account_number: account };
 }
 

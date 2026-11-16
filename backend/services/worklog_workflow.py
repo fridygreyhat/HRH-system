@@ -187,7 +187,27 @@ def check_action(db: Session, current: CurrentUser, log: WorkLog, action: str) -
             return f"{log.work_type} requires {expected}"
     if action == "reopen" and db.query(PaymentClaim).filter(PaymentClaim.work_log_id == log.id, PaymentClaim.status != "CANCELLED").count():
         return "Cancel the claims linked to this work log before reopening it"
+    if action in SIGN_OFFS and role in SIGN_OFF_ROLES:
+        earlier = _earlier_sign_off(db, current, log, role)
+        if earlier:
+            return (f"You already approved this timesheet as {earlier.replace('_', ' ').title()}. "
+                    "Each approval step needs a different person.")
     return None
+
+
+# Approvals that move a timesheet towards payment. Each step must be a different person, even one holding several roles.
+SIGN_OFFS = {"verify", "endorse", "authorize", FINANCE_TIMESHEET_APPROVE, "finance_review", "route_fhi360", "route_cso"}
+SIGN_OFF_ROLES = {SUPERVISOR, CSO_TECHNICAL, TECHNICAL_OFFICER, RPM, REGIONAL_FINANCE}
+
+
+def _earlier_sign_off(db: Session, current: CurrentUser, log: WorkLog, role: str) -> Optional[str]:
+    """The role in which this person already approved the timesheet since it was last submitted, at another step."""
+    submitted = (db.query(WorkLogAudit.id).filter(WorkLogAudit.work_log_id == log.id, WorkLogAudit.action == "submit")
+                 .order_by(WorkLogAudit.id.desc()).limit(1).scalar() or 0)
+    row = (db.query(WorkLogAudit.actor_role).filter(
+        WorkLogAudit.work_log_id == log.id, WorkLogAudit.id > submitted, WorkLogAudit.actor_id == current.id,
+        WorkLogAudit.action.in_(SIGN_OFFS), WorkLogAudit.actor_role.in_(SIGN_OFF_ROLES), WorkLogAudit.actor_role != role).first())
+    return row[0] if row else None
 
 
 def _has_facility_endorsement(db: Session, log: WorkLog) -> bool:

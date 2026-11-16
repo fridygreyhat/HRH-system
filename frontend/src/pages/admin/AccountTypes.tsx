@@ -51,14 +51,14 @@ export const KINDS: Record<Exclude<AccountType, 'provider'>, Kind[]> = {
     { key: 'rm', title: 'Regional Manager', text: 'Final program and budget authorization for the region.', roles: ['RPM'] },
   ],
   finance: [
-    { key: 'regional', title: 'Regional Finance', text: 'Approves timesheets, signs Payroll to the CSO and sends Services to Central Finance.', roles: ['REGIONAL_FINANCE'] },
-    { key: 'central', title: 'Central Finance (FHI360)', text: 'Approves and pays Services for every region.', roles: ['FHI360_FINANCE'] },
-    { key: 'cso', title: 'CSO Finance', text: 'Pays their CSO’s Payroll from the signed reports.', roles: ['CSO_FINANCE'] },
+    { key: 'regional', title: 'Regional Finance', text: 'Approves timesheets, signs Payroll to the CSO and sends Services to Central Finance.', roles: ['REGIONAL_FINANCE'], superOnly: true },
+    { key: 'central', title: 'Central Finance (FHI360)', text: 'Approves and pays Services for every region.', roles: ['FHI360_FINANCE'], superOnly: true },
+    { key: 'cso', title: 'CSO Finance', text: 'Pays their CSO’s Payroll from the signed reports.', roles: ['CSO_FINANCE'], superOnly: true },
   ],
   admin: [
-    { key: 'system', title: 'System administrator', text: 'Accounts, roles and settings.', roles: ['SYSTEM_ADMIN'] },
-    { key: 'central', title: 'Central administrator', text: 'Staff registry and organizations, every region.', roles: ['CENTRAL_ADMIN'] },
-    { key: 'regional', title: 'Regional administrator', text: 'Staff and facilities in their regions.', roles: ['REGIONAL_ADMIN'] },
+    { key: 'system', title: 'System administrator', text: 'Accounts, roles and settings.', roles: ['SYSTEM_ADMIN'], superOnly: true },
+    { key: 'central', title: 'Central administrator', text: 'Staff registry and organizations, every region.', roles: ['CENTRAL_ADMIN'], superOnly: true },
+    { key: 'regional', title: 'Regional administrator', text: 'Staff and facilities in their regions.', roles: ['REGIONAL_ADMIN'], superOnly: true },
     { key: 'oversight', title: 'FHI360 oversight', text: 'Read-only view across regions.', roles: ['OVERSIGHT'] },
     { key: 'super', title: 'Super administrator', text: 'Every role and page. Only a super administrator can grant this.', roles: ['SUPER_ADMIN'], superOnly: true },
   ],
@@ -208,6 +208,9 @@ export function OfficeAccessFields({ type, value, onChange, disabled }: {
   const need = kind ? needs(type, kind.key) : null;
   const csos = useMemo(() => (orgs.data || []).filter((o) => o.type === 'CSO' && o.is_active !== false), [orgs.data]);
   const set = (part: Partial<OfficeAccess>) => onChange({ ...value, ...part });
+  if (!kinds.length) {
+    return <Alert kind="info">Only a super administrator can create finance and administrator accounts, because they handle payments or other accounts.</Alert>;
+  }
   return (
     <div className="stack">
       <Alert>{regions.error || orgs.error || cadres.error || areas.error}</Alert>

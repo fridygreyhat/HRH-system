@@ -418,8 +418,9 @@ def import_xlsx(data):
         for index, title in enumerate(columns, start=1):
             if title in TEXT_COLUMNS:  # account and phone numbers keep their leading zeros
                 cell = sheet.cell(sheet.max_row, index)
-                cell.number_format, cell.data_type = "@", "s"
+                # Value first, then text type: setting the value again would turn "=..." back into a formula.
                 cell.value = "" if cell.value is None else str(cell.value)
+                cell.number_format, cell.data_type = "@", "s"
     for index, title in enumerate(columns, start=1):
         sheet.column_dimensions[sheet.cell(1, index).column_letter].width = max(10, min(len(title) + 6, 28))
     output = io.BytesIO()
@@ -445,4 +446,5 @@ def _append(sheet, values):
 
 
 def _csv_text(value):
-    return ("'" + value) if isinstance(value, str) and value[:1] in ("=", "@") else value
+    from ..core.serialize import spreadsheet_safe
+    return spreadsheet_safe(value)  # = + - @, also after leading spaces, tabs or line breaks

@@ -32,6 +32,6 @@ def test_only_a_super_admin_manages_super_admins(api, db):
     api.post(f"/admin/users/{admin['id']}/reset-password", "sysadmin2", {"new_password": "Takeover-1"}, expect=403)
     api.post(f"/admin/users/{admin['id']}/deactivate", "sysadmin2", expect=403)
 
-    api.put(f"/admin/users/{admin['id']}/roles", "admin", {"roles": ["SYSTEM_ADMIN"], "reason": "drop it"}, expect=422)
+    api.put(f"/admin/users/{admin['id']}/roles", "admin", {"roles": ["SYSTEM_ADMIN"], "reason": "drop it"}, expect=403)  # nobody edits their own roles
     promoted = api.put(f"/admin/users/{plain['id']}/roles", "admin", {"roles": ["SYSTEM_ADMIN", "SUPER_ADMIN"], "reason": "second super admin"})
     assert "SUPER_ADMIN" in promoted["roles"]

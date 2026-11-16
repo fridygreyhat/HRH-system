@@ -93,6 +93,9 @@ class EntryIn(BaseModel):
 class ActionIn(BaseModel):
     comment: Optional[str] = Field(default=None, max_length=2000)
     expected_version: Optional[int] = None
+    # When the reviewer's screen loaded the timesheet. Content changes only after a recall and a new submission, which
+    # changes this time, so a reviewer never approves numbers they did not see.
+    expected_submitted_at: Optional[datetime] = None
     review_confirmed: bool = False
     review_type: Optional[str] = None
     category_id: Optional[int] = None
@@ -655,6 +658,8 @@ def perform_action(log_id: int, action: str, body: ActionIn = ActionIn(), db: Se
     if action in wf.INTERNAL_ACTIONS:
         raise HTTPException(status_code=400, detail="Use the OTP confirmation endpoint")
     log = _get_log(db, current, log_id, lock=True)
+    if body.expected_submitted_at is not None and log.submitted_at != body.expected_submitted_at:
+        raise HTTPException(409, "The provider changed and resubmitted this timesheet after you opened it. Reload it and review again.")
     if log.workflow_version >= 2 and action not in {"submit", "cancel", "decline", "recall"}:
         # Authorization is checked first, so an unauthorized caller cannot probe
         # validation details or bypass queue-specific confirmation.

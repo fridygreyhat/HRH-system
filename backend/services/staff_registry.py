@@ -39,7 +39,10 @@ from ..models import (
 )
 
 # Changing these affects who pays, how much, or where; everyone requests them and a different HRH admin decides.
-PAYMENT_CRITICAL_FIELDS = {"cadre_id", "salary_scale", "payment_method", "payment_provider", "payment_account", "verified_phone"}
+# A second HRH administrator decides changes to these, whoever asks: they decide who is paid, how much and where.
+# The legal name and TIN appear on payment and tax files, so one person cannot change them alone either.
+PAYMENT_CRITICAL_FIELDS = {"cadre_id", "salary_scale", "payment_method", "payment_provider", "payment_account", "verified_phone",
+                           "first_name", "middle_name", "last_name", "tin_number"}
 PHONE_PATTERN = re.compile(r"^\+?\d{9,15}$")
 
 
@@ -101,6 +104,10 @@ def apply_payment_correction(staff: Staff, changes: dict) -> None:
 def update_staff(db: Session, current: CurrentUser, staff: Staff, changes: dict, reason: Optional[str]) -> Staff:
     validate_changes(db, staff, changes)
     before = {k: getattr(staff, k) for k in changes}
+    if changes.get("verified_phone") and before["verified_phone"] and changes["verified_phone"] != before["verified_phone"]:
+        # Codes and payment notices now go to the new number; the old one is told, so a quiet swap is noticed.
+        from . import notifications
+        notifications.enqueue(db, "PHONE_CHANGED", None, before["verified_phone"], name=staff.first_name)
     for key, value in changes.items():
         setattr(staff, key, value)
     apply_payment_correction(staff, changes)
@@ -198,9 +205,12 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
 
     result = RosterImport(filename=filename, enrollment_source=source, uploaded_by=current.id, errors=[], total_rows=0, created_count=0, updated_count=0, error_count=0)
     errors = []
+    from .roster_template import MAX_ROWS
     for row in reader:
         line_no = reader.line_num  # the row number in the file, even after empty lines
         result.total_rows += 1
+        if result.total_rows > MAX_ROWS:
+            raise HTTPException(413, f"The file has more than {MAX_ROWS:,} rows; split it and import the parts")
         try:
             with db.begin_nested():
                 cadre = db.query(Cadre).filter(Cadre.code == (row.get("cadre") or "").strip().upper()).first()

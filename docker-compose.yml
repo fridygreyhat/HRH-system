@@ -21,7 +21,7 @@ services:
     build:
       context: ./backend
       args:
-        INSTALL_DEV: "true"
+        INSTALL_DEV: ${INSTALL_DEV:-false}  # test tools only when asked for: INSTALL_DEV=true docker compose build
     # Direct API access from this computer only; users go through nginx on :3000.
     ports:
       - "127.0.0.1:8001:8000"

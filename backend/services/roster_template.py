@@ -19,6 +19,7 @@ from .staff_registry import ROSTER_COLUMNS, ROSTER_REQUIRED
 ROSTER_SHEET = "Roster"
 TEMPLATE_ROWS = 1000  # rows prepared as text, with dropdowns
 MAX_ROWS = 20000  # an import larger than this should be split
+MAX_LINES = MAX_ROWS * 2  # rows including empty ones
 MAX_UNPACKED_BYTES = 100 * 1024 * 1024
 XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -207,8 +208,12 @@ def xlsx_to_csv(raw: bytes) -> str:
         sheet = wb[ROSTER_SHEET] if ROSTER_SHEET in wb.sheetnames else wb.worksheets[0]
         buffer = io.StringIO()
         writer = csv.writer(buffer)
-        rows = 0
-        for values in sheet.iter_rows(values_only=True, max_col=len(ROSTER_COLUMNS) + 10):
+        rows, lines = 0, 0
+        # Bounded even when the file claims a row number in the billions: openpyxl fills every missing row up to it.
+        for values in sheet.iter_rows(values_only=True, max_col=len(ROSTER_COLUMNS) + 10, max_row=MAX_LINES + 1):
+            lines += 1
+            if lines > MAX_LINES:
+                raise HTTPException(413, f"The file has more than {MAX_LINES:,} lines (counting empty ones); remove empty rows or split it")
             cells = [_text(v) for v in values]
             if not any(cells):
                 # An empty line is skipped by the import but still counted, so reported line numbers match Excel's.

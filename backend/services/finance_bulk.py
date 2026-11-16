@@ -128,3 +128,17 @@ def _approve(db, current, work_type, month, region_id, work_log_ids, funding_sou
 def payroll_waiting(db, current, month, region_id):
     """RM-approved Payroll timesheets of a region's month that Regional Finance has not approved yet."""
     return _logs(db, current, "PAYROLL", month, region_id).count()
+
+
+def own_payroll_waiting(db, current, month, region_id) -> int:
+    """The signer's own RM-approved Payroll timesheets in the month that no other Regional Finance officer has approved:
+    nobody approves their own timesheet, so these must be approved by a colleague before the month is signed."""
+    if not current.staff_id:
+        return 0
+    start, end = pay_month_range(month)
+    return (db.query(WorkLog).join(StaffAssignment, StaffAssignment.id == WorkLog.assignment_id)
+            .filter(WorkLog.staff_id == current.staff_id, WorkLog.work_type == "PAYROLL", WorkLog.workflow_version >= 2,
+                    WorkLog.status.in_(WAITING["PAYROLL"]), WorkLog.finance_timesheet_approved_at.is_(None),
+                    StaffAssignment.region_id == region_id,
+                    WorkLog.id.in_(db.query(WorkLogEntry.work_log_id).filter(WorkLogEntry.entry_date.between(start, end))))
+            .count())

@@ -71,7 +71,7 @@ def test_a_prf_covers_the_download_and_the_next_report_leaves_those_claims_out(a
     assert db.query(AuditEvent).filter_by(action="record_prf", entity_id=str(recorded["id"])).count() == 1
 
     again = download(api, month)
-    assert again.status_code == 404 and "already has a PRF" in again.json()["detail"]
+    assert again.status_code == 404 and "already has a payment instruction" in again.json()["detail"]
     full = download(api, month, include_prf=True)
     rows = list(csv.DictReader(StringIO(full.content.decode("utf-8-sig"))))
     assert {row["PRF number"] for row in rows if row["Claim ID"]} == {"PRF/2093/001"}

@@ -127,7 +127,10 @@ def check_payroll_signoffs(db: Session) -> int:
     """Safety net for any way a timesheet leaves approval: a signed Payroll month listing someone whose timesheet is no
     longer approved is taken back, so the CSO never pays from it. Runs at start-up and hourly."""
     from .services.monthly_report_approval import withdraw_stale_payroll
+    from .models import LoginFailure
     withdrawn = withdraw_stale_payroll(db)
+    # Wrong sign-ins only matter within the lockout window; a day is far longer than any window allowed.
+    db.query(LoginFailure).filter(LoginFailure.failed_at < utcnow() - timedelta(days=1)).delete()
     db.commit()
     return len(withdrawn)
 

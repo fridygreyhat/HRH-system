@@ -85,8 +85,12 @@ def services_payment_form(
     current=Depends(require_roles(FHI360_FINANCE)),
 ):
     """The Services payment form on screen: what the PDF and Excel downloads contain."""
+    from ...core.serialize import mask_phone
     from ...services import payment_forms
-    return payment_forms.screen(payment_forms.services_form(db, current, month, region_id, include_prf))
+    form = payment_forms.screen(payment_forms.services_form(db, current, month, region_id, include_prf))
+    # On screen the wallet numbers show their last digits only; the audited PDF and Excel downloads carry them in full.
+    form["rows"] = [{**row, "mobile": mask_phone(row.get("mobile"))} for row in form.get("rows", [])]
+    return form
 
 
 class PrfIn(BaseModel):

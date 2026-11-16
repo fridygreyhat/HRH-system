@@ -84,7 +84,7 @@ def redacted_batch_lines(current, batch, lines: list[dict]) -> list[dict]:
                    (channel == "MOBILE_WALLET" and
                     ((fhi and batch.route_code == "A") or (cso and batch.route_code == "C"))))
         if not allowed:
-            for field in ("payment_provider", "payment_account", "bank_name", "bank_account_number", "bank_branch", "mobile_money_number"):
+            for field in ("payment_provider", "payment_account", "bank_name", "bank_account_number", "bank_branch", "mobile_money_number", "phone"):
                 if field in copy:
                     copy[field] = ""
         result.append(copy)

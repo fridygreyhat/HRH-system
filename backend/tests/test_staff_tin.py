@@ -31,7 +31,11 @@ def test_registering_staff_takes_a_tin_that_no_one_else_has(api, db):
     assert "TIN" in str(taken)
 
     # An admin adds or corrects it later on the staff record, with a reason, and it is audited.
-    api.call("PATCH", f"/staff/{without['id']}", "central1", {"changes": {"tin_number": "100-200-302"}, "reason": "TIN certificate seen"})
+    # The TIN appears on tax and payment files, so a second administrator approves the change.
+    asked = api.call("PATCH", f"/staff/{without['id']}", "central1", {"changes": {"tin_number": "100-200-302"}, "reason": "TIN certificate seen"})
+    assert asked["applied"] is False and asked["change_request_id"]
+    api.post(f"/staff/change-requests/{asked['change_request_id']}/decide", "central1", {"approve": True}, expect=403)
+    api.post(f"/staff/change-requests/{asked['change_request_id']}/decide", "admin", {"approve": True})
     db.expire_all()
     assert db.get(Staff, without["id"]).tin_number == "100-200-302"
     assert db.query(AuditEvent).filter_by(entity_type="staff", entity_id=str(without["id"]), action="update").count() >= 1
@@ -57,7 +61,7 @@ def test_roster_import_takes_a_tin_column_and_fills_a_missing_one(api, db):
     # The same person again with a TIN: filled in where it was missing; a different TIN is refused.
     again = api.call("POST", "/staff/import", "central1", files={"file": ("roster.csv", head + (
         "Roster,NoTin,0799 000 402,100 200 305,CHW,Iringa,2023-01-01\n"
-        "Roster,Tin,0799 000 401,100 200 399,CHW,Iringa,2023-01-01\n"), "text/csv")}, expect=201)
+        "Roster,Tin,0799 000 401,100 200 398,CHW,Iringa,2023-01-01\n"), "text/csv")}, expect=201)
     assert again["error_count"] == 1 and "different TIN" in again["errors"][0]["error"]
     db.expire_all()
     assert db.query(Staff).filter_by(verified_phone="+255799000402").one().tin_number == "100-200-305"

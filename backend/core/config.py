@@ -14,6 +14,11 @@ TIMEZONE = os.getenv("APP_TIMEZONE", "Africa/Dar_es_Salaam")
 SMS_GATEWAY_TYPE = os.getenv("SMS_GATEWAY_TYPE", "mock")
 # Development only: echo OTP codes in API responses when using the mock gateway.
 EXPOSE_DEV_OTP = SMS_GATEWAY_TYPE == "mock" and os.getenv("EXPOSE_DEV_OTP", "false").lower() == "true"
+# On the live server (APP_ENV=production) SMS must really go out and codes must never appear in responses:
+# a mock gateway there would mark every reminder and code as sent while nobody receives them.
+APP_ENV = os.getenv("APP_ENV", "development").strip().lower()
+if APP_ENV == "production" and SMS_GATEWAY_TYPE == "mock":
+    raise RuntimeError("APP_ENV=production needs a real SMS gateway: set SMS_GATEWAY_TYPE=vodacom (or twilio)")
 
 CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/data/uploads")

@@ -20,7 +20,7 @@ class SMSGateway(abc.ABC):
 
 class MockSMSGateway(SMSGateway):
     def send_sms(self, to: str, body: str, sensitive: bool = False) -> Optional[str]:
-        logger.info(f"[MOCK SMS] to {to}: {'[protected message]' if sensitive else body}")
+        logger.info("[MOCK SMS] to …%s: %s characters%s", to[-3:], len(body), " (protected)" if sensitive else "")
         return "mock-msg-id"
 
 
@@ -43,7 +43,7 @@ class TwilioSMSGateway(SMSGateway):
             with urllib.request.urlopen(request, timeout=15) as response:
                 return json.loads(response.read())["sid"]
         except Exception:
-            logger.exception(f"Twilio send to {to} failed")
+            logger.exception("Twilio send to …%s failed", to[-3:])
             return None
 
 

@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -17,7 +17,7 @@ from ...core.security import (
 from ...core.serialize import to_dict
 from ...core.settings import get_setting
 from ...db.session import get_db
-from ...models import Cadre, Organization, User, utcnow
+from ...models import Cadre, LoginFailure, Organization, User, utcnow
 from ...services.forms import cadre_out
 
 router = APIRouter()
@@ -28,35 +28,66 @@ def _record(db: Session, action: str, username: str, user: User | None, **after)
     system_audit.record(db, None, "auth", user.id if user else None, action, after={"username": username[:100], **after})
 
 
+# Account-wide lock only after many failures from all devices together: one device's guesses never lock others out.
+ACCOUNT_LOCK_FACTOR = 10
+
+
+def _client(request: Request) -> str:
+    return (request.client.host if request.client else "")[:64] or "unknown"
+
+
 @router.post("/login")
-def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    """Password sign-in with lockout after repeated failures. Every attempt is audited."""
+def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    """Password sign-in. Every attempt is audited.
+
+    Wrong passwords are counted per username and device: after login_max_failures from one device, that device waits
+    login_lockout_minutes for that username, while the real user elsewhere can still sign in. Only many failures from all
+    devices together lock the account itself. Replies never reveal whether a username exists."""
     now = utcnow()
-    user = db.query(User).filter(User.username == form.username).with_for_update().first()
+    client = _client(request)
+    username = form.username[:100]
+    window = now - timedelta(minutes=get_setting(db, "login_lockout_minutes"))
+    max_failures = get_setting(db, "login_max_failures")
+    from_here = db.query(LoginFailure).filter(LoginFailure.username == username, LoginFailure.client == client,
+                                              LoginFailure.failed_at > window).count()
+    if from_here >= max_failures:  # the same reply for real and unknown usernames; the audit names the account
+        _record(db, "login_blocked", username, db.query(User).filter(User.username == username).first(), client=client)
+        db.commit()
+        raise HTTPException(status_code=429, detail="Too many failed sign-in attempts from this device. Wait a few minutes and try again, or ask an administrator.")
+
+    user = db.query(User).filter(User.username == username).with_for_update().first()
     if user is None:
         verify_password(form.password, DUMMY_HASH)  # same work as a real check: don't reveal which usernames exist
-        _record(db, "login_failed", form.username, None, reason="unknown_user")
+        db.add(LoginFailure(username=username, client=client, failed_at=now))
+        _record(db, "login_failed", username, None, reason="unknown_user", client=client)
         db.commit()
         raise HTTPException(status_code=400, detail=GENERIC_FAILURE)
 
+    password_ok = verify_password(form.password, user.hashed_password)
     if user.locked_until and user.locked_until > now:
-        minutes = max(1, int((user.locked_until - now).total_seconds() // 60) + 1)
-        _record(db, "login_blocked", form.username, user)
+        _record(db, "login_blocked", username, user, client=client)
         db.commit()
-        raise HTTPException(status_code=429, detail=f"Too many failed sign-in attempts. Try again in {minutes} minute(s) or ask an administrator.")
+        if not password_ok:
+            raise HTTPException(status_code=400, detail=GENERIC_FAILURE)
+        minutes = max(1, int((user.locked_until - now).total_seconds() // 60) + 1)  # only the real password learns this
+        raise HTTPException(status_code=429, detail=f"This account is locked for {minutes} minute(s) after many failed sign-ins. Ask an administrator to unlock it.")
 
-    if not verify_password(form.password, user.hashed_password) or not user.is_active:
+    if not password_ok or not user.is_active:
         user.failed_login_count += 1
-        locked = user.failed_login_count >= get_setting(db, "login_max_failures")
-        if locked:
+        db.add(LoginFailure(username=username, client=client, failed_at=now))
+        db.flush()
+        everywhere = db.query(LoginFailure).filter(LoginFailure.username == username, LoginFailure.failed_at > window).count()
+        locked = everywhere >= max_failures * ACCOUNT_LOCK_FACTOR or from_here + 1 >= max_failures
+        if everywhere >= max_failures * ACCOUNT_LOCK_FACTOR:
             user.locked_until = now + timedelta(minutes=get_setting(db, "login_lockout_minutes"))
             user.failed_login_count = 0
-        _record(db, "login_failed", form.username, user, reason="inactive" if not user.is_active else "bad_password", locked=locked)
+        _record(db, "login_failed", username, user, reason="inactive" if not user.is_active else "bad_password", locked=locked, client=client)
         db.commit()
         raise HTTPException(status_code=400, detail=GENERIC_FAILURE)
 
     user.failed_login_count, user.locked_until, user.last_login_at = 0, None, now
-    _record(db, "login_success", form.username, user)
+    db.query(LoginFailure).filter(LoginFailure.username == username, LoginFailure.client == client).delete()
+    _record(db, "login_success", username, user, client=client)
     db.commit()
     return {"access_token": create_access_token(user), "token_type": "bearer", "must_change_password": user.must_change_password}
 
@@ -78,6 +109,23 @@ def me(current: CurrentUser = Depends(get_current_user), db: Session = Depends(g
             "gps_required_on_submit": get_setting(db, "gps_required_on_submit"),
         },
     }
+
+
+COMMON_PASSWORDS = {"password", "password1", "password123", "passw0rd", "12345678", "123456789", "1234567890", "qwerty123",
+                    "11111111", "00000000", "abcd1234", "iloveyou", "welcome1", "welcome123", "admin123", "admin12345",
+                    "letmein1", "tanzania", "tanzania1", "karibu123", "hrhpay123", "changeme", "changeme1"}
+
+
+def weak_password(password: str, username: str) -> str | None:
+    """Why a new password is too easy to guess, or None."""
+    lowered = password.lower()
+    if lowered in COMMON_PASSWORDS or username.lower() in lowered:
+        return "Choose a less guessable password: not a common one and not containing your username."
+    if not any(c.isalpha() for c in password) or not any(c.isdigit() for c in password):
+        return "Use both letters and numbers in your password."
+    if len(set(password)) < 4:
+        return "Use more different characters in your password."
+    return None
 
 
 class PasswordChange(BaseModel):
@@ -102,8 +150,9 @@ def change_password(body: PasswordChange, current: CurrentUser = Depends(get_cur
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     if body.new_password == body.current_password:
         raise HTTPException(status_code=422, detail="Choose a password different from the current one")
-    if body.new_password.lower() in {user.username.lower(), "password", "password123", "12345678"}:
-        raise HTTPException(status_code=422, detail="Choose a less guessable password")
+    problem = weak_password(body.new_password, user.username)
+    if problem:
+        raise HTTPException(status_code=422, detail=problem)
     user.hashed_password = hash_password(body.new_password)
     user.must_change_password = False
     user.failed_login_count = 0

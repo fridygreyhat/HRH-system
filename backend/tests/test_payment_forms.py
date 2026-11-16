@@ -56,7 +56,7 @@ def _services_form_checks(api, db, v22, claim, empty_period):
     assert form["activity"].startswith("Services payments - ") and form["venue"]
     row = form["rows"][0]
     assert (row["sn"], row["days"], Decimal(row["subtotal"]), Decimal(row["total"])) == (1, 1, 40000, 40000)
-    assert row["mobile"] == "+255700000001" and row["services"] and row["claim_id"] == claim.id
+    assert row["mobile"] == "+255•••001" and row["services"] and row["claim_id"] == claim.id  # on screen: last digits only
     assert {k: Decimal(v) for k, v in form["totals"].items()} == {"TZS": 40000}
 
     for fmt, media, start in (("pdf", "application/pdf", b"%PDF"), ("xlsx", XLSX, b"PK")):
@@ -170,11 +170,15 @@ def test_one_payment_instruction_per_claim_batch_or_payment_form(api, db, empty_
 
     # In a batch: off the payment form, and not offered for another batch.
     batched, batch = exported(api, db, empty_period, v22)
-    assert batched not in {r["claim_id"] for r in api.get(f"/finance/services-payment-form?month={month}", "fhifin1")["rows"]}
+
+    def on_form():  # an empty form (every claim batched, on a PRF or paid) answers 404
+        response = api.client.get(f"/finance/services-payment-form?month={month}", headers=headers)
+        return {r["claim_id"] for r in response.json()["rows"]} if response.status_code == 200 else set()
+    assert batched not in on_form()
     assert batched not in batch_ready()
     # Undo the batch: the claim is back on the form and could be batched; once its PRF is recorded, it cannot.
     api.post(f"/batches/{batch['id']}/reverse", "fhifin1", {"reason": "Pay it from the PRF instead"})
-    assert batched in {r["claim_id"] for r in api.get(f"/finance/services-payment-form?month={month}", "fhifin1")["rows"]}
+    assert batched in on_form()
     assert batched in batch_ready()
     download = api.client.get(f"/finance/services-payment-report/export?month={month}&format=xlsx", headers=headers)
     assert download.status_code == 200

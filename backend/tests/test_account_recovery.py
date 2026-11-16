@@ -55,7 +55,7 @@ def test_bulk_reset_preserves_all_super_admins_and_revokes_other_sessions(api, c
     target.locked_until = utcnow() + timedelta(hours=1)
     db.commit()
     count = len(snapshot) - len(protected_ids)
-    body = {"new_password": "Temporary-test-947", "confirmation": "RESET NON-SUPER-ADMIN PASSWORDS",
+    body = {"confirmation": "RESET NON-SUPER-ADMIN PASSWORDS",
             "expected_count": count, "reason": "Recover accounts after sign-in failures"}
     try:
         api.post("/admin/user-password-reset", "admin", {**body, "confirmation": "wrong"}, expect=422)
@@ -63,7 +63,11 @@ def test_bulk_reset_preserves_all_super_admins_and_revokes_other_sessions(api, c
         db.expire_all()
         assert all(user.hashed_password == snapshot[user.id]["hashed_password"] for user in db.query(User))
         result = api.post("/admin/user-password-reset", "admin", body)
-        assert result == {"reset_count": count, "super_admins_unchanged": len(protected_ids)}
+        assert (result["reset_count"], result["super_admins_unchanged"]) == (count, len(protected_ids))
+        # Each account gets its own random password, shown once: one leaked password opens one account only.
+        issued = {row["username"]: row["temporary_password"] for row in result["passwords"]}
+        assert len(issued) == count and len(set(issued.values())) == count and all(len(p) == 12 for p in issued.values())
+        clerk_password = issued["clerk1"]
         db.expire_all()
         for user in db.query(User):
             if user.id in protected_ids:
@@ -73,17 +77,18 @@ def test_bulk_reset_preserves_all_super_admins_and_revokes_other_sessions(api, c
                 assert user.must_change_password and user.password_changed_at
                 assert user.failed_login_count == 0 and user.locked_until is None
                 assert user.is_active == snapshot[user.id]["is_active"]
-        assert verify_password(body["new_password"], db.get(User, target.id).hashed_password)
+        assert verify_password(issued[target.username], db.get(User, target.id).hashed_password)
         assert client.get("/auth/me", headers={"Authorization": f"Bearer {old_token}"}).status_code == 401
-        signed_in = client.post("/auth/login", data={"username": "clerk1", "password": body["new_password"]})
+        signed_in = client.post("/auth/login", data={"username": "clerk1", "password": clerk_password})
         assert signed_in.status_code == 200 and signed_in.json()["must_change_password"]
         headers = {"Authorization": f"Bearer {signed_in.json()['access_token']}"}
         assert client.get("/worklogs", headers=headers).status_code == 403
         changed = client.post("/auth/change-password", headers=headers, json={
-            "current_password": body["new_password"], "new_password": "Individual-test-983",
+            "current_password": clerk_password, "new_password": "Individual-test-983",
         })
         assert changed.status_code == 200
-        assert body["new_password"] not in str(api.get("/admin/audit-events", "admin"))
+        audit_text = str(api.get("/admin/audit-events", "admin"))
+        assert not any(password in audit_text for password in issued.values())
     finally:
         db.rollback()
         for uid, values in snapshot.items():

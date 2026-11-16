@@ -353,4 +353,6 @@ def download_proof(claim_id: int, proof_id: int, db: Session = Depends(get_db), 
         raise HTTPException(status_code=404, detail="The proof file is missing from storage. Restore it from backup or upload it again.")
     system_audit.record(db, current, "payment_proof", proof.id, "download")
     db.commit()
-    return FileResponse(path, media_type=proof.content_type, filename=proof.original_filename)
+    # Saved, never shown in the page: a file that only looks like an image cannot run as a web page.
+    return FileResponse(path, media_type=proof.content_type, filename=proof.original_filename,
+                        headers={"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox", "Cache-Control": "no-store"})

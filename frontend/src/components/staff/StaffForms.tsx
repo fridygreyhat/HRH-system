@@ -12,7 +12,8 @@ import { normalizeTin, TIN_HINT, TIN_INPUT_PATTERN, TIN_LABEL, TIN_MESSAGE } fro
 import { EMPTY_PROVIDER_PAY, ProviderPay, ProviderPayFields, providerPayPayload } from './ProviderPayFields';
 export const PAYMENT_METHODS = ['MOBILE_WALLET', 'BANK'];
 export const ENROLLMENT_SOURCES = ['MANUAL', 'ROSTER_IMPORT', 'ENGAGEMENT_LIST'];
-export const PAYMENT_CRITICAL = ['cadre_id', 'salary_scale', 'payment_method', 'payment_provider', 'payment_account', 'verified_phone', 'status'];
+export const PAYMENT_CRITICAL = ['cadre_id', 'salary_scale', 'payment_method', 'payment_provider', 'payment_account', 'verified_phone', 'status',
+  'first_name', 'middle_name', 'last_name', 'tin_number'];
 
 const isOther = (s: string) => s.trim().toLowerCase() === 'other';
 const blankToNull = (s: string): string | null => (s.trim() ? s.trim() : null);
@@ -329,13 +330,13 @@ export function EditStaffModal({
           Fields marked “needs approval” go to another HRH administrator before applying.
         </div>
         <div className="grid-2">
-          <Field label="First name">
+          <Field label={`First name${lockedNote}`}>
             <input value={f.first_name} onChange={set('first_name')} required maxLength={100} />
           </Field>
-          <Field label="Middle name">
+          <Field label={`Middle name${lockedNote}`}>
             <input value={f.middle_name} onChange={set('middle_name')} maxLength={100} />
           </Field>
-          <Field label="Last name">
+          <Field label={`Last name${lockedNote}`}>
             <input value={f.last_name} onChange={set('last_name')} required maxLength={100} />
           </Field>
           <OccupationFields
@@ -345,7 +346,7 @@ export function EditStaffModal({
             onOccupation={(v) => setF({ ...f, occupation: v })}
             onOther={(v) => setF({ ...f, occupation_other: v })}
           />
-          <Field label={TIN_LABEL} hint={TIN_HINT}>
+          <Field label={`TIN${lockedNote}`} hint="9 digits, e.g. 123-456-789.">
             <input inputMode="numeric" value={f.tin_number} onChange={set('tin_number')} pattern={TIN_INPUT_PATTERN} maxLength={13} placeholder="123-456-789" />
           </Field>
           <Field label={`Cadre${lockedNote}`}>

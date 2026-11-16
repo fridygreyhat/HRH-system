@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 
 from .base import Base, created_at, utcnow
@@ -26,3 +26,13 @@ class SystemSetting(Base):
     value = Column(JSONB, nullable=False)
     updated_by = Column(Integer, ForeignKey("users.id"))
     updated_at = created_at()
+
+
+class LoginFailure(Base):
+    """A wrong sign-in, per username and device address, for the per-device limit. Old rows are pruned by the worker."""
+    __tablename__ = "login_failures"
+    __table_args__ = (Index("ix_login_failures_username_at", "username", "failed_at"),)
+    id = Column(BigInteger, primary_key=True)
+    username = Column(String(100), nullable=False)
+    client = Column(String(64), nullable=False)
+    failed_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)

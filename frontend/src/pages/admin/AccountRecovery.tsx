@@ -6,11 +6,23 @@ import { AdminUser } from '../../types';
 import { Alert, AsyncState, Field, Modal } from '../../components/ui';
 
 export const RESET_CONFIRMATION = 'RESET NON-SUPER-ADMIN PASSWORDS';
+interface IssuedPassword { username: string; full_name: string; phone: string | null; temporary_password: string }
+
+/** The one copy of the new passwords: a CSV file saved on this computer. */
+function saveIssued(rows: IssuedPassword[]) {
+  const cell = (value: string | null) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  const text = ['Username,Full name,Phone,Temporary password', ...rows.map(r => [r.username, r.full_name, r.phone, r.temporary_password].map(cell).join(','))].join('\r\n');
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `temporary-passwords-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 interface LoginFailure { id: number; created_at: string; username: string; reason: string; message: string }
 
 export function AccountRecovery({ users, onReset }: { users: AdminUser[] | null; onReset: () => void }) {
   const [open, setOpen] = useState(false);
-  const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [reason, setReason] = useState('');
   const [username, setUsername] = useState('');
@@ -23,18 +35,20 @@ export function AccountRecovery({ users, onReset }: { users: AdminUser[] | null;
   const protectedCount = (users || []).length - targets.length;
   const close = () => {
     if (busy) return;
-    setOpen(false); setPassword(''); setConfirmation(''); setReason(''); setError('');
+    setOpen(false); setConfirmation(''); setReason(''); setError('');
   };
   const reset = async (event: React.FormEvent) => {
     event.preventDefault();
     if (confirmation !== RESET_CONFIRMATION || !users || busy) return;
     setBusy(true); setError(''); setNotice('');
     try {
-      const result = await api.post<{ reset_count: number; super_admins_unchanged: number }>('/admin/user-password-reset', {
-        new_password: password, confirmation, expected_count: targets.length, reason,
+      const result = await api.post<{ reset_count: number; super_admins_unchanged: number; passwords: IssuedPassword[] }>('/admin/user-password-reset', {
+        confirmation, expected_count: targets.length, reason,
       });
-      setPassword(''); setConfirmation(''); setReason(''); setOpen(false);
-      setNotice(`${result.reset_count} account passwords reset. ${result.super_admins_unchanged} Super Admin account(s) unchanged. Users must choose a new password at sign-in.`);
+      saveIssued(result.passwords);
+      setConfirmation(''); setReason(''); setOpen(false);
+      setNotice(`${result.reset_count} accounts reset, each with its own temporary password (downloaded as a file, shown only once). `
+        + `${result.super_admins_unchanged} Super Admin account(s) unchanged. Give each person only their own password; they choose a new one at sign-in. Delete the file afterwards.`);
       onReset(); failures.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Reset failed. Refresh Users before retrying.');
@@ -65,8 +79,7 @@ export function AccountRecovery({ users, onReset }: { users: AdminUser[] | null;
         <Alert>{error}</Alert>
         <p>This will reset <strong>{targets.length} accounts</strong> in <strong>{window.location.hostname}</strong>, including filtered-out ones. All {protectedCount} Super Admin account(s) will remain unchanged.</p>
         <p>Sessions end; users must choose a new password at sign-in.</p>
-        <Alert kind="warn">Share this temporary password privately.</Alert>
-        <Field label="Temporary password"><input type="password" autoComplete="new-password" required minLength={8} maxLength={72} value={password} onChange={event => setPassword(event.target.value)} disabled={busy} /></Field>
+        <Alert kind="warn">Each account gets its own random temporary password. The list downloads once as a file: give each person only their own, privately, then delete the file.</Alert>
         <Field label="Reason for reset"><textarea required minLength={10} maxLength={500} value={reason} onChange={event => setReason(event.target.value)} disabled={busy} /></Field>
         <Field label={`Type ${RESET_CONFIRMATION}`}><input required value={confirmation} onChange={event => setConfirmation(event.target.value)} disabled={busy} autoComplete="off" /></Field>
         <div className="row">

@@ -32,6 +32,9 @@ def list_amounts(month: str = Query(pattern=MONTH), db: Session = Depends(get_db
 def save_amount(body: SalaryAmountIn, db: Session = Depends(get_db), current=Depends(require_roles(FHI360_FINANCE))):
     reports.check_month(body.start_month)
     scale = body.scale.strip()
+    from ...services.salary_amounts import amounts_for
+    signed = reports.signed_with_scale(db, scale, body.start_month)
+    before_amounts = {s.id: amounts_for(db, s.month).get(scale) for s in signed}  # what each signed month pays now
     row = db.query(SalaryScaleAmount).filter_by(scale=scale, start_month=body.start_month).with_for_update().first()
     before = {"monthly_amount": str(row.monthly_amount)} if row else None
     if row is None:
@@ -41,5 +44,7 @@ def save_amount(body: SalaryAmountIn, db: Session = Depends(get_db), current=Dep
     db.flush()
     audit.record(db, current, "salary_scale_amount", row.id, "set_salary_amount", before=before,
                  after={"scale": scale, "start_month": body.start_month, "monthly_amount": str(body.monthly_amount)})
+    taken_back = reports.withdraw_for_salary_change(db, current, scale, body.start_month, before_amounts)
     db.commit()
-    return {"scale": scale, "start_month": row.start_month, "monthly_amount": str(row.monthly_amount)}
+    return {"scale": scale, "start_month": row.start_month, "monthly_amount": str(row.monthly_amount),
+            "signed_months_taken_back": [{"month": t["month"], "region_id": t["region_id"]} for t in taken_back]}

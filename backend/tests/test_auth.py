@@ -46,10 +46,11 @@ def test_lockout_after_repeated_failures_and_admin_unlock(api, client, db):
     for _ in range(5):
         r = _login(client, user["username"], "wrong-password")
         assert r.status_code == 400 and r.json()["detail"] == "Incorrect username or password"
-    r = _login(client, user["username"], "Temp-pass-1")  # correct password, but locked
-    assert r.status_code == 429 and "Try again" in r.json()["detail"]
-    assert api.get("/admin/users", "admin") and next(u for u in api.get("/admin/users", "admin") if u["id"] == user["id"])["is_locked"]
-    api.post(f"/admin/users/{user['id']}/unlock", "admin")
+    r = _login(client, user["username"], "Temp-pass-1")  # correct password, but this device made too many guesses
+    assert r.status_code == 429 and "this device" in r.json()["detail"]
+    # Only this device waits: the account itself is not locked, so a stranger's guesses cannot lock the real user out.
+    assert not next(u for u in api.get("/admin/users", "admin") if u["id"] == user["id"])["is_locked"]
+    api.post(f"/admin/users/{user['id']}/unlock", "admin")  # also clears the device's wrong guesses
     assert _login(client, user["username"], "Temp-pass-1").status_code == 200
     actions = [a for (a,) in db.execute(text("select action from audit_events where entity_type = 'auth' and entity_id = :i order by id"), {"i": str(user["id"])})]
     assert actions.count("login_failed") == 5 and "login_blocked" in actions and actions[-1] == "login_success"

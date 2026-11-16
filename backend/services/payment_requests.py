@@ -56,6 +56,11 @@ def record(db, current, download_id: int, prf_number: str, prf_date, note: str |
                                  "then download the report again and record the PRF from the new file.")
     if len(claims) != len(download.claim_ids) or any(claim.status == "CANCELLED" for claim in claims):
         raise HTTPException(409, "A claim in this download has since been cancelled. Download the report again and raise the PRF from the new file.")
+    # Checked again under the lock: a claim batched or paid since the download must not get a second instruction.
+    batched = [claim.id for claim in claims if claim.batch_id is not None or claim.payment_status not in ("NOT_STARTED", "FAILED")]
+    if batched:
+        raise HTTPException(409, f"{len(batched)} claim(s) in this download are already in a payment batch or paid. "
+                                 "Download the report again: it leaves those claims out.")
     taken = (db.query(PaymentRequestForm.prf_number).join(PaymentRequestFormClaim, PaymentRequestFormClaim.prf_id == PaymentRequestForm.id)
              .filter(PaymentRequestFormClaim.claim_id.in_(download.claim_ids)).distinct().all())
     if taken:

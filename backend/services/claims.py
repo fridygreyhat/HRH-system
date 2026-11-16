@@ -352,6 +352,11 @@ def check_action(db: Session, current: CurrentUser, claim: PaymentClaim, action:
             return "Reverse this claim's payment batch before cancelling it"
         if claim.payment_status not in {"NOT_STARTED", "FAILED"}:
             return "A claim with recorded payments cannot be cancelled"
+        from ..models import PaymentRequestForm, PaymentRequestFormClaim
+        prf = (db.query(PaymentRequestForm.prf_number).join(PaymentRequestFormClaim, PaymentRequestFormClaim.prf_id == PaymentRequestForm.id)
+               .filter(PaymentRequestFormClaim.claim_id == claim.id).first())
+        if prf:  # cancelling would let the same days be paid again on a new claim and PRF
+            return f"This claim is on PRF {prf[0]}; it is paid from that PRF and cannot be cancelled"
     if action == "verify_community":
         if s != PENDING_COMMUNITY:
             return f"Cannot verify a claim in status {s}"

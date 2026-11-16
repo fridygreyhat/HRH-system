@@ -26,6 +26,7 @@ from ...services import budgets as bg, cso_regions
 from ...services.v22_scope import regions_for
 
 router = APIRouter()
+MAX_TRACKER_ROWS = 20000  # an import larger than this should be split
 READ_ROLES = (FHI360_FINANCE, CSO_FINANCE, RPM, OVERSIGHT)
 TRACKER_COLUMNS = ["code", "name", "category", "period_start", "region", "allocated_amount", "external_ref", "estimated_amount (optional)"]
 
@@ -258,6 +259,8 @@ def tracker_import(file: UploadFile = File(...), db: Session = Depends(get_db), 
     errors = []
     for line_no, row in enumerate(reader, start=2):
         log.records_processed += 1
+        if log.records_processed > MAX_TRACKER_ROWS:
+            raise HTTPException(413, f"The file has more than {MAX_TRACKER_ROWS:,} rows; split it and import the parts")
         try:
             with db.begin_nested():
                 category = db.query(ClaimCategory).filter(ClaimCategory.name == row["category"].strip()).first()

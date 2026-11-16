@@ -15,7 +15,11 @@ MAX_COMMENT_CHARS = 120
 
 
 def template_variables(text: str) -> set[str]:
-    return {name for _, name, _, _ in string.Formatter().parse(text) if name}
+    fields = [(name, spec, conversion) for _, name, spec, conversion in string.Formatter().parse(text) if name is not None]
+    if any(spec or conversion for _, spec, conversion in fields):
+        # {name:>999999} would pad one message to megabytes; only plain {name} fields are allowed.
+        raise ValueError("use plain {name} fields, without formatting after the name")
+    return {name for name, _, _ in fields if name}
 
 
 def validate_template(event_name: str, text: str) -> None:

@@ -38,6 +38,10 @@ def approved_log(db, period, provider="chw1", kind="PAYROLL", hours=8):
 
 
 def sign(api, v22, month, work_type="PAYROLL"):
+    from backend.db.session import SessionLocal
+    from .test_finance_monthly_reports import all_cadres
+    with SessionLocal() as session:  # signing a whole region's report needs every cadre
+        all_cadres(session, v22["finance"])
     region = v22["region_id"]
     path = f"/finance/monthly-report?month={month}&region_id={region}&work_type={work_type}"
     report = api.get(path, v22["finance"])
@@ -101,7 +105,9 @@ def setup(api, db, v22):
     if first:
         _signed_month.update(timesheet_month(api, db, v22))
     with provider_details(db, _signed_month) as state:
-        if first:
+        # Signed afresh when an earlier test took the sign-off back (a salary change for a signed month does that).
+        path = f"/finance/monthly-report?month={state['month']}&region_id={v22['region_id']}&work_type=PAYROLL"
+        if first or api.get(path, v22["finance"])["state"] != "APPROVED":
             sign(api, v22, state["month"])
         yield state
 
@@ -412,7 +418,10 @@ def test_the_amount_in_force_for_the_month_is_used(api, v22, setup):
     set_amount(api, setup, "500000.00", earlier)
     set_amount(api, setup, "700000.00", later)  # a later rise must not change this month
     assert file_rows(api, setup)[0]["Monthly salary (TZS)"] == "500000.00"
-    set_amount(api, setup, "600000.00", setup["month"])
+    # Changing the amount of a signed month takes the sign-off back: the CSO pays only an amount Regional Finance signed.
+    changed = set_amount(api, setup, "600000.00", setup["month"])
+    assert changed["signed_months_taken_back"]
+    sign(api, v22, setup["month"])
     assert file_rows(api, setup)[0]["Monthly salary (TZS)"] == "600000.00"
 
 
