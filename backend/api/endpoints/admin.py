@@ -828,9 +828,10 @@ SETTING_LIMITS = {"login_max_failures": (3, 20), "login_lockout_minutes": (5, 14
                   "otp_length": (4, 8), "otp_ttl_minutes": (2, 60), "otp_max_attempts": (1, 10),
                   "otp_resend_cooldown_seconds": (10, 3600), "otp_max_sends_per_version": (1, 20),
                   "review_digest_hours": (1, 48), "sms_send_from_hour": (0, 23), "sms_send_until_hour": (1, 24),
-                  "submit_reminder_hour": (0, 23), "backdate_grace_hours": (0, 1_000_000)}
+                  "submit_reminder_hour": (0, 23), "backdate_grace_hours": (0, 1_000_000),
+                  "hcp_government_daily_rate": (1, 10_000_000), "hcp_project_daily_rate": (1, 10_000_000)}
 # Payment rules: a system administrator alone must not be able to drop proof of payment or bank-only payment.
-SUPER_ADMIN_SETTINGS = {"payment_requires_proof", "bank_only_cadres"}
+SUPER_ADMIN_SETTINGS = {"payment_requires_proof", "bank_only_cadres", "hcp_government_daily_rate", "hcp_project_daily_rate"}
 
 
 def _check_list_setting(db: Session, key: str, value) -> None:

@@ -46,6 +46,7 @@ from ...services.activity_catalog import resolve_activity, log_fields
 from ...services.forms import log_cadre_out
 from ...core import workflow_policy
 from ...services import finance_gate
+from ...services import staff_registry as reg
 from ...services.geo import LOCATION_EXCEPTIONS, location_status
 from ...services.otp import dev_code, issue_otp, verify_otp
 from ...services.scope import assignment_for_period, can_see_gps, worklog_visibility
@@ -371,6 +372,8 @@ def create_worklog(body: WorkLogCreate, db: Session = Depends(get_db), current: 
         raise HTTPException(status_code=422, detail="This pay period has not started yet")
     version = workflow_policy.NEW_RECORD_WORKFLOW_VERSION
     kind = body.work_type if version >= 2 else "LEGACY"
+    if kind == "PAYROLL" and reg.services_only(db, staff):
+        raise HTTPException(422, "Government facility staff are paid for Services only. Record your work as Services.")
     existing = db.query(WorkLog).filter(WorkLog.staff_id == staff.id, WorkLog.period_id == period.id,
                                       WorkLog.work_type.in_([kind, "LEGACY"])).first()
     if existing and existing.status == wf.CANCELLED:

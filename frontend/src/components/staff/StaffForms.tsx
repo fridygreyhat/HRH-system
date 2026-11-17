@@ -9,7 +9,7 @@ import { AssignmentFields, AssignmentValue, EMPTY_ASSIGNMENT, assignmentPayload,
 export { TZ_MOBILE_INPUT_PATTERN as PHONE_PATTERN } from '../../phones';
 import { normalizeTzMobile, TZ_MOBILE_HINT, TZ_MOBILE_INPUT_PATTERN, TZ_MOBILE_MESSAGE } from '../../phones';
 import { normalizeTin, TIN_HINT, TIN_INPUT_PATTERN, TIN_LABEL, TIN_MESSAGE } from '../../tin';
-import { EMPTY_PROVIDER_PAY, ProviderPay, ProviderPayFields, providerPayPayload } from './ProviderPayFields';
+import { EMPTY_PROVIDER_PAY, NO_PROVIDER_PAY, ProviderPay, ProviderPayFields, providerPayPayload, SERVICES_ONLY_NOTE } from './ProviderPayFields';
 import { FACILITY_STAFF_TYPE_MESSAGE, FACILITY_STAFF_TYPES, FacilityStaffTypeField, isHcp } from './FacilityStaffType';
 export const PAYMENT_METHODS = ['MOBILE_WALLET', 'BANK'];
 export const ENROLLMENT_SOURCES = ['MANUAL', 'ROSTER_IMPORT', 'ENGAGEMENT_LIST'];
@@ -117,9 +117,12 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
   const cadre = cadres.find((c) => String(c.id) === f.cadre_id);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
 
+  // Government facility staff HCPs are paid for Services only: no salary, so no TIN, bank account or salary scale.
+  const servicesOnly = isHcp(cadre?.code) && f.facility_staff_type === 'GOVERNMENT';
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payment = providerPayPayload(pay);
+    const payment = servicesOnly ? NO_PROVIDER_PAY : providerPayPayload(pay);
     if (typeof payment === 'string') {
       setError(payment);
       return;
@@ -135,7 +138,7 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
         occupation: blankToNull(f.occupation),
         occupation_other: isOther(f.occupation) ? blankToNull(f.occupation_other) : null,
         facility_staff_type: isHcp(cadre?.code) ? f.facility_staff_type : null,
-        salary_scale: blankToNull(f.salary_scale),
+        salary_scale: servicesOnly ? null : blankToNull(f.salary_scale),
         employment_start_date: f.employment_start_date,
         enrollment_source: f.enrollment_source,
         assignment: assignmentPayload(assignment),
@@ -228,14 +231,20 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
               {[cadre?.name, f.occupation, FACILITY_STAFF_TYPES.find((t) => t.value === f.facility_staff_type)?.label, f.verified_phone].filter(Boolean).join(' · ')}
             </span>
           </div>
-          {!assignment.organization_id && <Alert kind="warn">No CSO set; this person will not appear in any salary file.</Alert>}
-          <div className="grid-2">
-            <Field label="Salary scale" hint="Type it exactly as on Salary amounts">
-              <input value={f.salary_scale} onChange={set('salary_scale')} maxLength={50} />
-            </Field>
-          </div>
-          <ProviderPayFields value={pay} onChange={setPay} disabled={busy} />
-          <p className="muted small">Services are paid to the mobile wallet of the phone above.</p>
+          {servicesOnly ? (
+            <div className="notice notice-info">{SERVICES_ONLY_NOTE}</div>
+          ) : (
+            <>
+              {!assignment.organization_id && <Alert kind="warn">No CSO set; this person will not appear in any salary file.</Alert>}
+              <div className="grid-2">
+                <Field label="Salary scale" hint="Type it exactly as on Salary amounts">
+                  <input value={f.salary_scale} onChange={set('salary_scale')} maxLength={50} />
+                </Field>
+              </div>
+              <ProviderPayFields value={pay} onChange={setPay} disabled={busy} />
+              <p className="muted small">Services are paid to the mobile wallet of the phone above.</p>
+            </>
+          )}
         </>}
         <Alert>{error}</Alert>
         <div className="row">

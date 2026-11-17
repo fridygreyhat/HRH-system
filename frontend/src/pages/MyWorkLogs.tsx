@@ -16,6 +16,8 @@ export function MyWorkLogs() {
   const sw = lang === 'sw';
   const isHcp = me?.cadre?.code === 'HCP';
   const isChw = me?.cadre?.code === 'CHW';
+  // Government facility staff HCPs are paid for Services only.
+  const servicesOnly = isHcp && me?.staff?.facility_staff_type === 'GOVERNMENT';
   const logs = useApi<WorkLogSummary[]>('/worklogs?mine=true');
   const periods = useApi<PayPeriod[]>('/admin/pay-periods');
   const [openId, setOpenId] = useState<number | null>(null);
@@ -103,7 +105,7 @@ export function MyWorkLogs() {
               aria-label={isHcp ? 'Timesheet / activity type' : 'Work type'}
             >
               <option value="SERVICES">{workTypeName('SERVICES', sw ? 'sw' : 'en')}</option>
-              <option value="PAYROLL">{workTypeName('PAYROLL', sw ? 'sw' : 'en')}</option>
+              {!servicesOnly && <option value="PAYROLL">{workTypeName('PAYROLL', sw ? 'sw' : 'en')}</option>}
             </select>
           </Field>
           <Field label={sw ? 'Mwezi wa kazi' : 'Work month'} hint={`${payMonthDates(workMonth)}. ${sw ? 'Wasilisha tarehe 25.' : 'Submit on the 25th.'}`}>

@@ -49,6 +49,11 @@ PHONE_PATTERN = re.compile(r"^\+?\d{9,15}$")
 FACILITY_STAFF_TYPES = {"GOVERNMENT": "Government facility staff", "PROJECT": "Project facility staff"}
 
 
+def services_only(db: Session, staff: Staff) -> bool:
+    """Government facility staff HCPs are paid for Services only: no salary, so no Payroll timesheet, TIN or bank account."""
+    return staff.facility_staff_type == "GOVERNMENT" and db.get(Cadre, staff.cadre_id).code == "HCP"
+
+
 def check_facility_staff_type(db: Session, cadre_id: Optional[int], value: Optional[str], required: bool) -> Optional[str]:
     """An HCP is either a government facility's own staff or staff the project placed there; other cadres are neither."""
     cadre = db.get(Cadre, cadre_id) if cadre_id else None

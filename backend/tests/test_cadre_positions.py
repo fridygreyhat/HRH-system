@@ -5,6 +5,7 @@ from openpyxl import load_workbook
 
 from backend.models import AuditEvent, Staff
 from .test_bank_only_cadres import _staff
+from .test_v22_finance import v22  # noqa: F401 (fixture)
 
 
 def _cadre(api, code):
@@ -87,3 +88,74 @@ def test_a_timesheet_keeps_a_position_from_before_the_list_changed(api, db, peri
     api.put(f"/worklogs/{log['id']}", "chw1", {"occupation": "CHW"})
     api.put(f"/worklogs/{log['id']}", "chw1", {"occupation": "Nurse"}, expect=422)
     assert api.put(f"/worklogs/{log['id']}", "chw1", {"occupation": "CHW (HIV + TB)"})["occupation"] == "CHW (HIV + TB)"
+
+
+# ---- Government staff: Services only; HCP Services pay by facility staff type ----------------------------------------
+
+def _set_type(db, username, value):
+    from backend.models import User
+    staff = db.query(Staff).join(User, User.id == Staff.user_id).filter(User.username == username).one()
+    staff.facility_staff_type = value
+    db.commit()
+
+
+def test_government_staff_register_without_tin_or_bank(api, db):
+    gov = {**_staff(api, "HCP", "0755 300 606", "BANK"), "facility_staff_type": "GOVERNMENT",
+           "tin_number": None, "bank_name": None, "bank_account_number": None}
+    created = api.post("/staff", "central1", gov, expect=201)
+    record = db.get(Staff, created["id"])
+    assert (record.tin_number, record.bank_name, record.bank_account_number) == (None, None, None)
+    project = {**gov, "verified_phone": "0755 300 607", "facility_staff_type": "PROJECT"}
+    assert "TIN" in str(api.post("/staff", "central1", project, expect=422))
+
+
+def test_government_staff_have_no_payroll_timesheet(api, db, period, v22):
+    _set_type(db, "hcp1", "GOVERNMENT")
+    try:
+        refused = api.post("/worklogs", "hcp1", {"period_id": period["id"], "work_type": "PAYROLL"}, expect=422)
+        assert "Services only" in str(refused)
+        api.post("/worklogs", "hcp1", {"period_id": period["id"], "work_type": "SERVICES"}, expect=201)
+    finally:
+        _set_type(db, "hcp1", "PROJECT")
+
+
+def test_hcp_services_pay_a_daily_amount_by_facility_staff_type(api, db, period, v22):
+    from datetime import date, timedelta
+    from .test_fixed_daily_services import daily_rate, service_measures
+    rates = [daily_rate(api, db, period, "hcp1", amount) for amount in (100, 250)]
+    log = api.post("/worklogs", "hcp1", {"period_id": period["id"], "work_type": "SERVICES"})
+    day = period["start_date"]
+    two = {"activity_key": rates[0]["key"], "hours_worked": 4, "start_time": "08:00", "end_time": "12:00",
+           "measures": service_measures(rates[0]),
+           "additional_services": [{"activity_key": rates[1]["key"], "measures": service_measures(rates[1])}]}
+    saved = api.put(f"/worklogs/{log['id']}/entries/{day}", "hcp1", two)
+    # Project staff: 10,000 for the day, once, whatever the service's own rate and however many services.
+    assert float(saved["financial_preview"]["total"]) == 10000
+    assert [line["rate_setting"] for line in saved["financial_preview"]["lines"]] == ["hcp_project_daily_rate"]
+    next_day = str(date.fromisoformat(day) + timedelta(days=1))
+    saved = api.put(f"/worklogs/{log['id']}/entries/{next_day}", "hcp1", {**two, "additional_services": []})
+    assert float(saved["financial_preview"]["total"]) == 20000
+    try:
+        _set_type(db, "hcp1", "GOVERNMENT")
+        assert float(api.get(f"/worklogs/{log['id']}", "hcp1")["financial_preview"]["total"]) == 80000
+        _set_type(db, "hcp1", None)  # held until the type is set
+        held = api.get(f"/worklogs/{log['id']}", "hcp1")["financial_preview"]
+        assert float(held["total"]) == 0 and "Government facility staff or Project facility staff" in held["exceptions"][0]
+        _set_type(db, "hcp1", "PROJECT")
+        # The amounts are settings a super administrator can change, with a reason.
+        api.call("PUT", "/admin/settings/hcp_project_daily_rate", "admin", {"value": 0, "reason": "zero"}, expect=422)
+        api.call("PUT", "/admin/settings/hcp_project_daily_rate", "admin", {"value": 12000, "reason": "New rate"})
+        assert float(api.get(f"/worklogs/{log['id']}", "hcp1")["financial_preview"]["total"]) == 24000
+    finally:
+        _set_type(db, "hcp1", "PROJECT")
+        api.call("PUT", "/admin/settings/hcp_project_daily_rate", "admin", {"value": 10000, "reason": "Back to policy"})
+
+
+def test_other_cadres_keep_their_service_rates(api, db, period, v22):
+    from .test_fixed_daily_services import daily_rate, service_measures
+    rate = daily_rate(api, db, period, "chw1", 250)
+    log = api.post("/worklogs", "chw1", {"period_id": period["id"], "work_type": "SERVICES"})
+    saved = api.put(f"/worklogs/{log['id']}/entries/{period['start_date']}", "chw1", {
+        "activity_key": rate["key"], "hours_worked": 4, "start_time": "08:00", "end_time": "12:00",
+        "measures": service_measures(rate)})
+    assert float(saved["financial_preview"]["total"]) == 250

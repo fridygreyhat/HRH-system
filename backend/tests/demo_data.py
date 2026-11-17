@@ -88,6 +88,7 @@ def seed_test_data(db: Session) -> None:
         user = _user(db, username, " ".join(p for p in (first, middle, last) if p), phone, [PROVIDER], pw)
         staff = Staff(user_id=user.id, cadre_id=cadre.id, first_name=first, middle_name=middle, last_name=last, verified_phone=phone,
                       occupation=occupation, salary_scale="DEMO-1" if cadre.code != "CHW" else None, employment_start_date=start,
+                      facility_staff_type="PROJECT" if cadre.code == "HCP" else None,  # salaried, so Payroll and Services
                       enrollment_source="MANUAL", payment_method="MOBILE_WALLET", payment_provider="DEMO Wallet", payment_account=phone)
         db.add(staff)
         db.flush()

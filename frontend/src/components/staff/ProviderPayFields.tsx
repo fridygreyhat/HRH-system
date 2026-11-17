@@ -30,6 +30,12 @@ export function providerPayPayload(v: ProviderPay): { tin_number: string; bank_n
   return { tin_number: tin, bank_name: v.bank_name.trim(), bank_account_number: account };
 }
 
+/** No TIN or bank account: sent as empty for Government facility staff, who are paid for Services only. */
+export const NO_PROVIDER_PAY = { tin_number: null, bank_name: null, bank_account_number: null };
+
+export const SERVICES_ONLY_NOTE =
+  'Government facility staff are paid for Services only, to the mobile wallet of their phone. No TIN or bank account is needed.';
+
 export function ProviderPayFields({ value, onChange, disabled }: { value: ProviderPay; onChange: (v: ProviderPay) => void; disabled?: boolean }) {
   const set = (k: keyof ProviderPay) => (e: React.ChangeEvent<HTMLInputElement>) => onChange({ ...value, [k]: e.target.value });
   return (

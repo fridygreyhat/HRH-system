@@ -1,7 +1,7 @@
 """RPM regional authority and immediate, non-payable claim preparation."""
 import pytest
 
-from .conftest import category_id
+from .conftest import HCP_DAILY, category_id
 from .monthly_budget_setup import ensure_monthly_budgets
 from .test_v22_finance import v22, back_through_technical, priced_activity, entered_log, to_rpm, to_finance, route_log
 
@@ -42,7 +42,8 @@ def test_rpm_reviews_all_regional_cadres_without_cadre_grants(api, db, period, v
     assert authorized["claims"][0]["status"] == "PENDING_FINANCE_REVIEW"
     claim = api.get(f"/claims/{authorized['claims'][0]['id']}", "rpm1")
     assert claim["category_id"] is None and claim["category_name"] is None
-    assert float(claim["amount"]) == 300
+    # An HCP is paid the daily amount for their facility staff type (hcp1: Project), not the service's own rate.
+    assert float(claim["amount"]) == (HCP_DAILY["PROJECT"] if provider == "hcp1" else 300)
     assert not claim["available_actions"] and not claim["payment_actions"]
 
 

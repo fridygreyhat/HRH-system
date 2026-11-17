@@ -5,9 +5,9 @@ INSERT INTO public.cadres
  requires_facility_endorsement, technical_reviewer_title,
  occupation_options, uses_section, is_active)
 VALUES
-('CHW', 'Community Health Worker', 'EpiC Project Weekly Work Log-Sheet – CHW', 'DIRECT', FALSE, FALSE, 'Senior Regional Technical Officer, Community Engagement', '[]'::jsonb, FALSE, TRUE),
-('DATA_CLERK', 'Data Clerk', 'Weekly Work Log-Sheet – Data Clerks', 'START_END', TRUE, FALSE, 'Regional Strategic Information Officer', '["Data Clerk", "Data Entry Volunteer", "ART Nurse / Clinician", "Other"]'::jsonb, TRUE, TRUE),
-('HCP', 'Health Care Provider', 'EpiC Project Weekly Work Log-Sheet', 'START_END', TRUE, FALSE, 'Senior Regional Technical Officer, Care & Treatment', '["Nurse", "Clinician", "Lab Tech", "Other"]'::jsonb, TRUE, TRUE)
+('CHW', 'Community Health Worker', 'EpiC Project Weekly Work Log-Sheet – CHW', 'DIRECT', FALSE, FALSE, 'Senior Regional Technical Officer, Community Engagement', '["CHW (HIV + TB)", "CHW/CBHSCO Focal Person", "Other"]'::jsonb, FALSE, TRUE),
+('DATA_CLERK', 'Data Clerk', 'Weekly Work Log-Sheet – Data Clerks', 'START_END', TRUE, FALSE, 'Regional Strategic Information Officer', '["Facility Data Clerk", "District Data Officer", "Data Intern", "Data Clerk (HVL Hub)", "PnP Facility HRH", "Other"]'::jsonb, TRUE, TRUE),
+('HCP', 'Health Care Provider', 'EpiC Project Weekly Work Log-Sheet', 'START_END', TRUE, FALSE, 'Senior Regional Technical Officer, Care & Treatment', '["OPD Tester", "Clinical Officer", "Enrolled Nurse", "Nurse", "Assistant Nursing Officer", "Medical/Health Attendant", "Laboratory Technician", "Laboratory Scientist", "PnP Facility HRH", "Other"]'::jsonb, TRUE, TRUE)
 ON CONFLICT (code) DO NOTHING
 RETURNING id, code
 ),

@@ -68,7 +68,15 @@ export interface Me {
   /** Set after an administrator issues a temporary password; nothing else works until it is changed. */
   must_change_password: boolean;
   roles: string[];
-  staff: { id: number; legal_name: string; cadre_id: number; status: string; occupation: string | null } | null;
+  staff: {
+    id: number;
+    legal_name: string;
+    cadre_id: number;
+    status: string;
+    occupation: string | null;
+    /** HCP only: GOVERNMENT staff are paid for Services only and have no Payroll timesheet. */
+    facility_staff_type?: string | null;
+  } | null;
   cadre: Cadre | null;
   organizations: { id: number; name: string; type: string }[];
   scopes: UserScope[];

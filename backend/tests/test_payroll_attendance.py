@@ -3,7 +3,7 @@ import pytest
 
 from .test_ctc_facility_approval import no_provider_sms
 from .test_v22_finance import v22
-from .conftest import category_id
+from .conftest import HCP_DAILY, category_id
 
 
 @pytest.mark.parametrize("provider", ["chw1", "hcp1", "clerk1"])
@@ -56,7 +56,8 @@ def test_same_date_payroll_and_services_have_independent_limits_and_approvals(
             assert approved["approved_at"]
             assert not approved["claims"]  # No invented salary or payable zero-value claim.
         else:
-            assert float(approved["claims"][0]["amount"]) == 100
+            # An HCP is paid the daily amount for their facility staff type (hcp1: Project), not the service's own rate.
+            assert float(approved["claims"][0]["amount"]) == (HCP_DAILY["PROJECT"] if provider == "hcp1" else 100)
     if provider == "chw1":
         failed = api.post(f"/worklogs/{payroll['id']}/actions/finance_review", v22["finance"], {
             "review_confirmed": True, "review_type": "PAYROLL", "category_id": category_id(db, "B"),

@@ -58,7 +58,7 @@ def selection(claim):
             "service_names": m["services"], "amount": m["amount"]}
 
 
-def test_batch_validation_rollback_partial_and_existing_full_payments(api, db, empty_period, v22, monkeypatch):
+def test_batch_validation_rollback_partial_and_existing_full_payments(api, db, empty_period, v22, monkeypatch, hcp1_government):
     for user in (v22["finance"], "tofficer1", "rpm1", "fhifin1", "fhifin2"):
         all_cadres(db, user)
     claims = [ready_claim(api, db, empty_period, v22["finance"], provider)

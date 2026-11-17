@@ -38,7 +38,7 @@ def reviewed(api, db, period, context, provider="chw1"):
 
 
 @pytest.mark.parametrize("provider", ["chw1", "hcp1", "clerk1"])
-def test_only_selected_central_can_approve_before_payment(api, db, empty_period, v22, provider):
+def test_only_selected_central_can_approve_before_payment(api, db, empty_period, v22, provider, hcp1_government):
     log, body = reviewed(api, db, empty_period, v22, provider)
     candidates = api.get(f"/finance/central-reviewers?work_log_id={log['id']}", v22["finance"])
     assert body["central_reviewer_id"] in {row["id"] for row in candidates}

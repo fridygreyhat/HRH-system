@@ -5,7 +5,7 @@ import { Cadre } from '../../types';
 import { Alert, Field, Tabs } from '../ui';
 import { AssignmentFields, AssignmentPayload, AssignmentValue, EMPTY_ASSIGNMENT, assignmentPayload } from './AssignmentFields';
 import { OccupationFields } from './StaffForms';
-import { EMPTY_PROVIDER_PAY, ProviderPay, ProviderPayFields, providerPayPayload } from './ProviderPayFields';
+import { EMPTY_PROVIDER_PAY, NO_PROVIDER_PAY, ProviderPay, ProviderPayFields, providerPayPayload, SERVICES_ONLY_NOTE } from './ProviderPayFields';
 import { FACILITY_STAFF_TYPE_MESSAGE, FacilityStaffType, FacilityStaffTypeField, isHcp } from './FacilityStaffType';
 
 /** Active staff record that has no login yet (GET /admin/unlinked-staff). */
@@ -45,9 +45,10 @@ export type HealthWorkerPayload =
         middle_name: string | null;
         last_name: string;
         verified_phone: string;
-        tin_number: string;
-        bank_name: string;
-        bank_account_number: string;
+        /** Empty for Government facility staff, who are paid for Services only. */
+        tin_number: string | null;
+        bank_name: string | null;
+        bank_account_number: string | null;
         occupation: string | null;
         occupation_other: string | null;
         facility_staff_type: FacilityStaffType | null;
@@ -97,7 +98,8 @@ export function healthWorkerPayload(v: HealthWorkerValue, phone: string): Health
   if (hcp && !v.facility_staff_type) return FACILITY_STAFF_TYPE_MESSAGE;
   if (!v.assignment.region_id) return 'Choose the region where this health worker is placed.';
   if (!v.employment_start_date) return 'Enter the employment start date.';
-  const payment = providerPayPayload(v.pay);
+  // Government facility staff are paid for Services only: no TIN or bank account.
+  const payment = hcp && v.facility_staff_type === 'GOVERNMENT' ? NO_PROVIDER_PAY : providerPayPayload(v.pay);
   if (typeof payment === 'string') return payment;
   const other = v.occupation.trim().toLowerCase() === 'other';
   return {
@@ -218,7 +220,11 @@ export function HealthWorkerFields({
             </Field>
           </div>
           <p className="muted small">The phone above receives confirmation codes, and Services are paid to its mobile wallet.</p>
-          <ProviderPayFields value={value.pay} onChange={(pay) => set({ pay })} disabled={disabled} />
+          {isHcp(cadre?.code) && value.facility_staff_type === 'GOVERNMENT' ? (
+            <div className="notice notice-info">{SERVICES_ONLY_NOTE}</div>
+          ) : (
+            <ProviderPayFields value={value.pay} onChange={(pay) => set({ pay })} disabled={disabled} />
+          )}
           <h4>Placement</h4>
           <AssignmentFields value={value.assignment} onChange={(assignment) => set({ assignment })} showSection={cadre ? cadre.uses_section : true} />
         </>

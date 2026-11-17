@@ -41,6 +41,9 @@ DEFAULTS: dict[str, Any] = {
     "escalation_recipient_roles": [],
     # Cadres (by code) whose salary may only be paid into a bank account, never a mobile wallet.
     "bank_only_cadres": ["HCP"],
+    # Services pay for an HCP, in TZS for each day with recorded Services (one payment a day), by facility staff type.
+    "hcp_government_daily_rate": 40000,
+    "hcp_project_daily_rate": 10000,
     "login_max_failures": 5,
     "login_lockout_minutes": 15,
 }
@@ -72,6 +75,8 @@ SETTING_DESCRIPTIONS = {
     "payment_requires_proof": "Require proof upload before marking a payment PAID (Services and community claims always require it)",
     "escalation_recipient_roles": "Roles to escalate overdue items to (empty = none)",
     "bank_only_cadres": "Cadre codes (CHW, DATA_CLERK, HCP) that must be paid into a bank account",
+    "hcp_government_daily_rate": "Services pay (TZS) for a Government facility staff HCP, for each day with recorded Services activities",
+    "hcp_project_daily_rate": "Services pay (TZS) for a Project facility staff HCP, for each day with recorded Services activities",
     "login_max_failures": "Wrong passwords in a row before an account is locked",
     "login_lockout_minutes": "Minutes an account stays locked after too many wrong passwords",
 }

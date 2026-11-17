@@ -301,7 +301,7 @@ def new_staff_record(db: Session, current: CurrentUser, body: StaffCreate) -> St
         raise HTTPException(status_code=409, detail="A staff member with this phone already exists. Use a rotation instead of creating a second identity.")
     missing = [label for label, value in (("TIN", body.tin_number), ("bank name", body.bank_name),
                                           ("bank account number", body.bank_account_number)) if not value]
-    if missing:
+    if missing and body.facility_staff_type != "GOVERNMENT":  # Government facility staff are paid for Services only
         raise HTTPException(status_code=422, detail=f"A provider is registered with their {', '.join(missing)}: the CSO pays salaries into this bank account.")
     if body.tin_number and db.query(Staff.id).filter(Staff.tin_number == body.tin_number).first():
         raise HTTPException(status_code=409, detail="Another staff member already has this TIN. Check the number.")

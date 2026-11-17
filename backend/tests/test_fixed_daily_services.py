@@ -5,6 +5,7 @@ import pytest
 
 from .test_v22_finance import v22, route_log
 from .test_ctc_facility_approval import no_provider_sms
+from .conftest import HCP_DAILY
 
 
 def daily_rate(api, db, period, provider, amount=100):
@@ -42,10 +43,13 @@ def test_multiple_services_pay_highest_once_per_day(api, db, period, v22, provid
         "additional_services": [{"activity_key": rate["key"], "measures": service_measures(rate)} for rate in rates[1:]],
     }
     log = api.put(f"/worklogs/{log['id']}/entries/{day}", provider, body)
+    # An HCP is paid the daily amount for their facility staff type (Project: 10,000), not the services' own rates.
+    one_day, two_days = (HCP_DAILY["PROJECT"], 2 * HCP_DAILY["PROJECT"]) if provider == "hcp1" else (250, 400)
     assert len(log["entries"][0]["activity_snapshot"]["additional_services"]) == 2
-    assert float(log["financial_preview"]["total"]) == 250
+    assert float(log["financial_preview"]["total"]) == one_day
     assert len(log["financial_preview"]["lines"]) == 1
-    assert log["financial_preview"]["lines"][0]["activity"] == rates[1]["label_en"]
+    if provider != "hcp1":
+        assert log["financial_preview"]["lines"][0]["activity"] == rates[1]["label_en"]
     assert float(log["totals"]["hours"]) == 4  # Hours not counted three times.
     for rate in rates:
         for key in rate["fields"]:
@@ -60,16 +64,16 @@ def test_multiple_services_pay_highest_once_per_day(api, db, period, v22, provid
         "rate_value": 999, "effective_start_date": day,
     })
     log = api.put(f"/worklogs/{log['id']}/entries/{day}", provider, body)
-    assert float(log["financial_preview"]["total"]) == 250
+    assert float(log["financial_preview"]["total"]) == one_day
     next_day = str(date.fromisoformat(day) + timedelta(days=1))
     log = api.put(f"/worklogs/{log['id']}/entries/{next_day}", provider, {
         **body, "activity_key": rates[2]["key"], "measures": service_measures(rates[2], 100),
         "additional_services": [],
     })
-    assert float(log["financial_preview"]["total"]) == 400
+    assert float(log["financial_preview"]["total"]) == two_days
     log = approve(api, provider, log)
     claim = api.get(f"/claims/{log['claims'][0]['id']}", "rpm1")
-    assert float(claim["amount"]) == 400
+    assert float(claim["amount"]) == two_days
     assert len(claim["components"]) == 2
     assert all(float(component["units"]) == 1 for component in claim["components"])
     if provider == "chw1":

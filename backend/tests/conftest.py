@@ -3,6 +3,7 @@
 Set HRH_TEST_DATABASE to an unused test-only name before running. Never target
 production: the selected test database is dropped and recreated.
 """
+import contextlib
 import functools
 import calendar
 import itertools
@@ -196,6 +197,30 @@ def payment_code_skipped(request, monkeypatch):
 
 
 _months = itertools.count()
+
+
+HCP_DAILY = {"PROJECT": 10000, "GOVERNMENT": 40000}  # the hcp_*_daily_rate settings; hcp1 and hcp2 are Project staff
+
+
+@contextlib.contextmanager
+def facility_staff_type(db, username: str, value):
+    """Give a test provider another facility staff type for the duration of a block (None: not yet set)."""
+    from backend.models import Staff, User
+    staff = db.query(Staff).join(User, User.id == Staff.user_id).filter(User.username == username).one()
+    before, staff.facility_staff_type = staff.facility_staff_type, value
+    db.commit()
+    try:
+        yield
+    finally:
+        db.query(Staff).filter_by(id=staff.id).update({Staff.facility_staff_type: before})
+        db.commit()
+
+
+@pytest.fixture()
+def hcp1_government(db):
+    """hcp1 as Government facility staff: Services pay 40,000 a day, the amount these tests price their services at."""
+    with facility_staff_type(db, "hcp1", "GOVERNMENT"):
+        yield
 
 
 def test_month(n: int) -> tuple[int, int, int]:

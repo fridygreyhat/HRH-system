@@ -27,7 +27,7 @@ def empty_period(api):
 
 
 @pytest.mark.parametrize("provider", ["chw1", "hcp1", "clerk1"])
-def test_every_cadre_uses_monthly_budget_not_legacy_category_allocations(api, db, empty_period, v22, provider):
+def test_every_cadre_uses_monthly_budget_not_legacy_category_allocations(api, db, empty_period, v22, provider, hcp1_government):
     period = empty_period
     for user in (v22["finance"], "tofficer1", "rpm1", "fhifin1", "fhifin2"):
         all_cadres(db, user)

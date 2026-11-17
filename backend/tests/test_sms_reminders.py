@@ -76,7 +76,8 @@ def test_nothing_is_sent_to_reviewers_outside_the_sending_hours(db):
 def test_providers_who_have_not_submitted_are_reminded_on_the_23rd_and_25th(api, db):
     chw = db.query(Staff).join(User, User.id == Staff.user_id).filter(User.username == "chw1").one()
     hcp = db.query(Staff).join(User, User.id == Staff.user_id).filter(User.username == "hcp1").one()
-    period = PayPeriod(start_date=date(2001, 2, 26), end_date=date(2001, 3, 25), status="OPEN", period_label="Reminder test")
+    # A far-future pay month: the past months are taken one by one by the tests' own pay periods.
+    period = PayPeriod(start_date=date(2096, 2, 26), end_date=date(2096, 3, 25), status="OPEN", period_label="Reminder test")
     db.add(period)
     db.flush()
     from backend.models import StaffAssignment
@@ -86,14 +87,14 @@ def test_providers_who_have_not_submitted_are_reminded_on_the_23rd_and_25th(api,
     db.add(submitted)
     db.commit()
     try:
-        assert reminders.run_submit_reminders(db, now=datetime(2001, 3, 24, 9, tzinfo=TZ)) == 0  # not a reminder day
-        assert reminders.run_submit_reminders(db, now=datetime(2001, 3, 23, 7, tzinfo=TZ)) == 0  # before 8:00
-        assert reminders.run_submit_reminders(db, now=datetime(2001, 3, 23, 9, tzinfo=TZ)) >= 1
+        assert reminders.run_submit_reminders(db, now=datetime(2096, 3, 24, 9, tzinfo=TZ)) == 0  # not a reminder day
+        assert reminders.run_submit_reminders(db, now=datetime(2096, 3, 23, 7, tzinfo=TZ)) == 0  # before 8:00
+        assert reminders.run_submit_reminders(db, now=datetime(2096, 3, 23, 9, tzinfo=TZ)) >= 1
         due = db.query(SMSOutbox).filter(SMSOutbox.event_name == "TIMESHEET_DUE", SMSOutbox.created_at >= utcnow() - timedelta(minutes=5))
         hcp_user, chw_user = db.get(User, hcp.user_id), db.get(User, chw.user_id)
         assert due.filter(SMSOutbox.user_id == hcp_user.id).count() == 1  # has not submitted
         assert due.filter(SMSOutbox.user_id == chw_user.id).count() == 0  # already submitted
-        assert "25 March 2001" in due.filter(SMSOutbox.user_id == hcp_user.id).one().message_body or "Machi" in due.filter(SMSOutbox.user_id == hcp_user.id).one().message_body
+        assert "25 March 2096" in due.filter(SMSOutbox.user_id == hcp_user.id).one().message_body or "Machi" in due.filter(SMSOutbox.user_id == hcp_user.id).one().message_body
     finally:
         db.delete(submitted)
         db.commit()

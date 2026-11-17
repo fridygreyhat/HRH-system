@@ -137,7 +137,7 @@ def test_deductions_show_provider_services_and_hide_other_cadres(api, db, empty_
     api.get(f"/monthly-service-budgets/{elsewhere.id}/deductions", v22["finance"], expect=404)
 
 
-def test_competing_submissions_refresh_preloaded_budget_under_lock(api, db, empty_period, v22):
+def test_competing_submissions_refresh_preloaded_budget_under_lock(api, db, empty_period, v22, hcp1_government):
     first, _ = reviewed(api, db, empty_period, v22, "chw1")
     second, _ = reviewed(api, db, empty_period, v22, "hcp1")
     claim_ids = [db.query(PaymentClaim.id).filter_by(work_log_id=log["id"]).scalar() for log in (first, second)]

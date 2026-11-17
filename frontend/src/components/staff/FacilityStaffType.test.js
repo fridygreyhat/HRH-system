@@ -24,3 +24,11 @@ test('labels', () => {
   expect(facilityStaffTypeLabel('PROJECT')).toBe('Project facility staff');
   expect(facilityStaffTypeLabel(null)).toBeNull();
 });
+
+test('government facility staff are registered without TIN or bank details', () => {
+  const gov = worker({ cadre_id: '3', cadre_code: 'HCP', facility_staff_type: 'GOVERNMENT', pay: { tin_number: '', bank_name: '', bank_account_number: '' } });
+  expect(healthWorkerPayload(gov, '0755123504').staff).toMatchObject({
+    facility_staff_type: 'GOVERNMENT', tin_number: null, bank_name: null, bank_account_number: null });
+  const project = { ...gov, facility_staff_type: 'PROJECT' };
+  expect(healthWorkerPayload(project, '0755123504')).toMatch(/TIN, bank name, bank account number/);
+});

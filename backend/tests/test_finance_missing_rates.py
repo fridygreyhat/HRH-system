@@ -1,3 +1,4 @@
+import contextlib
 from copy import deepcopy
 from datetime import date, timedelta
 from decimal import Decimal
@@ -8,7 +9,7 @@ import pytest
 from backend.models import ActivityRate, Cadre, PaymentClaim, Region, Staff, StaffAssignment, User, UserReviewCadre, WorkLog, WorkLogEntry
 from backend.services.finance_gate import preview
 from backend.services import claims
-from .conftest import category_id
+from .conftest import category_id, facility_staff_type
 from .test_ctc_facility_approval import no_provider_sms
 from .test_v22_finance import v22
 
@@ -52,6 +53,12 @@ def rate_for(db, log, placement, source_key, effective, amount=40000):
 @pytest.mark.parametrize("provider", ["chw1", "hcp1", "clerk1"])
 @pytest.mark.parametrize("kind", ["SERVICES", "PAYROLL"])
 def test_rm_approves_unpriced_work_but_finance_cannot_prepare_payment(api, db, period, v22, provider, kind):
+    # An HCP's Services are priced by facility staff type, so an HCP's work is unpriced while the type is not set.
+    with facility_staff_type(db, provider, None) if provider == "hcp1" else contextlib.nullcontext():
+        _unpriced_work_waits(api, db, period, v22, provider, kind)
+
+
+def _unpriced_work_waits(api, db, period, v22, provider, kind):
     log, _, _ = unpriced_log(db, period, provider, kind)
     result = api.post(f"/worklogs/{log.id}/actions/authorize", "rpm1", {
         "review_confirmed": True, "review_type": kind,
@@ -83,7 +90,7 @@ def test_rm_approves_unpriced_work_but_finance_cannot_prepare_payment(api, db, p
         "review_confirmed": True, "review_type": kind,
         "category_id": category_id(db, "A" if kind == "SERVICES" else "B"),
     }, expect=422)
-    assert "amounts/rates are missing" in error["detail"]
+    assert ("Government facility staff or Project facility staff" if provider == "hcp1" else "amounts/rates are missing") in error["detail"]
     assert api.get(f"/worklogs/{log.id}", v22["finance"])["claims"] == []
 
 
@@ -127,7 +134,7 @@ def test_already_priced_and_frozen_finance_claims_are_not_repriced(api, db, peri
     assert preview(db, log) == saved
     assert claim.amount == Decimal("40000")
 
-    other_log, other_entry, _ = unpriced_log(db, period, provider="hcp1")
+    other_log, other_entry, _ = unpriced_log(db, period, provider="clerk1")
     other_entry.activity_snapshot = {**other_entry.activity_snapshot, "rate_value": "30000", "unit_type": "PER_DAY"}
     db.commit()
     assert Decimal(preview(db, other_log)["total"]) == 30000  # Saved positive terms are also retained.

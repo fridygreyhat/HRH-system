@@ -62,6 +62,27 @@ def _daily_terms(db, log, assignment, keys, day):
             "rate_effective_start_date": str(row.effective_start_date)}, None
 
 
+HCP_DAILY_RATES = {"GOVERNMENT": "hcp_government_daily_rate", "PROJECT": "hcp_project_daily_rate"}
+
+
+def _hcp_daily_rate(db, log):
+    """An HCP's Services pay a set amount a day by facility staff type, not the service's own rate.
+
+    Returns (None, None) for other cadres, (terms, None) for an HCP with a type, or (None, error) when the type is missing.
+    """
+    from ..core.settings import get_setting
+    from ..models import Cadre
+    if db.get(Cadre, log.cadre_id).code != "HCP":
+        return None, None
+    staff = db.get(Staff, log.staff_id)
+    key = HCP_DAILY_RATES.get(staff.facility_staff_type)
+    if not key:
+        return None, (f"Set whether {staff.legal_name} is Government facility staff or Project facility staff "
+                      "on the staff record; Services pay depends on it.")
+    return {"rate_value": str(Decimal(get_setting(db, key)).quantize(Decimal("0.01"))), "currency": "TZS",
+            "unit_type": "PER_DAY", "rate_setting": key, "rate_effective_start_date": None}, None
+
+
 def preview(db, log) -> dict:
     # A finance claim is an immutable financial proposal/history. Later rate
     # setup must never silently reprice it, including completed payments.
@@ -73,9 +94,20 @@ def preview(db, log) -> dict:
         return deepcopy({key: snapshot[key] for key in ("lines", "total", "currency", "exceptions")})
     lines, exceptions, currencies = [], [], set()
     total = Decimal(0)
+    hcp_terms = None
+    if log.workflow_version >= 2 and log.work_type == "SERVICES":
+        hcp_terms, hcp_error = _hcp_daily_rate(db, log)
+        if hcp_error:
+            return {"lines": [], "total": "0", "currency": None, "exceptions": [hcp_error]}
     for entry, measures in entries_with_measures(db, log.id):
         activity = deepcopy(entry.activity_snapshot or {})
-        if log.workflow_version >= 2 and log.work_type == "SERVICES":
+        if hcp_terms and activity.get("key"):
+            # Every service that day carries the same daily amount, so the day is paid once at that amount.
+            # A day without a recorded service stays unpriced and is reported below.
+            activity = {**activity, **hcp_terms}
+            for extra in activity.get("additional_services", []):
+                extra["activity"] = {**extra["activity"], **hcp_terms}
+        elif log.workflow_version >= 2 and log.work_type == "SERVICES":
             activity, quote_error = _quote_missing_daily_amount(db, log, activity, entry.entry_date)
             quote_errors = [quote_error] if quote_error else []
             for extra in activity.get("additional_services", []):
@@ -119,6 +151,7 @@ def preview(db, log) -> dict:
             "unit_type": unit_type, "measure_key": activity.get("billable_field"),
             "rate_effective_start_date": activity.get("rate_effective_start_date"),
             "units": str(units), "rate": str(rate), "amount": str(amount), "currency": currency,
+            **({"rate_setting": activity["rate_setting"]} if activity.get("rate_setting") else {}),
         })
         total += amount
     if not lines:
