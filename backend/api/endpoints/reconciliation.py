@@ -33,6 +33,13 @@ def dashboard(month: str = Query(pattern=MONTH), months: int = Query(default=6, 
     return rec.dashboard(db, current, month, months, region_id)
 
 
+@router.get("/overview")
+def overview(start: str = Query(pattern=MONTH), end: str = Query(pattern=MONTH), region_id: Optional[int] = Query(default=None, gt=0),
+             db: Session = Depends(get_db), current: CurrentUser = Depends(Viewer)):
+    """The central dashboard: every region and every month in the range (at most 24 months)."""
+    return rec.overview(db, current, start, end, region_id)
+
+
 @router.get("/export")
 def export(month: str = Query(pattern=MONTH), region_id: Optional[int] = Query(default=None, gt=0),
            cadre: Optional[Literal["CHW", "DATA_CLERK", "HCP"]] = None,

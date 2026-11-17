@@ -435,6 +435,10 @@ def _budget_total(cells):
     return {"allocated": allocated, "used": used, "remaining": max(allocated - used, ZERO)}
 
 
+def n_budget(cell) -> bool:
+    return bool(cell and (cell["allocated"] or cell["used"]))
+
+
 def _money_of(totals):
     return {key: totals[key] for key in ("expected", "paid", "outstanding", "overpaid", "in_review")}
 
@@ -471,13 +475,15 @@ def dashboard(db, current, month: str, months: int = 6, region_id: int | None = 
 
     names = {r["id"]: r["name"] for r in chosen["regions"]}
     by_region = grouped(lambda row: row["region_name"] or "—", lambda row: row["region_name"] or "—")
-    for rid in region_ids:  # a region with a budget but no payments yet still shows its budget
+    for rid in [r for r in region_ids if n_budget(budgets[month].get(r))]:  # a budget but no payments yet: still shown
         by_region.setdefault(names.get(rid, "—"), {"key": names.get(rid, "—"), "label": names.get(rid, "—"), "payroll_expected": ZERO,
                                                    "payroll_paid": ZERO, "services_expected": ZERO, "services_paid": ZERO,
                                                    "outstanding": ZERO, "issues": 0})
     for rid in region_ids:
         cell = budgets[month].get(rid, {"allocated": ZERO, "used": ZERO})
-        group = by_region[names.get(rid, "—")]
+        group = by_region.get(names.get(rid, "—"))
+        if group is None:
+            continue
         group["budget_allocated"], group["budget_used"] = cell["allocated"], cell["used"]
     by_cadre = grouped(lambda row: row["cadre_code"], lambda row: row["cadre_name"])
     funding = defaultdict(lambda: {"expected": ZERO, "paid": ZERO, "in_review": ZERO})
@@ -496,4 +502,86 @@ def dashboard(db, current, month: str, months: int = 6, region_id: int | None = 
         "by_cadre": sorted(by_cadre.values(), key=lambda g: g["label"]),
         "by_funding": [{"source": key, **value} for key, value in sorted(funding.items())],
         "signoff": chosen["signoff"],
+    })
+
+
+# ---- Central dashboard: every region, every month in a range ------------------------------------------------------
+
+MAX_OVERVIEW_MONTHS = 24
+
+
+def _months_between(start: str, end: str) -> list[str]:
+    reports.check_month(start)
+    reports.check_month(end)
+    if start > end:
+        raise HTTPException(422, "The first month must come before the last month.")
+    sequence, (year, number) = [], map(int, start.split("-"))
+    while True:
+        month = f"{year}-{number:02d}"
+        sequence.append(month)
+        if month == end:
+            return sequence
+        if len(sequence) >= MAX_OVERVIEW_MONTHS:
+            raise HTTPException(422, f"Choose at most {MAX_OVERVIEW_MONTHS} months.")
+        number += 1
+        if number == 13:
+            year, number = year + 1, 1
+
+
+def _cell():
+    return {"salary_expected": ZERO, "salary_paid": ZERO, "services_expected": ZERO, "services_paid": ZERO,
+            "services_in_review": ZERO, "outstanding": ZERO, "issues": 0, "budget_allocated": ZERO, "budget_used": ZERO}
+
+
+def _add(cell, row):
+    if row["work_type"] == "PAYROLL":
+        cell["salary_expected"] += Decimal(row["expected"] or 0)
+        cell["salary_paid"] += Decimal(row["paid"])
+    else:
+        cell["services_expected"] += Decimal(row["expected"] or 0)
+        cell["services_paid"] += Decimal(row["paid"])
+        cell["services_in_review"] += Decimal(row["in_review"])
+    cell["outstanding"] += Decimal(row["outstanding"])
+    cell["issues"] += len(row["issues"])
+
+
+def overview(db, current, start: str, end: str, region_id: int | None = None) -> dict:
+    """Salaries and Services approved and paid, and the Services budget, for every region and every month in the range."""
+    sequence = _months_between(start, end)
+    results = {m: build(db, current, m, region_id) for m in sequence}
+    regions = results[sequence[-1]]["regions"]
+    names = {r["id"]: r["name"] for r in regions}
+    region_ids = [region_id] if region_id else list(names)
+    budgets = _budgets(db, sequence, region_ids)
+    months, by_region, by_cadre, total = [], {}, {}, _cell()
+    reconciled = 0
+    for month in sequence:
+        result = results[month]
+        month_cell = _cell()
+        for row in result["providers"]:
+            region = row["region_name"] or "—"
+            region_row = by_region.setdefault(region, {"region": region, "months": {}, "total": _cell()})
+            for cell in (month_cell, total, region_row["total"], region_row["months"].setdefault(month, _cell()),
+                         by_cadre.setdefault(row["cadre_name"], _cell())):
+                _add(cell, row)
+        for rid, budget in budgets[month].items():
+            if not n_budget(budget):
+                continue
+            region = names.get(rid, "—")
+            region_row = by_region.setdefault(region, {"region": region, "months": {}, "total": _cell()})
+            for cell in (month_cell, total, region_row["total"], region_row["months"].setdefault(month, _cell())):
+                cell["budget_allocated"] += budget["allocated"]
+                cell["budget_used"] += budget["used"]
+        month_cell["issues"] = len(result["issues"])
+        is_reconciled = bool(result["signoff"] and result["signoff"]["current"])
+        reconciled += is_reconciled
+        months.append({"month": month, **month_cell, "reconciled": is_reconciled})
+    total["issues"] = sum(m["issues"] for m in months)
+    return _out({
+        "start": start, "end": end, "region_id": region_id, "regions": regions, "months": months,
+        "by_region": [{"region": row["region"], "total": row["total"],
+                       "months": [{"month": m, **row["months"].get(m, _cell())} for m in sequence]}
+                      for _, row in sorted(by_region.items())],
+        "by_cadre": [{"cadre": name, **cell} for name, cell in sorted(by_cadre.items())],
+        "totals": {**total, "months_reconciled": reconciled, "month_count": len(sequence)},
     })

@@ -7,7 +7,7 @@ import pytest
 from openpyxl import load_workbook
 from sqlalchemy import text
 
-from backend.models import AuditEvent, PaymentClaim, PaymentRecord, Region, User
+from backend.models import AuditEvent, Organization, PaymentClaim, PaymentRecord, Region, User
 from .conftest import category_id, make_period
 from .test_finance_missing_rates import unpriced_log
 from .test_finance_monthly_reports import all_cadres
@@ -26,7 +26,7 @@ def signed_month(api, db, v22):
     _, entry, placement = approved_log(db, period, "chw1")
     month = entry.entry_date.strftime("%Y-%m")
     sign(api, v22, month)
-    return {"month": month, "cso_id": placement.organization_id, "staff_id": placement.staff_id,
+    return {"month": month, "period": period, "cso_id": placement.organization_id, "staff_id": placement.staff_id,
             "region_id": placement.region_id, "finance": v22["finance"]}
 
 
@@ -98,8 +98,15 @@ def test_cso_records_salary_payments_and_finance_reconciles_them(api, db, signed
     assert [p["voided"] for p in history] == [False, True]
 
 
-def test_who_sees_and_signs_the_reconciliation(api, db, signed_month):
-    state = signed_month
+def test_who_sees_signs_and_the_dashboards(api, db, signed_month):
+    """One signed month for all of these: the suite has few past months left for pay periods (conftest.test_month)."""
+    _who_sees_and_signs(api, db, signed_month)  # ends with the CHW paid in full
+    _super_admin_and_the_dashboard(api, db, signed_month)
+    _central_dashboard(api, db, signed_month)
+    _services(api, db, signed_month["period"])
+
+
+def _who_sees_and_signs(api, db, state):
     path = f"/finance/reconciliation?month={state['month']}"
     for user in ("fhifin1", "oversight1", state["finance"]):
         assert api.get(path, user)["month"] == state["month"]
@@ -133,15 +140,17 @@ def test_who_sees_and_signs_the_reconciliation(api, db, signed_month):
     assert db.query(AuditEvent).filter_by(entity_type="finance_reconciliation", action="download").count() >= 2
 
 
-def test_services_approved_claims_are_reconciled_against_their_payments(api, db, period, v22):
+def _services(api, db, period):
     owner = db.query(User).filter_by(username="admin").one()
+    fhi360 = db.query(Organization).filter_by(type="FHI360").first().id  # FHI360 pays Services (route A)
 
     def claim(provider, status, amount, paid=None, proof=False):
         log, _, placement = unpriced_log(db, period, provider, "SERVICES")
         row = PaymentClaim(workflow_version=2, work_type="SERVICES", work_log_id=log.id, staff_id=log.staff_id,
                            period_id=log.period_id, assignment_id=log.assignment_id, route_code="A",
                            category_id=None if status == "PENDING_FINANCE_REVIEW" else category_id(db, "A"),
-                           amount=Decimal(amount), currency="TZS", status=status, created_by=owner.id)
+                           amount=Decimal(amount), currency="TZS", status=status, created_by=owner.id,
+                           payor_org_id=fhi360, executor_org_id=fhi360)
         db.add(row)
         db.flush()
         if paid:
@@ -172,9 +181,7 @@ def test_services_approved_claims_are_reconciled_against_their_payments(api, db,
     assert [i["issue"] for i in unsigned["issues"]] == ["PAYROLL_NOT_SIGNED"] and unsigned["providers"] == []
 
 
-def test_super_admin_and_the_dashboard(api, db, signed_month):
-    state = signed_month
-    pay(api, state, [{"staff_id": state["staff_id"], "amount": "100000"}], "DASH-1")
+def _super_admin_and_the_dashboard(api, db, state):
     for user in ("admin", "fhifin1", "oversight1", state["finance"]):  # the Super Admin sees and signs like Central Finance
         result = api.get(f"/finance/reconciliation?month={state['month']}", user)
         assert result["month"] == state["month"]
@@ -185,10 +192,29 @@ def test_super_admin_and_the_dashboard(api, db, signed_month):
     board = api.get(f"/finance/reconciliation/dashboard?month={state['month']}&months=3&region_id={state['region_id']}", "admin")
     assert [m["month"] for m in board["months"]][-1] == state["month"] and len(board["months"]) == 3
     payroll = board["totals"]["payroll"]
-    assert Decimal(payroll["paid"]) >= 100000 and Decimal(payroll["expected"]) >= 150000
+    assert Decimal(payroll["paid"]) >= 150000 and Decimal(payroll["expected"]) >= 150000
     region = next(r for r in board["by_region"] if r["key"] == db.get(Region, state["region_id"]).name)
-    assert Decimal(region["payroll_paid"]) >= 100000 and "budget_allocated" in region
+    assert Decimal(region["payroll_paid"]) >= 150000 and "budget_allocated" in region
     chw = next(c for c in board["by_cadre"] if c["key"] == "CHW")
-    assert Decimal(chw["payroll_expected"]) >= 150000 and Decimal(chw["outstanding"]) >= 50000
+    assert Decimal(chw["payroll_expected"]) >= 150000 and Decimal(chw["payroll_paid"]) >= 150000
     assert set(board["totals"]["budget"]) == {"allocated", "used", "remaining"}
     api.get(f"/finance/reconciliation/dashboard?month={state['month']}&months=13", "admin", expect=422)
+
+
+def _central_dashboard(api, db, state):
+    year, number = map(int, state["month"].split("-"))
+    start = f"{year - (number <= 2)}-{(number - 3) % 12 + 1:02d}"  # two months before
+    board = api.get(f"/finance/reconciliation/overview?start={start}&end={state['month']}", "admin")
+    assert [m["month"] for m in board["months"]][-1] == state["month"] and len(board["months"]) == 3
+    month = board["months"][-1]
+    assert Decimal(month["salary_paid"]) >= 150000 and Decimal(month["salary_expected"]) >= 150000
+    region = next(r for r in board["by_region"] if r["region"] == db.get(Region, state["region_id"]).name)
+    assert [m["month"] for m in region["months"]] == [m["month"] for m in board["months"]]
+    assert Decimal(region["total"]["salary_paid"]) >= 150000
+    assert any(c["cadre"] == "Community Health Worker" for c in board["by_cadre"])
+    assert Decimal(board["totals"]["salary_paid"]) >= Decimal(month["salary_paid"])
+    for user in ("fhifin1", "oversight1", state["finance"]):
+        api.get(f"/finance/reconciliation/overview?start={state['month']}&end={state['month']}", user)
+    api.get(f"/finance/reconciliation/overview?start={state['month']}&end={state['month']}", "csofin1", expect=403)
+    api.get(f"/finance/reconciliation/overview?start={state['month']}&end={start}", "admin", expect=422)  # backwards
+    api.get(f"/finance/reconciliation/overview?start=2000-01&end=2026-01", "admin", expect=422)  # more than 24 months

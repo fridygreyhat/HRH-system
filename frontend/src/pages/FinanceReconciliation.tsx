@@ -5,6 +5,7 @@ import { dateOnly, money, num, payMonth, payMonthDates, previousMonth, todayLoca
 import { useAction, useApi } from '../hooks';
 import { Alert, AsyncState, Empty, Field, KpiStrip, Section } from '../components/ui';
 import { AuditDashboard } from '../components/finance/AuditDashboard';
+import { CentralDashboard } from '../components/finance/CentralDashboard';
 import './polish-admin.css';
 
 type WorkType = 'PAYROLL' | 'SERVICES';
@@ -152,7 +153,7 @@ export function FinanceReconciliation() {
   const [search, setSearch] = useState('');
   const [issuesOnly, setIssuesOnly] = useState(true);
   const [page, setPage] = useState(0);
-  const [tab, setTab] = useState<'dashboard' | 'detail'>('dashboard');
+  const [tab, setTab] = useState<'central' | 'dashboard' | 'detail'>('central');
   const query = { month, region_id: regionId, work_type: workType, cadre };
   const data = useApi<Reconciliation>(month ? `/finance/reconciliation${qs(query)}` : null);
   const download = useAction();
@@ -177,14 +178,15 @@ export function FinanceReconciliation() {
         </div>
       </div>
       <nav className="subnav" aria-label={tr('Financial audit views', 'Mionekano ya ukaguzi')}>
-        <button type="button" aria-current={tab === 'dashboard' ? 'page' : undefined} onClick={() => setTab('dashboard')}>{tr('Dashboard', 'Dashibodi')}</button>
+        <button type="button" aria-current={tab === 'central' ? 'page' : undefined} onClick={() => setTab('central')}>{tr('Central dashboard', 'Dashibodi kuu')}</button>
+        <button type="button" aria-current={tab === 'dashboard' ? 'page' : undefined} onClick={() => setTab('dashboard')}>{tr('One month', 'Mwezi mmoja')}</button>
         <button type="button" aria-current={tab === 'detail' ? 'page' : undefined} onClick={() => setTab('detail')}>{tr('Reconciliation', 'Ulinganisho')}</button>
       </nav>
       <div className="fin-toolbar">
         <div className="filters">
-          <Field label={tr('Month worked', 'Mwezi wa kazi')} hint={payMonthDates(month)}>
+          {tab !== 'central' && <Field label={tr('Month worked', 'Mwezi wa kazi')} hint={payMonthDates(month)}>
             <input type="month" value={month} onChange={(event) => { setMonth(event.target.value); setPage(0); }} />
-          </Field>
+          </Field>}
           <Field label={tr('Region', 'Mkoa')}>
             <select value={regionId} onChange={(event) => { setRegionId(event.target.value); setPage(0); }}>
               <option value="">{tr('All my regions', 'Mikoa yangu yote')}</option>
@@ -211,7 +213,8 @@ export function FinanceReconciliation() {
           <button type="button" className="btn btn-secondary" onClick={() => save('csv')} disabled={download.busy || !data.data}>{tr('Download CSV', 'Pakua CSV')}</button>
         </div>}
       </div>
-      {tab === 'dashboard' ? <div className="dash"><AuditDashboard month={month} regionId={regionId} /></div> : <>
+      {tab === 'central' ? <div className="dash"><CentralDashboard regionId={regionId} /></div>
+        : tab === 'dashboard' ? <div className="dash"><AuditDashboard month={month} regionId={regionId} /></div> : <>
       <Alert>{download.error}</Alert>
       <AsyncState data={data.data} error={data.error} loading={data.loading}>
         {(d) => (
