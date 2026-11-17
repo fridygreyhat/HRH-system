@@ -14,7 +14,7 @@ from .api.endpoints import monthly_budgets, public_holidays, salary_amounts
 from .core import config
 from .db.session import get_db
 from .api.endpoints import backdate_access, organizations, community_claims, provider_payment_details, cso_finance, finance_pack
-from .api.endpoints import setup_transfer
+from .api.endpoints import setup_transfer, reconciliation
 
 logging.basicConfig(level=logging.INFO)
 
@@ -78,6 +78,7 @@ app.include_router(backdate_access.router, prefix="/backdate-access", tags=["Bac
 app.include_router(demos.router, prefix="/demos", tags=["Read-only simulated demos"])
 app.include_router(worklogs.router, prefix="/worklogs", tags=["Work logs"])
 app.include_router(rates.router, prefix="/rates", tags=["Activity rates"])
+app.include_router(reconciliation.router, prefix="/finance/reconciliation", tags=["Financial audit and reconciliation"])
 app.include_router(finance.router, prefix="/finance", tags=["Regional Finance"])
 app.include_router(claims.router, prefix="/claims", tags=["Payment claims"])
 app.include_router(community_claims.router, prefix="/community-claims", tags=["Direct community claims"])

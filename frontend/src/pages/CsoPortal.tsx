@@ -7,6 +7,7 @@ import { Batch, CsoFinanceOrganization, ClaimSummary, PayPeriod } from '../types
 import { ClaimDrawer } from '../components/claims/ClaimDrawer';
 import { BatchDrawer } from '../components/batches/BatchDrawer';
 import { SalaryTimesheets } from '../components/cso/SalaryTimesheets';
+import { SalaryPayments } from '../components/cso/SalaryPayments';
 import { Alert, AsyncState, Empty, Field, KpiStrip, PersonCell, RouteBadge, Section, StatTile, StatusBadge, WorkTypeChip } from '../components/ui';
 import './polish-finance.css';
 import { confirmAction } from '../components/ConfirmDialog';
@@ -361,6 +362,7 @@ export function CsoPortal({ initialSection }: { initialSection?: 'export' } = {}
       <Alert kind="success">{notice}</Alert>
 
       {show('export') && <SalaryTimesheets csoId={selectedCsoId} noCso={organizations.data?.length === 0} />}
+      {show('export') && selectedCsoId && <SalaryPayments csoId={selectedCsoId} />}
 
       {show('pending') && (
         <Section title={sw ? 'Malipo yanayosubiri' : 'Pending payments'} actions={<span className="muted small">{sw ? 'Ya zamani kwanza' : 'Oldest first'}</span>}>

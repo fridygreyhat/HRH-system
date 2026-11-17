@@ -4,7 +4,11 @@ import io
 from decimal import Decimal
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from datetime import date
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -17,6 +21,8 @@ from ...models import BudgetLine, Organization, PayPeriod, PaymentClaim, Staff, 
 from ...services import batches as bt, budgets as bg, payments as pay
 from ...services import claims as cl, payment_forms, salary_timesheets as timesheets
 from ...services import monthly_report_approval as monthly_reports
+from ...services import payroll_payments
+from ...core.settings import get_setting
 from ...services.provider_payment_details import details
 from ...services.scope import claim_visibility
 from .provider_payment_details import private_response
@@ -216,3 +222,67 @@ def export_payroll(cso_id: int, period_id: int, region_id: int | None = None,
     return Response(buffer.getvalue().encode("utf-8-sig"), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="cso-{org.id}-payroll-period-{period_id}.csv"',
                              "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+
+
+# ---- Salary payments the CSO made for a signed month (reconciled by Central Finance) -------------------------------
+
+@router.get("/salary-payments")
+def salary_payments(cso_id: int, month: str = Query(pattern=MONTH), db: Session = Depends(get_db),
+                    current: CurrentUser = Depends(require_roles(CSO_FINANCE))):
+    """Who on the signed salary file is paid, part paid or still due, and every payment recorded this month."""
+    org = organization(db, current, cso_id)
+    rows = payroll_payments.due(db, current, org, month)
+    providers = [{**row, "expected": str(row["expected"]), "paid": str(row["paid"]), "outstanding": str(row["outstanding"])}
+                 for row in sorted(rows.values(), key=lambda r: (r["region_name"], r["provider_name"]))]
+    return {
+        "month": month, "providers": providers, "payments": payroll_payments.listing(db, org, month),
+        "totals": {"providers": len(providers), "expected": str(sum((r["expected"] for r in rows.values()), Decimal(0))),
+                   "paid": str(sum((min(r["paid"], r["expected"]) for r in rows.values()), Decimal(0))),
+                   "outstanding": str(sum((r["outstanding"] for r in rows.values()), Decimal(0))),
+                   "unpaid_providers": sum(1 for r in rows.values() if r["outstanding"] > 0)},
+        "proof_required": bool(get_setting(db, "payment_requires_proof")),
+    }
+
+
+@router.post("/salary-payments", status_code=201)
+def record_salary_payments(
+    cso_id: int = Form(...), month: str = Form(..., pattern=MONTH), items: str = Form(..., max_length=200_000),
+    payment_date: date = Form(...), payment_reference: str = Form(..., max_length=200),
+    payment_method: str = Form("BANK"), status: str = Form("PAID"), proof: UploadFile | None = File(None),
+    db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(CSO_FINANCE)),
+):
+    """One bank transfer or schedule (one reference) paying one or more providers on the signed salary file."""
+    org = organization(db, current, cso_id)
+    created = payroll_payments.record(db, current, org, month, items, payment_date, payment_reference, payment_method,
+                                      status, proof if proof is not None and proof.filename else None)
+    db.commit()
+    return {"recorded": len(created), "payments": [payroll_payments.payment_out(db, p) for p in created]}
+
+
+class VoidIn(BaseModel):
+    cso_id: int
+    reason: str = Field(min_length=5, max_length=1000)
+
+
+@router.post("/salary-payments/{payment_id}/void")
+def void_salary_payment(payment_id: int, body: VoidIn, db: Session = Depends(get_db),
+                        current: CurrentUser = Depends(require_roles(CSO_FINANCE))):
+    payment = payroll_payments.void(db, current, organization(db, current, body.cso_id), payment_id, body.reason)
+    db.commit()
+    return payroll_payments.payment_out(db, payment)
+
+
+@router.get("/salary-payments/{payment_id}/proof")
+def salary_payment_proof(payment_id: int, cso_id: int, db: Session = Depends(get_db),
+                         current: CurrentUser = Depends(require_roles(CSO_FINANCE))):
+    from ...models import PayrollPayment
+    org = organization(db, current, cso_id)
+    payment = db.query(PayrollPayment).filter_by(id=payment_id, organization_id=org.id).first()
+    if payment is None:
+        raise HTTPException(404, "Salary payment not found")
+    path = payroll_payments.proof_path(payment)
+    system_audit.record(db, current, "payroll_payment", payment.id, "download_proof")
+    db.commit()
+    return FileResponse(path, media_type=payment.proof_content_type, filename=payment.proof_filename,
+                        headers={"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox", "Cache-Control": "no-store"})

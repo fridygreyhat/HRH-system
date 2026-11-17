@@ -30,6 +30,7 @@ const PrintBatch = lazyPage(() => import('./pages/PrintBatch').then((m) => m.Pri
 const ProviderPaymentDetails = lazyPage(() => import('./pages/ProviderPaymentDetails').then((m) => m.ProviderPaymentDetails));
 const PayPeriods = lazyPage(() => import('./pages/PayPeriods').then((m) => m.PayPeriods));
 const SalaryAmounts = lazyPage(() => import('./pages/SalaryAmounts').then((m) => m.SalaryAmounts));
+const FinanceReconciliation = lazyPage(() => import('./pages/FinanceReconciliation').then((m) => m.FinanceReconciliation));
 const PublicHolidays = lazyPage(() => import('./pages/PublicHolidays').then((m) => m.PublicHolidays));
 const ReviewWorkLogs = lazyPage(() => import('./pages/ReviewWorkLogs').then((m) => m.ReviewWorkLogs));
 const RoutingQueue = lazyPage(() => import('./pages/RoutingQueue').then((m) => m.RoutingQueue));
@@ -58,7 +59,7 @@ const EVERY_ROLE = ['PROVIDER', 'SUPERVISOR', 'FACILITY_IN_CHARGE', 'CSO_TECHNIC
 /** Menu wording in Kiswahili, the default language. */
 const LABELS_SW: Record<string, string> = {
   home: 'Mwanzo', dashboard: 'Dashibodi', 'my-logs': 'Kumbukumbu zangu', 'payment-details': 'Taarifa za malipo', 'backdate-access': 'Ruhusa ya tarehe zilizopita',
-  rates: 'Viwango vya huduma', 'pay-periods': 'Vipindi vya malipo', 'public-holidays': 'Sikukuu', 'routing-queue': 'Huduma za kukagua', 'payroll-to-cso': 'Mshahara kwa CSO', 'finance-downloads': 'Upakuaji wa Fedha', 'bulk-approval': 'Idhinisha majedwali', 'finance-monthly': 'Ripoti ya mwezi',
+  rates: 'Viwango vya huduma', 'pay-periods': 'Vipindi vya malipo', 'public-holidays': 'Sikukuu', 'routing-queue': 'Huduma za kukagua', 'payroll-to-cso': 'Mshahara kwa CSO', 'finance-downloads': 'Upakuaji wa Fedha', 'bulk-approval': 'Idhinisha majedwali', 'finance-monthly': 'Ripoti ya mwezi', reconciliation: 'Ukaguzi wa fedha',
   'review-cadres': 'Mgawo wa wakaguzi', worklogs: 'Mapitio ya majedwali', claims: 'Madai ya malipo', batches: 'Makundi ya malipo', budgets: 'Bajeti ya huduma',
   'salary-amounts': 'Viwango vya mishahara', cso: 'Malipo ya CSO', 'community-claims': 'Madai ya jamii', staff: 'Daftari la watumishi', organizations: 'Mashirika na mikoa', admin: 'Utawala',
 };
@@ -66,7 +67,7 @@ const DESCRIPTIONS_SW: Record<string, string> = {
   'my-logs': 'Rekodi na uwasilishe kazi zako za kila siku', 'payment-details': 'Akaunti yako ya benki na simu ya malipo',
   'backdate-access': 'Ruhusa ya muda kwa tarehe zilizopita', rates: 'Huduma, viwango vya kila siku na siku za chini',
   'pay-periods': 'Ratiba za kazi na malipo za mikoa', 'public-holidays': 'Sikukuu zinazoonekana kwenye kalenda na majedwali',
-  'routing-queue': 'Idhinisha na upeleke Huduma', 'payroll-to-cso': 'Saini Mshahara na uutume kwa CSO', 'finance-downloads': 'Majedwali, shughuli, malipo na faili la kuingiza', 'bulk-approval': 'Idhinisha majedwali safi kwa pamoja', 'finance-monthly': 'Jumla ya kazi zilizoidhinishwa kwa mwezi',
+  'routing-queue': 'Idhinisha na upeleke Huduma', 'payroll-to-cso': 'Saini Mshahara na uutume kwa CSO', 'finance-downloads': 'Majedwali, shughuli, malipo na faili la kuingiza', 'bulk-approval': 'Idhinisha majedwali safi kwa pamoja', 'finance-monthly': 'Jumla ya kazi zilizoidhinishwa kwa mwezi', reconciliation: 'Dashibodi ya mshahara, Huduma na bajeti; kilichoidhinishwa dhidi ya kilicholipwa',
   'review-cadres': 'Kada na maeneo ya wakaguzi', worklogs: 'Amua majedwali ya eneo lako', claims: 'Andaa, idhinisha na ufuatilie madai',
   batches: 'Faili za malipo, makabidhiano na stakabadhi', budgets: 'Bajeti za Huduma za mikoa kwa mwezi', 'salary-amounts': 'Mshahara wa mwezi kwa kila ngazi',
   cso: 'Malipo, uthibitisho na majedwali ya mishahara', 'community-claims': 'Madai ya jamii na malipo yake', staff: 'Watumishi, vituo vyao na mizunguko',
@@ -123,6 +124,7 @@ export const PAGES: Page[] = [
   },
   { key: 'batches', label: 'Payment batches', description: 'Payment exports, handoffs and receipts', icon: 'layers', group: 'Finance', roles: ['FHI360_FINANCE', 'CSO_FINANCE', 'OVERSIGHT'], render: () => <Batches /> },
   { key: 'budgets', label: 'Service budgets', description: 'Monthly regional Services budgets', icon: 'wallet', group: 'Finance', roles: ['REGIONAL_FINANCE', 'FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <MonthlyServicesBudgets /> },
+  { key: 'reconciliation', label: 'Financial audit', description: 'Dashboard of salary, Services and budget; approved against paid', icon: 'shield', group: 'Finance', roles: ['FHI360_FINANCE', 'OVERSIGHT', 'REGIONAL_FINANCE', 'SUPER_ADMIN'], render: () => <FinanceReconciliation /> },
   { key: 'salary-amounts', label: 'Salary amounts', description: 'Monthly salary for each scale', icon: 'wallet', group: 'Finance', roles: ['FHI360_FINANCE', 'SUPER_ADMIN'], render: () => <SalaryAmounts /> },
   { key: 'cso', label: 'CSO payments', description: 'Payments, proof and salary timesheets', icon: 'wallet', group: 'Finance', roles: ['CSO_FINANCE'], render: (target) => <CsoPortal initialSection={target === 'salary' ? 'export' : undefined} /> },
   { key: 'community-claims', label: 'Community claims', description: 'Community claims and direct payment', icon: 'users', group: 'Finance', roles: ['PROVIDER', 'COMMUNITY_VERIFIER', 'TECHNICAL_OFFICER', 'CSO_FINANCE', 'OVERSIGHT', 'SUPER_ADMIN'], render: () => <CommunityClaims /> },
