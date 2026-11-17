@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 
+from .salary_amounts import payroll_scale
 from ..models import Cadre, CommunityArea, Facility, Region, Staff, StaffAssignment, WorkLog, WorkLogEntry, WorkLogMeasure
 from ..core.period_dates import PAY_MONTH_END_DAY, pay_month_range
 from ..core.workflow_policy import RM_AUTHORIZED_STATUSES as RM_AUTHORIZED
@@ -107,7 +108,7 @@ def monthly_summary(db, current, month, region_id, work_type, organization_id=No
             "cadre_code": cadre.code, "cadre_name": cadre.name,
             "facility_name": facility.name if facility else "Not assigned",
             "region_name": region.name, "_dates": set(), "_logs": set(), "_hours": Decimal(0), "_indicators": {},
-            "_attendance": {}, "_salary_scale": staff.salary_scale, "_signed_dates": set(),
+            "_attendance": {}, "_salary_scale": payroll_scale(cadre.code, staff.salary_scale) or None, "_signed_dates": set(),
             "_community_area": area.name if area else None,
         })
         group = cadres.setdefault(cadre.id, {

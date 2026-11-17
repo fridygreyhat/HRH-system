@@ -49,7 +49,12 @@ def test_regional_finance_payroll_downloads_by_region_facility_and_person(api, d
         base = f"work_type=PAYROLL&month={month}&region_id={region}"
         summary = api.get(f"/finance-pack?{base}", rf)
         person = next(p for p in summary["people"] if p["staff_id"] == log["staff_id"])
-        assert Decimal(person["amount"]) == 700000 and person["state"] == "Not sent to CSO" and person["activities"] >= 0
+        # A CHW is paid the CHW package, not the amount of the salary scale on their record.
+        assert Decimal(person["amount"]) == 150000 and person["state"] == "Not sent to CSO" and person["activities"] >= 0
+        imported = list(csv.DictReader(io.StringIO(get_file(api, rf, f"what=import&format=csv&{base}&staff_id={log['staff_id']}")
+                                                   .content.decode("utf-8-sig"))))
+        assert [(float(r["Monthly stipend"]), float(r["Transport"]), float(r["Communication"]), float(r["Total amount"]))
+                for r in imported] == [(100000, 30000, 20000, 150000)]
         assert "bank_account_number" not in person  # bank details are only in the files
         # One facility, one person.
         assert {p["staff_id"] for p in api.get(f"/finance-pack?{base}&facility_id={facility}", rf)["people"]} >= {log["staff_id"]}
@@ -83,7 +88,7 @@ def test_regional_finance_payroll_downloads_by_region_facility_and_person(api, d
         header = [c.value for c in sheet[1]]
         assert header == finance_pack.IMPORT_COLUMNS["PAYROLL"] and sheet.max_row == 2
         row = dict(zip(header, [c.value for c in sheet[2]]))
-        assert row["Staff ID"] == log["staff_id"] and row["Total amount"] == 700000 and row["Account number"] == "0123456789"
+        assert row["Staff ID"] == log["staff_id"] and row["Total amount"] == 150000 and row["Monthly stipend"] == 100000 and row["Account number"] == "0123456789"
         assert row["Days filled"] >= 1 and row["Status"] == "Not sent to CSO"
         text = get_file(api, rf, f"what=import&format=csv&{base}&staff_id={log['staff_id']}").content.decode("utf-8-sig")
         assert list(csv.reader(io.StringIO(text)))[0] == finance_pack.IMPORT_COLUMNS["PAYROLL"]

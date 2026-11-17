@@ -180,14 +180,16 @@ def payroll_pay(db, log, staff, period, current):
     if log.work_type != "PAYROLL":
         return None
     if not (current.unrestricted or current.has_any(*SALARY_VIEWERS)):
-        return {"amount_visible": False, "salary_scale": (staff.salary_scale or "").strip() or None}
+        from ...services.salary_amounts import payroll_scale
+        return {"amount_visible": False, "salary_scale": payroll_scale(db.get(Cadre, log.cadre_id).code, staff.salary_scale) or None}
     from ...core.period_dates import pay_month_of
-    from ...services.salary_amounts import amounts_for
+    from ...services.salary_amounts import amounts_for, components_for, payroll_scale
     month = pay_month_of(period.end_date)
-    scale = (staff.salary_scale or "").strip()
+    scale = payroll_scale(db.get(Cadre, log.cadre_id).code, staff.salary_scale)  # a CHW: the CHW package
     amount = amounts_for(db, month).get(scale) if scale else None
     return {"amount_visible": True, "month": month, "salary_scale": scale or None,
-            "monthly_salary": str(amount) if amount is not None else None, "currency": "TZS"}
+            "monthly_salary": str(amount) if amount is not None else None, "currency": "TZS",
+            "components": components_for(db, month).get(scale) if amount is not None else None}
 
 
 def _detail(db: Session, current: CurrentUser, log: WorkLog) -> dict:

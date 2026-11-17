@@ -72,7 +72,8 @@ def timesheet_month(api, db, v22):
     """One Payroll timesheet in a month of its own. The suite has few past months left, so tests share these."""
     all_cadres(db, v22["finance"])
     all_cadres(db, "csofin1")
-    _, entry, placement = approved_log(db, make_period(api, db), hours="8.5")
+    # A Data Clerk: paid by salary scale (a CHW is paid the CHW package: test_chw_payroll_package.py).
+    _, entry, placement = approved_log(db, make_period(api, db), provider="clerk1", hours="8.5")
     month = entry.entry_date.strftime("%Y-%m")
     query = f"cso_id={placement.organization_id}&month={month}"
     return {"month": month, "entry_id": entry.id, "day": entry.entry_date.day, "log_id": entry.work_log_id,
@@ -234,14 +235,16 @@ def test_each_row_names_the_region_facility_and_cadre_before_and_in_the_export(a
     assignment = db.query(StaffAssignment).filter_by(staff_id=setup["staff_id"]).first()
     region = db.get(Region, assignment.region_id).name
     facility = db.get(Facility, assignment.facility_id).name
-    area = db.get(CommunityArea, assignment.community_area_id).name  # the demo CHW has both, so counts as community
+    # A placement with a community area counts as community work, even when a facility is also linked.
+    area = db.get(CommunityArea, assignment.community_area_id).name if assignment.community_area_id else None
     cadre = db.get(Cadre, setup["person"].cadre_id).name
     listed = api.get(setup["summary"], "csofin1")["providers"]
     assert listed == [{"staff_id": setup["staff_id"], "provider_name": setup["person"].legal_name, "cadre_name": cadre,
-                       "facility_name": facility, "community_area_name": area, "work_setting": "Community",
-                       "region_name": region, "days_signed": 1, "monthly_salary": "900000.00", "checks": []}]
+                       "facility_name": facility, "community_area_name": area, "work_setting": "Community" if area else "Facility",
+                       "region_name": region, "days_signed": 1, "monthly_salary": "900000.00", "pay_components": None,
+                       "checks": []}]
     row = file_rows(api, setup)[0]
-    assert (row["Region"], row["Facility"], row["Community area"], row["Cadre"]) == (region, facility, area, cadre)
+    assert (row["Region"], row["Facility"], row["Community area"], row["Cadre"]) == (region, facility, area or "", cadre)
 
 
 def staff_of(db, username):
@@ -303,9 +306,11 @@ def test_a_cso_sees_community_and_facility_salaries_in_its_region(api, mixed):
     assert (community["work_setting"], community["community_area_name"], community["facility_name"]) == ("Community", mixed["area"], "—")
     assert community["monthly_salary"] == "700000.00" and community["checks"] == []
     assert rows[mixed["facility_person"].legal_name]["work_setting"] == "Facility"
-    assert summary["settings"] == [{"name": "Facility", "providers": 1, "salary": "700000.00"},
+    # The facility provider is the CHW, paid the CHW package (150,000) whatever their salary scale.
+    assert rows[mixed["facility_person"].legal_name]["monthly_salary"] == "150000.00"
+    assert summary["settings"] == [{"name": "Facility", "providers": 1, "salary": "150000.00"},
                                    {"name": "Community", "providers": 1, "salary": "700000.00"}]
-    assert summary["totals"]["salary"] == "1400000.00"
+    assert summary["totals"]["salary"] == "850000.00"
     saved = {row["Provider"]: row for row in file_rows(api, mixed)}
     row = saved[mixed["community_person"].legal_name]
     assert (row["Work setting"], row["Community area"], row["Monthly salary (TZS)"]) == ("Community", mixed["area"], "700000.00")
@@ -319,7 +324,7 @@ def test_choosing_facility_or_community_limits_the_list_and_the_file(api, db, mi
     set_amount(api, mixed, "700000.00")
     summary = api.get(f"{mixed['summary']}&setting={setting}", "csofin1")
     assert [row["provider_name"] for row in summary["providers"]] == [mixed[person].legal_name]
-    assert summary["totals"]["salary"] == "700000.00"
+    assert summary["totals"]["salary"] == ("150000.00" if setting == "Facility" else "700000.00")  # the facility one is the CHW
     assert [row["Provider"] for row in file_rows(api, mixed, f"&setting={setting}")] == [mixed[person].legal_name]
     pdf = api.client.get(f"{mixed['export']}&setting={setting}&format=pdf", headers=bearer(api, "csofin1"))
     assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
@@ -491,7 +496,7 @@ def test_only_central_finance_can_set_salary_amounts(api, db, setup):
     set_amount(api, setup, "760000.00")  # same scale and month: a correction, kept in the audit trail
     assert db.query(SalaryScaleAmount).filter_by(scale=setup["scale"]).count() == 1
     audit = db.query(AuditEvent).filter_by(action="set_salary_amount").order_by(AuditEvent.id.desc()).first()
-    assert audit.before == {"monthly_amount": "750000.00"} and audit.after["monthly_amount"] == "760000.00"
+    assert audit.before == {"monthly_amount": "750000.00", "components": None} and audit.after["monthly_amount"] == "760000.00"
     row = next(r for r in api.get(f"/salary-amounts?month={setup['month']}", "fhifin1") if r["scale"] == setup["scale"])
     assert row["monthly_amount"] == "760000.00" and row["providers"] == 1
 

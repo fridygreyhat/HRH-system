@@ -69,6 +69,8 @@ class SalaryScaleAmount(Base):
     scale = Column(String(50), nullable=False)
     start_month = Column(String(7), nullable=False)
     monthly_amount = Column(Numeric(15, 2), nullable=False)
+    # The parts that make up the monthly amount, e.g. the CHW package: [{"key", "name", "amount"}]; NULL = one amount.
+    components = Column(JSONB)
     updated_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     updated_at = updated_at()
 

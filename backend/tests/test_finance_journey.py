@@ -142,9 +142,11 @@ def test_payroll_goes_from_rm_to_the_regional_finance_report_and_on_to_the_cso(a
         api.call("PUT", "/salary-amounts", "fhifin1", {"scale": state["scale"], "start_month": month, "monthly_amount": "700000.00"})
         timesheets = api.get(f"/cso-finance/salary-timesheets?{query}", "csofin1")
         person = next(p for p in timesheets["providers"] if p["staff_id"] == log["staff_id"])
-        assert Decimal(person["monthly_salary"]) == 700000
+        # This provider is a CHW: paid the CHW package (150,000), not the amount of the salary scale on record.
+        assert Decimal(person["monthly_salary"]) == 150000
+        assert [part["amount"] for part in person["pay_components"]] == ["100000.00", "30000.00", "20000.00"]
         form = api.get(f"/cso-finance/payment-form?{query}", "csofin1")
-        row = next(r for r in form["rows"] if Decimal(r["total"] or 0) == 700000)
+        row = next(r for r in form["rows"] if Decimal(r["total"] or 0) == 150000)
         assert row["bank_name"] == "NMB" and row["bank_account_number"].endswith("6789")
         exported = api.client.get(f"/cso-finance/payment-form/export?{query}&format=xlsx", headers=bearer(api, "csofin1"))
         assert exported.status_code == 200

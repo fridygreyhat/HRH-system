@@ -41,10 +41,14 @@ export function WorkTypeBanner({ log, sw, showAmount = true }: Props) {
   ];
   if (payroll) {
     const pay = log.payroll_pay;
-    facts.push([tr('Salary scale', 'Ngazi ya mshahara'), pay?.salary_scale || log.staff.salary_scale || <span className="wtb-missing">{tr('Not set', 'Haijawekwa')}</span>]);
+    const chwPackage = pay?.salary_scale === 'CHW';
+    facts.push([tr('Salary scale', 'Ngazi ya mshahara'), chwPackage ? tr('CHW package', 'Kifurushi cha CHW')
+      : pay?.salary_scale || log.staff.salary_scale || <span className="wtb-missing">{tr('Not set', 'Haijawekwa')}</span>]);
     // Only Finance is sent the amount; reviewers approve the days worked, not the pay.
     if (pay?.amount_visible) {
       facts.push([tr('Monthly salary', 'Mshahara wa mwezi'), pay.monthly_salary ? money(pay.monthly_salary, pay.currency || 'TZS') : <span className="wtb-missing">{tr('Not set', 'Haijawekwa')}</span>]);
+      // The CHW package: monthly stipend, transport and communication.
+      (pay.components || []).forEach((part) => facts.push([part.name, money(part.amount, pay.currency || 'TZS')]));
     }
   } else if (showAmount) {
     const claim = log.claims.find((row) => row.status !== 'CANCELLED');

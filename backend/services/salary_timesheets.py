@@ -18,7 +18,7 @@ from . import monthly_report_approval as reports
 from . import public_holidays
 from .monthly_report_exports import _cell, hours_text
 from .provider_payment_details import details
-from .salary_amounts import amounts_for
+from .salary_amounts import CHW_PARTS, amounts_for, components_for, payroll_scale
 
 WEEKDAYS_SW = ("Jtt", "Jnn", "Jtn", "Alh", "Ijm", "Jms", "Jpl")  # Monday first, as date.weekday() counts
 NO_DAILY_TIMES = "Daily times are not stored in this older sign-off. Totals are correct."
@@ -33,7 +33,7 @@ FACILITY, COMMUNITY, NOT_ASSIGNED = "Facility", "Community", "Not assigned"
 MAX_PDF_PROVIDERS = 1000
 # The CSO's on-screen list. Bank details and daily times stay in the downloaded, audited file.
 SCREEN_FIELDS = ("staff_id", "provider_name", "cadre_name", "facility_name", "community_area_name", "work_setting",
-                 "region_name", "days_signed", "monthly_salary", "checks")
+                 "region_name", "days_signed", "monthly_salary", "pay_components", "checks")
 
 
 
@@ -66,14 +66,19 @@ def setting_totals(providers):
     return result
 
 
-def with_payment(rows, people, amounts):
-    """Add salary and bank details. A provider's full monthly salary appears once, however many placements they have."""
+def with_payment(rows, people, amounts, parts=None):
+    """Add salary and bank details. A provider's full monthly salary appears once, however many placements they have.
+
+    A CHW is paid the CHW package, whatever salary scale is on their record; `parts` gives its stipend, transport and
+    communication amounts (components_for)."""
     paid = set()
+    parts = parts or {}
     for row in rows:
         person = people[row["staff_id"]]
         bank = details(person)
         signed_days = row.get("days_signed", row["days"])  # sign-offs from before this was saved: RM needs a signed log
-        amount = amounts.get((row.get("salary_scale") or person.salary_scale or "").strip())
+        scale = payroll_scale(row.get("cadre_code"), row.get("salary_scale") or person.salary_scale)
+        amount = amounts.get(scale)
         checks = []
         if row["staff_id"] in paid:
             amount = None
@@ -92,8 +97,9 @@ def with_payment(rows, people, amounts):
         setting = work_setting(row)
         row.update(work_setting=setting, community_area_name=row.get("community_area_name"), tin_number=getattr(person, "tin_number", None) or "",
                    facility_name="—" if setting == COMMUNITY and row["facility_name"] == NOT_ASSIGNED else row["facility_name"],
-                   days_signed=signed_days, salary_scale=row.get("salary_scale") or person.salary_scale,
-                   monthly_salary=str(amount) if amount is not None else None, checks=checks,
+                   days_signed=signed_days, salary_scale=scale or None,
+                   monthly_salary=str(amount) if amount is not None else None,
+                   pay_components=parts.get(scale) if amount is not None else None, checks=checks,
                    bank_name=bank["bank_name"], bank_account_number=bank["bank_account_number"], bank_branch=bank["bank_branch"])
 
 
@@ -126,7 +132,7 @@ def signed(db, current, organization, month, region_id=None, setting=None):
     rows.sort(key=lambda p: (p["region_name"], p["cadre_code"], p["provider_name"]))
     # Every row counts here, so choosing a region or setting cannot show a salary already on another row.
     people = {s.id: s for s in db.query(Staff).filter(Staff.id.in_({p["staff_id"] for p in rows}))}
-    with_payment(rows, people, amounts_for(db, month))
+    with_payment(rows, people, amounts_for(db, month), components_for(db, month))
     providers = [p for p in rows if p["included"] and setting in (None, p["work_setting"])]
 
     def flagged(check):
@@ -160,6 +166,7 @@ def csv_file(result):
     writer = csv.writer(output)
     writer.writerow(["Month", "CSO", "Region", "Staff ID", "Provider", "Cadre", "Work setting", "Facility", "Community area", "Salary scale",
                      "Days worked", "Days signed by provider", "Total hours", "Monthly salary (TZS)",
+                     *[f"{name} (TZS)" for _, name in CHW_PARTS],
                      "Bank name", "Bank account number", "Bank branch", "Payment check",
                      "Regional Finance sign-off", "Signed on", "Public holidays"]
                     + [f"Day {day.day}" for day in dates])
@@ -170,10 +177,28 @@ def csv_file(result):
             provider["provider_name"], provider["cadre_name"], provider["work_setting"], provider["facility_name"],
             provider["community_area_name"], provider.get("salary_scale"),
             provider["days"], provider["days_signed"], hours_text(provider["hours"]), provider["monthly_salary"],
+            *part_amounts(provider),
             provider["bank_name"], provider["bank_account_number"], provider["bank_branch"], "; ".join(provider["checks"]),
             provider["approved_by_name"], provider["approved_at"], holiday_text(result["holidays"]),
         ]] + [hours.get(day.isoformat(), "") for day in dates])
     return ("﻿" + output.getvalue()).encode("utf-8")
+
+
+def part_amounts(provider):
+    """The CHW package parts (stipend, transport, communication) of this row's salary; blank for other cadres."""
+    given = {part["key"]: part["amount"] for part in provider.get("pay_components") or []}
+    return [given.get(key) for key, _ in CHW_PARTS]
+
+
+def salary_text(provider):
+    """The monthly salary, with its parts when it is made of parts (the CHW package)."""
+    if OTHER_ROW in provider["checks"]:
+        return OTHER_ROW
+    text = amount_text(provider["monthly_salary"])
+    parts = provider.get("pay_components")
+    if parts and provider["monthly_salary"] is not None:
+        text += " = " + " + ".join(f"{part['name']} {Decimal(part['amount']):,.0f}" for part in parts)
+    return text
 
 
 def _footer(canvas, document):
@@ -316,7 +341,7 @@ def pdf_file(result):
         if result[key]:
             story.append(p(f"{label}: " + ", ".join(result[key])))
     for provider in result["providers"]:
-        salary = OTHER_ROW if OTHER_ROW in provider["checks"] else amount_text(provider["monthly_salary"])
+        salary = salary_text(provider)
         details = [
             (("Mkoa", "Region"), provider["region_name"]), (("Kituo", "Facility"), provider["facility_name"]),
             (("Eneo la jamii", "Community area"), provider["community_area_name"]), (("Mahali pa kazi", "Work setting"), provider["work_setting"]),

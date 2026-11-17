@@ -27,7 +27,7 @@ from . import monthly_report_approval as reports
 from . import payment_forms, public_holidays
 from .finance_reports import authorized, monthly_summary
 from .provider_payment_details import details
-from .salary_amounts import amounts_for
+from .salary_amounts import CHW_PARTS, amounts_for, components_for
 from .salary_timesheets import (MAX_PDF_PROVIDERS, NOT_PAYMENT, OTHER_ROW, _footer, month_title, timesheet_page,
                                 with_payment)
 from .v22_scope import regions_for
@@ -116,13 +116,13 @@ def _person(provider, **extra):
             "attendance": provider.get("attendance", []), "indicators": provider.get("indicators", []),
             "salary_scale": provider.get("salary_scale"), "currency": "TZS", "claim_id": None, "mobile": "",
             "bank_name": "", "bank_account_number": "", "bank_branch": "", "tin_number": provider.get("tin_number") or "",
-            "checks": [], "breakdown": [], **extra}
+            "checks": [], "breakdown": [], "pay_components": provider.get("pay_components"), **extra}
 
 
 def _regional_payroll(db, current, month, region_id, facility_id, staff_id, cadre_id=None):
     providers = monthly_summary(db, current, month, region_id, "PAYROLL", daily=True, facility_id=facility_id, staff_id=staff_id, cadre_id=cadre_id)["providers"]
     staff = {s.id: s for s in db.query(Staff).filter(Staff.id.in_({p["staff_id"] for p in providers} or {-1}))}
-    with_payment(providers, staff, amounts_for(db, month))
+    with_payment(providers, staff, amounts_for(db, month), components_for(db, month))
     signed = {}  # region name -> staff on its latest signed Payroll report
     for region in db.query(Region).filter(Region.name.in_({p["region_name"] for p in providers} or {""})):
         latest = reports.latest(db, month, region.id, "PAYROLL")
@@ -283,6 +283,8 @@ def timesheets_pdf(db, data):
         info = [(("Mkoa", "Region"), p["region"]), (("Kituo", "Facility"), p["facility"] or p["community_area"]),
                 (("Jina", "Name"), p["name"]), (("Kada", "Cadre"), p["cadre"]),
                 (("Siku", "Days"), p["days"]), (("Hali", "Status"), p["state"])]
+        if payroll and p["amount"] is not None and p.get("pay_components"):
+            amount += " = " + " + ".join(f"{part['name']} {Decimal(part['amount']):,.0f}" for part in p["pay_components"])
         info += ([(("Mshahara", "Monthly salary"), amount), (("Benki", "Bank"),
                    " | ".join(x or "Missing" for x in (p["bank_name"], p["bank_account_number"], p["bank_branch"])))]
                  if payroll else [(("Kiasi", "Amount"), amount), (("Simu ya malipo", "Mobile wallet"), p["mobile"] or "Missing")])
@@ -385,8 +387,9 @@ def activities_pdf(data, group_by="person"):
 
 # The import file: one header row, one row per person, plain values and IDs to match on. No logos, merged cells or totals.
 IMPORT_COLUMNS = {
+    # The CHW package parts come last, so the columns an existing import reads stay where they were.
     "PAYROLL": ["Staff ID", "Name", "TIN", "Cadre", "Region", "Facility", "Month", "Days filled", "Monthly salary", "Total amount",
-                "Currency", "Bank name", "Account number", "Bank branch", "Status"],
+                "Currency", "Bank name", "Account number", "Bank branch", "Status", *(name for _, name in CHW_PARTS)],
     "SERVICES": ["Staff ID", "Claim ID", "Name", "Cadre", "Region", "Facility", "Month", "Days", "Total amount", "Currency",
                  "Mobile number", "Status"],
 }
@@ -398,8 +401,10 @@ def import_rows(data):
         amount = float(Decimal(p["amount"])) if p["amount"] is not None else None
         facility = p["facility"] or p["community_area"] or ""
         if data["work_type"] == "PAYROLL":
+            parts = {part["key"]: float(Decimal(part["amount"])) for part in (p.get("pay_components") or [])} if amount is not None else {}
             yield [p["staff_id"], p["name"], p["tin_number"], p["cadre"], p["region"], facility, data["month"], p["days"], amount, amount,
-                   p["currency"], p["bank_name"], p["bank_account_number"], p["bank_branch"], p["state"]]
+                   p["currency"], p["bank_name"], p["bank_account_number"], p["bank_branch"], p["state"],
+                   *(parts.get(key) for key, _ in CHW_PARTS)]
         else:
             yield [p["staff_id"], p["claim_id"], p["name"], p["cadre"], p["region"], facility, data["month"], p["days"], amount,
                    p["currency"], p["mobile"], p["state"]]

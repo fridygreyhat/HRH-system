@@ -69,7 +69,7 @@ def crossing(api, db, v22):
 def test_one_timesheet_is_one_month_in_the_salary_file(api, crossing):
     set_amount(api, crossing, "750000.00", crossing["month"])
     summary = api.get(crossing["summary"], "csofin1")
-    assert summary["totals"]["salary"] == "750000.00"
+    assert summary["totals"]["salary"] == "150000.00"  # this provider is a CHW: the CHW package, whatever the scale
     assert summary["providers"][0]["days_signed"] == 3
     row = file_rows(api, crossing)[0]
     assert row["Day 26"] == "7" and row["Day 25"] == "6"

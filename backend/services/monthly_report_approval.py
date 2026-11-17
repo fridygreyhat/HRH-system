@@ -89,14 +89,15 @@ def withdrawal(db, month, region_id, work_type):
 
 
 def signed_with_scale(db, scale: str, start_month: str) -> list:
-    """Sign-offs in force, from start_month on, that list someone paid on this salary scale."""
+    """Sign-offs in force, from start_month on, that list someone paid on this salary scale (every CHW: the CHW package)."""
+    from .salary_amounts import payroll_scale
     rows = []
     keys = db.query(FinanceMonthlyReport.month, FinanceMonthlyReport.region_id).filter(
         FinanceMonthlyReport.work_type == "PAYROLL", FinanceMonthlyReport.month >= start_month).distinct()
     for month, region in keys:
         row = latest(db, month, region, "PAYROLL")
-        if row and scale in {(p.get("salary_scale") or "").strip() for report in row.snapshot["organizations"].values()
-                             for p in report["providers"]}:
+        if row and scale in {payroll_scale(p.get("cadre_code"), p.get("salary_scale"))
+                             for report in row.snapshot["organizations"].values() for p in report["providers"]}:
             rows.append(row)
     return rows
 
@@ -111,7 +112,8 @@ def withdraw_for_salary_change(db, actor, scale: str, start_month: str, before: 
         old, new = before.get(row.id), amounts_for(db, row.month).get(scale)
         if old is None or old == new:
             continue
-        reason = (f"The salary amount for scale {scale} in {row.month} changed from {old} to {new}. "
+        name = "the CHW package" if scale == "CHW" else f"scale {scale}"
+        reason = (f"The salary amount for {name} in {row.month} changed from {old} to {new}. "
                   "Regional Finance must sign this month again so the CSO pays the new amount.")
         _take_back(db, actor, row, reason, after={"month": row.month, "region_id": row.region_id, "work_type": "PAYROLL", "scale": scale})
         result.append({"report_id": row.id, "region_id": row.region_id, "month": row.month, "reason": reason})

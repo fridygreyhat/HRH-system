@@ -67,3 +67,36 @@ test('A salary amount can be set before any staff have a scale', async () => {
     container.remove();
   }
 });
+
+test('Central Finance sees and saves the CHW package part by part', async () => {
+  mockPut.mockReset();
+  mockPut.mockResolvedValue({});
+  mockScales = [
+    { scale: 'CHW', providers: 2, monthly_amount: '150000.00', history: [], is_chw_package: true,
+      components: [{ key: 'stipend', name: 'Monthly stipend', amount: '100000.00' },
+        { key: 'transport', name: 'Transport', amount: '30000.00' },
+        { key: 'communication', name: 'Communication', amount: '20000.00' }] },
+  ];
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => root.render(<SalaryAmounts />));
+  try {
+    expect(container.textContent).toContain('CHW package');
+    expect(container.textContent).toContain('Monthly stipend TZS 100,000');
+    expect(container.textContent).toContain('Monthly total: TZS 150,000');
+    const form = container.querySelectorAll('form')[1];
+    const inputs = form.querySelectorAll('input[type="number"]');
+    await act(async () => Simulate.change(inputs[0], { target: { value: '110000' } }));
+    expect(container.textContent).toContain('Monthly total: TZS 160,000');
+    await act(async () => Simulate.submit(form, { preventDefault() {} }));
+    expect(mockPut).toHaveBeenCalledWith('/salary-amounts', expect.objectContaining({
+      scale: 'CHW', components: { stipend: '110000', transport: '30000.00', communication: '20000.00' } }));
+    // The general scale list does not offer the package as a scale to type.
+    expect([...container.querySelectorAll('#salary-scale-options option')].map((o) => o.value)).not.toContain('CHW');
+  } finally {
+    act(() => root.unmount());
+    container.remove();
+    mockScales = null;
+  }
+});

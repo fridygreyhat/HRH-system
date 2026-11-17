@@ -104,7 +104,7 @@ def test_cso_payroll_payment_form_shows_salary_and_bank_and_the_file_is_audited(
     titles, rows, _ = table(response.content)
     assert titles == payment_forms.PAYROLL_COLUMNS
     # Payroll summary: salary, days filled, total, bank name and account (no subtotal, allowance or branch).
-    assert rows[0][2].value == "Community Health Worker"  # cadre
+    assert rows[0][2].value == "Data Clerk"  # cadre: the salary-file tests use a Data Clerk, paid by salary scale
     assert [cell.value for cell in rows[0][5:10]] == [750000, 1, 750000, "NMB", "0123456789"]
     assert rows[-1][1].value == "TOTAL" and rows[-1][7].value == f"=SUM(H8:H{len(rows) + 6})"
 

@@ -317,7 +317,16 @@ export interface WorkLogDetail extends WorkLogSummary {
   };
   /** Payroll only: the monthly salary of the provider's scale, paid by the CSO. */
   /** Only Finance gets the amount (amount_visible); CTC, Technical, RM and the provider get the scale alone. */
-  payroll_pay?: { amount_visible: boolean; month?: string; salary_scale: string | null; monthly_salary?: string | null; currency?: string } | null;
+  payroll_pay?: {
+    amount_visible: boolean;
+    month?: string;
+    /** "CHW" for every CHW: they are paid the CHW package, whatever salary scale is on their record. */
+    salary_scale: string | null;
+    monthly_salary?: string | null;
+    currency?: string;
+    /** The parts of the monthly amount (CHW: stipend, transport, communication). */
+    components?: { key: string; name: string; amount: string }[] | null;
+  } | null;
   financial_preview?: {
     lines: { entry_id: number; date: string; activity: string; units: string; rate: string | null; amount: string | null; currency: string | null }[];
     total: string;

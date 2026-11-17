@@ -138,7 +138,7 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
         occupation: blankToNull(f.occupation),
         occupation_other: isOther(f.occupation) ? blankToNull(f.occupation_other) : null,
         facility_staff_type: isHcp(cadre?.code) ? f.facility_staff_type : null,
-        salary_scale: servicesOnly ? null : blankToNull(f.salary_scale),
+        salary_scale: servicesOnly || cadre?.code === 'CHW' ? null : blankToNull(f.salary_scale),
         employment_start_date: f.employment_start_date,
         enrollment_source: f.enrollment_source,
         assignment: assignmentPayload(assignment),
@@ -236,11 +236,15 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
           ) : (
             <>
               {!assignment.organization_id && <Alert kind="warn">No CSO set; this person will not appear in any salary file.</Alert>}
-              <div className="grid-2">
-                <Field label="Salary scale" hint="Type it exactly as on Salary amounts">
-                  <input value={f.salary_scale} onChange={set('salary_scale')} maxLength={50} />
-                </Field>
-              </div>
+              {cadre?.code === 'CHW' ? (
+                <p className="muted small">CHWs are paid the CHW Payroll package (stipend, transport and communication), set by Central Finance.</p>
+              ) : (
+                <div className="grid-2">
+                  <Field label="Salary scale" hint="Type it exactly as on Salary amounts">
+                    <input value={f.salary_scale} onChange={set('salary_scale')} maxLength={50} />
+                  </Field>
+                </div>
+              )}
               <ProviderPayFields value={pay} onChange={setPay} disabled={busy} />
               <p className="muted small">Services are paid to the mobile wallet of the phone above.</p>
             </>

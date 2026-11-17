@@ -26,6 +26,8 @@ interface ProviderRow {
   region_name: string;
   days_signed: number;
   monthly_salary: string | null;
+  /** The CHW package parts: monthly stipend, transport, communication. */
+  pay_components?: { key: string; name: string; amount: string }[] | null;
   checks: string[];
 }
 interface SalaryTimesheetSummary {
@@ -122,7 +124,12 @@ function ProviderList({ rows, sw }: { rows: ProviderRow[]; sw: boolean }) {
                   </td>
                   <td className="nowrap">{row.region_name}</td>
                   <td className="num">{num(row.days_signed)}</td>
-                  <td className="num nowrap">{row.monthly_salary ? money(row.monthly_salary) : '—'}</td>
+                  <td className="num nowrap">
+                    {row.monthly_salary ? money(row.monthly_salary) : '—'}
+                    {row.monthly_salary && row.pay_components && (
+                      <span className="cell-sub">{row.pay_components.map((part) => `${part.name} ${money(part.amount)}`).join(' + ')}</span>
+                    )}
+                  </td>
                   <td>{row.checks.length ? <span className="badge badge-warn">{row.checks.map((check) => (sw && CHECK_SW[check]) || check).join('; ')}</span> : <span className="badge badge-success">{sw ? 'Sawa' : 'OK'}</span>}</td>
                 </tr>
               ))}
