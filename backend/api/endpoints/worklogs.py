@@ -440,7 +440,8 @@ def update_header(log_id: int, body: HeaderIn, db: Session = Depends(get_db), cu
     cadre = db.get(Cadre, log.cadre_id)
     if body.occupation is not None:
         options = cadre.occupation_options or []
-        if options and body.occupation not in options:
+        # A position recorded before the list changed may stay on its own timesheet.
+        if options and body.occupation not in options and body.occupation != log.occupation:
             raise HTTPException(status_code=422, detail=f"Occupation must be one of {options}")
         if body.occupation.lower().startswith("other") and not (body.occupation_other or "").strip():
             raise HTTPException(status_code=422, detail="Specify the occupation")

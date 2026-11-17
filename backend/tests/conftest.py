@@ -3,6 +3,7 @@
 Set HRH_TEST_DATABASE to an unused test-only name before running. Never target
 production: the selected test database is dropped and recreated.
 """
+import functools
 import calendar
 import itertools
 import os
@@ -86,8 +87,18 @@ def pytest_configure(config):
 _tins = itertools.count(900_000_001)
 
 
+@functools.lru_cache(maxsize=1)
+def _hcp_cadre_id() -> int | None:
+    from backend.db.session import SessionLocal
+    from backend.models import Cadre
+    with SessionLocal() as session:
+        return session.query(Cadre.id).filter(Cadre.code == "HCP").scalar()
+
+
 def provider_pay(staff: dict) -> dict:
-    """Fill in a unique TIN and bank details where a test registers a provider without them."""
+    """Fill in a unique TIN, bank details and (for an HCP) the facility staff type where a test leaves them out."""
+    if "facility_staff_type" not in staff and staff.get("cadre_id") == _hcp_cadre_id():
+        staff = {**staff, "facility_staff_type": "GOVERNMENT"}
     if "tin_number" in staff and "bank_account_number" in staff:
         return staff
     tin = str(next(_tins))

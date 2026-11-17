@@ -46,6 +46,24 @@ PAYMENT_CRITICAL_FIELDS = {"cadre_id", "salary_scale", "payment_method", "paymen
 PHONE_PATTERN = re.compile(r"^\+?\d{9,15}$")
 
 
+FACILITY_STAFF_TYPES = {"GOVERNMENT": "Government facility staff", "PROJECT": "Project facility staff"}
+
+
+def check_facility_staff_type(db: Session, cadre_id: Optional[int], value: Optional[str], required: bool) -> Optional[str]:
+    """An HCP is either a government facility's own staff or staff the project placed there; other cadres are neither."""
+    cadre = db.get(Cadre, cadre_id) if cadre_id else None
+    value = (value or "").strip().upper() or None
+    if value and value not in FACILITY_STAFF_TYPES:
+        raise HTTPException(status_code=422, detail="Facility staff type must be GOVERNMENT or PROJECT")
+    if cadre is None or cadre.code != "HCP":
+        if value:
+            raise HTTPException(status_code=422, detail="Only HCP staff are Government or Project facility staff")
+        return None
+    if required and not value:
+        raise HTTPException(status_code=422, detail="Choose whether this HCP is Government facility staff or Project facility staff")
+    return value
+
+
 def validate_changes(db: Session, staff: Staff, changes: dict) -> None:
     unknown = set(changes) - EDITABLE_FIELDS
     if unknown:
@@ -62,6 +80,9 @@ def validate_changes(db: Session, staff: Staff, changes: dict) -> None:
             raise HTTPException(status_code=409, detail="Another staff member already has this phone")
     if "tin_number" in changes:
         changes["tin_number"] = _checked_tin(db, changes["tin_number"], staff.id)
+    if "facility_staff_type" in changes:
+        changes["facility_staff_type"] = check_facility_staff_type(
+            db, changes.get("cadre_id", staff.cadre_id), changes["facility_staff_type"], required=False)
     for name in ("first_name", "last_name"):
         if name in changes and not str(changes[name] or "").strip():
             raise HTTPException(status_code=422, detail=f"{name} cannot be empty")
@@ -87,7 +108,8 @@ def check_payment_method(db: Session, cadre_id: Optional[int], method: Optional[
     cadre = db.get(Cadre, cadre_id) if cadre_id else None
     if cadre and method and method != "BANK" and cadre.code in get_setting(db, "bank_only_cadres"):
         raise HTTPException(status_code=422, detail=f"{cadre.name} staff must be paid into a bank account, not a mobile wallet")
-EDITABLE_FIELDS = {"first_name", "middle_name", "last_name", "occupation", "occupation_other", "tin_number"} | PAYMENT_CRITICAL_FIELDS
+EDITABLE_FIELDS = {"first_name", "middle_name", "last_name", "occupation", "occupation_other", "tin_number",
+                   "facility_staff_type"} | PAYMENT_CRITICAL_FIELDS
 
 
 def apply_payment_correction(staff: Staff, changes: dict) -> None:
@@ -110,6 +132,8 @@ def update_staff(db: Session, current: CurrentUser, staff: Staff, changes: dict,
         notifications.enqueue(db, "PHONE_CHANGED", None, before["verified_phone"], name=staff.first_name)
     for key, value in changes.items():
         setattr(staff, key, value)
+    if "cadre_id" in changes and staff.facility_staff_type and db.get(Cadre, staff.cadre_id).code != "HCP":
+        staff.facility_staff_type = None  # only HCP staff are Government or Project facility staff
     apply_payment_correction(staff, changes)
     system_audit.record(db, current, "staff", staff.id, "update", before=mask_payment_fields(before), after=mask_payment_fields(changes), reason=reason)
     return staff
@@ -162,7 +186,7 @@ def exit_staff(db: Session, current: CurrentUser, staff: Staff, end_date: date, 
     system_audit.record(db, current, "staff", staff.id, "exit", after={"end_date": end_date}, reason=reason)
 
 
-ROSTER_COLUMNS = ["first_name", "middle_name", "last_name", "phone", "tin_number", "cadre", "occupation", "salary_scale", "region",
+ROSTER_COLUMNS = ["first_name", "middle_name", "last_name", "phone", "tin_number", "cadre", "occupation", "facility_staff_type", "salary_scale", "region",
                   "district", "ward", "facility", "community_area", "section", "organization", "start_date"]
 ROSTER_REQUIRED = ["first_name", "last_name", "phone", "cadre", "region", "start_date"]
 
@@ -176,6 +200,15 @@ def facility_for_name(db: Session, ward_id: int, name: str) -> Facility:
         db.add(facility)
         db.flush()
     return facility
+
+
+def _staff_type_cell(value: Optional[str]) -> Optional[str]:
+    """Roster cells may say GOVERNMENT / PROJECT or spell out "Government facility staff"."""
+    text = (value or "").strip().upper()
+    for code in FACILITY_STAFF_TYPES:
+        if text.startswith(code[:3]):  # GOV…, PRO…
+            return code
+    return text or None
 
 
 def import_roster(db: Session, current: CurrentUser, filename: str, content: str, source: str, allowed_region_ids: Optional[set[int]]) -> RosterImport:
@@ -276,6 +309,7 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
                         verified_phone=phone,
                         tin_number=tin,
                         occupation=(row.get("occupation") or "").strip() or None,
+                        facility_staff_type=check_facility_staff_type(db, cadre.id, _staff_type_cell(row.get("facility_staff_type")), required=False),
                         salary_scale=(row.get("salary_scale") or "").strip() or None,
                         employment_start_date=start,
                         enrollment_source=source,

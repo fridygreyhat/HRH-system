@@ -7,6 +7,7 @@ import { Assignment, Cadre, StaffSummary } from '../types';
 import { Alert, AsyncState, Field, KpiStrip, PersonCell, StatusBadge } from '../components/ui';
 import { StaffDrawer } from '../components/staff/StaffDrawer';
 import { CreateStaffModal } from '../components/staff/StaffForms';
+import { facilityStaffTypeLabel } from '../components/staff/FacilityStaffType';
 import { ChangeRequests } from '../components/staff/ChangeRequests';
 import { RosterImport } from '../components/staff/RosterImport';
 import './polish-admin.css';
@@ -143,7 +144,9 @@ function Registry({ cadres }: { cadres: Cadre[] }) {
                         </td>
                         <td title={s.cadre}>
                           <span className="cell-main">{cadreLabel(s.cadre)}</span>
-                          {s.occupation && <span className="cell-sub">{s.occupation}</span>}
+                          {(s.occupation || s.facility_staff_type) && (
+                            <span className="cell-sub">{[s.occupation, facilityStaffTypeLabel(s.facility_staff_type)].filter(Boolean).join(' · ')}</span>
+                          )}
                         </td>
                         <td>
                           <StatusBadge status={s.status} label={sw ? STATUS_SW[s.status] : undefined} />

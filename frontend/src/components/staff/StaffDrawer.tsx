@@ -6,6 +6,7 @@ import { CADRE_NAMES, cadreName, dateOnly, humanize } from '../../format';
 import { Cadre, Organization, StaffDetail } from '../../types';
 import { Alert, AsyncState, Drawer, Facts, Section, StatusBadge } from '../ui';
 import { EditStaffModal, ExitDialog, LoginModal, RotateModal } from './StaffForms';
+import { facilityStaffTypeLabel } from './FacilityStaffType';
 import { StaffStartDateModal } from './StaffStartDateModal';
 import { FacilityNameModal } from './FacilityNameModal';
 
@@ -101,7 +102,8 @@ export function StaffDrawer({ staffId, cadres, onClose, onChanged, startLogin = 
                     ['SMS to this number', phoneCheckText(s.phone_check)?.text],
                     ['TIN', s.tin_number || 'Not recorded'],
                     ['Cadre', cadre ? `${cadre.name} (${s.cadre})` : s.cadre],
-                    ['Occupation', s.occupation && s.occupation_other ? `${s.occupation}: ${s.occupation_other}` : s.occupation],
+                    ['Position', s.occupation && s.occupation_other ? `${s.occupation}: ${s.occupation_other}` : s.occupation],
+                    ...(s.cadre === 'HCP' ? [['HCP type', facilityStaffTypeLabel(s.facility_staff_type) || 'Not recorded'] as [string, string]] : []),
                     ['Salary scale', s.salary_scale],
                     ['Employment start', dateOnly(s.employment_start_date)],
                     ['Employment end', s.employment_end_date ? dateOnly(s.employment_end_date) : null],

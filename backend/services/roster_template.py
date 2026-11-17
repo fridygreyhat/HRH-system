@@ -31,7 +31,10 @@ GUIDE = {  # column: (what to enter, example)
               "place on this row instead of adding someone new. Spaces and dashes are ignored.", "0712345678"),
     "tin_number": ("Taxpayer Identification Number (TIN), 9 digits, if the person has one. Leave blank otherwise.", "123-456-789"),
     "cadre": ("Cadre code from the list (not the full name).", "CHW"),
-    "occupation": ("Occupation within the cadre. See Accepted values for each cadre's options.", ""),
+    "occupation": ("Position within the cadre, e.g. Clinical Officer or Facility Data Clerk. See Accepted values for "
+                   "each cadre's positions.", ""),
+    "facility_staff_type": ("HCP only: GOVERNMENT for a government facility's own staff, PROJECT for staff the project "
+                            "placed at the facility. Leave blank for CHW and Data Clerk.", "GOVERNMENT"),
     "salary_scale": ("Salary scale, if the approved list gives one.", ""),
     "region": ("Region, spelled as in Accepted values.", ""),
     "district": ("District within that region. Needed when a ward or facility is given.", ""),
@@ -105,6 +108,7 @@ def build_template(db: Session, region_ids: Optional[set[int]]) -> bytes:
     lists = wb.create_sheet("Lists")
     choices = {
         "cadre": [c.code for c in cadres],
+        "facility_staff_type": ["GOVERNMENT", "PROJECT"],
         "region": [r.name for r in regions],
         "section": [s.code for s in sections],
         "organization": [o.name for o in orgs],
@@ -158,6 +162,8 @@ def build_template(db: Session, region_ids: Optional[set[int]]) -> bytes:
     for c in cadres:
         for option in c.occupation_options or []:
             accepted.append(["occupation", option, f"for {c.code}", "", ""])
+    for code, label in (("GOVERNMENT", "Government facility staff"), ("PROJECT", "Project facility staff")):
+        accepted.append(["facility_staff_type", code, label, "", "for HCP"])
     for s in sections:
         accepted.append(["section", s.code, s.name, "", ""])
     for o in orgs:

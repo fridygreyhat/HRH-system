@@ -6,6 +6,7 @@ import { Alert, Field, Tabs } from '../ui';
 import { AssignmentFields, AssignmentPayload, AssignmentValue, EMPTY_ASSIGNMENT, assignmentPayload } from './AssignmentFields';
 import { OccupationFields } from './StaffForms';
 import { EMPTY_PROVIDER_PAY, ProviderPay, ProviderPayFields, providerPayPayload } from './ProviderPayFields';
+import { FACILITY_STAFF_TYPE_MESSAGE, FacilityStaffType, FacilityStaffTypeField, isHcp } from './FacilityStaffType';
 
 /** Active staff record that has no login yet (GET /admin/unlinked-staff). */
 export interface UnlinkedStaff {
@@ -19,11 +20,15 @@ export interface HealthWorkerValue {
   mode: 'new' | 'existing';
   staff_id: string;
   cadre_id: string;
+  /** The chosen cadre's code (CHW, DATA_CLERK, HCP), kept with the id for the checks before sending. */
+  cadre_code: string;
   first_name: string;
   middle_name: string;
   last_name: string;
   occupation: string;
   occupation_other: string;
+  /** HCP only: Government or Project facility staff. */
+  facility_staff_type: FacilityStaffType | '';
   /** TIN and bank details: required of every provider registered here. */
   pay: ProviderPay;
   employment_start_date: string;
@@ -45,6 +50,7 @@ export type HealthWorkerPayload =
         bank_account_number: string;
         occupation: string | null;
         occupation_other: string | null;
+        facility_staff_type: FacilityStaffType | null;
         employment_start_date: string;
         enrollment_source: 'MANUAL';
         assignment: AssignmentPayload;
@@ -55,11 +61,13 @@ export const emptyHealthWorker = (): HealthWorkerValue => ({
   mode: 'new',
   staff_id: '',
   cadre_id: '',
+  cadre_code: '',
   first_name: '',
   middle_name: '',
   last_name: '',
   occupation: '',
   occupation_other: '',
+  facility_staff_type: '',
   pay: EMPTY_PROVIDER_PAY,
   employment_start_date: todayLocal(),
   assignment: EMPTY_ASSIGNMENT,
@@ -84,6 +92,9 @@ export function healthWorkerPayload(v: HealthWorkerValue, phone: string): Health
   }
   if (!v.cadre_id) return 'Choose the cadre: CHW, Data Clerk or HCP.';
   if (!v.first_name.trim() || !v.last_name.trim()) return 'Enter the first and last name.';
+  if (!v.occupation.trim()) return 'Choose the position, e.g. Clinical Officer or Facility Data Clerk.';
+  const hcp = isHcp(v.cadre_code);
+  if (hcp && !v.facility_staff_type) return FACILITY_STAFF_TYPE_MESSAGE;
   if (!v.assignment.region_id) return 'Choose the region where this health worker is placed.';
   if (!v.employment_start_date) return 'Enter the employment start date.';
   const payment = providerPayPayload(v.pay);
@@ -100,6 +111,7 @@ export function healthWorkerPayload(v: HealthWorkerValue, phone: string): Health
       ...payment,
       occupation: v.occupation.trim() || null,
       occupation_other: other ? v.occupation_other.trim() || null : null,
+      facility_staff_type: hcp ? v.facility_staff_type || null : null,
       employment_start_date: v.employment_start_date,
       enrollment_source: 'MANUAL',
       assignment: assignmentPayload(v.assignment),
@@ -168,7 +180,7 @@ export function HealthWorkerFields({
                     name="cadre"
                     value={c.id}
                     checked={String(c.id) === value.cadre_id}
-                    onChange={() => set({ cadre_id: String(c.id), occupation: '', occupation_other: '' })}
+                    onChange={() => set({ cadre_id: String(c.id), cadre_code: c.code, occupation: '', occupation_other: '', facility_staff_type: '' })}
                   />
                   <span>
                     <strong>{c.name}</strong>
@@ -194,7 +206,13 @@ export function HealthWorkerFields({
               other={value.occupation_other}
               onOccupation={(v) => set({ occupation: v })}
               onOther={(v) => set({ occupation_other: v })}
+              required
             />
+            {isHcp(cadre?.code) && (
+              <div className="grid-full">
+                <FacilityStaffTypeField name="worker_facility_staff_type" value={value.facility_staff_type} onChange={(v) => set({ facility_staff_type: v })} />
+              </div>
+            )}
             <Field label="Employment start date *">
               <input type="date" value={value.employment_start_date} onChange={text('employment_start_date')} />
             </Field>

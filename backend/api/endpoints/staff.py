@@ -76,8 +76,10 @@ class StaffCreate(BaseModel):
         if digits and not ACCOUNT_NUMBER.fullmatch(digits):
             raise ValueError("Bank account number: 6 to 34 digits, as on the bank statement.")
         return digits or None
-    occupation: Optional[str] = None
-    occupation_other: Optional[str] = None
+    occupation: Optional[str] = Field(default=None, max_length=100)
+    occupation_other: Optional[str] = Field(default=None, max_length=100)
+    # HCP only, and required for an HCP: GOVERNMENT or PROJECT facility staff
+    facility_staff_type: Optional[str] = Field(default=None, max_length=20)
     salary_scale: Optional[str] = None
     employment_start_date: date
     enrollment_source: str = Field(default="MANUAL", pattern="^(ROSTER_IMPORT|ENGAGEMENT_LIST|MANUAL)$")
@@ -140,6 +142,7 @@ def _summary(db: Session, current: CurrentUser, s: Staff) -> dict:
         "legal_name": s.legal_name,
         "cadre": db.get(Cadre, s.cadre_id).code,
         "occupation": s.occupation,
+        "facility_staff_type": s.facility_staff_type,
         "status": s.status,
         "phone": s.verified_phone if _sees_contact(current) else mask_phone(s.verified_phone),
         "has_login": s.user_id is not None,
@@ -289,6 +292,7 @@ def new_staff_record(db: Session, current: CurrentUser, body: StaffCreate) -> St
     """Register one staff identity with its first assignment (flushed, not committed). Shared with user enrollment."""
     if not db.get(Cadre, body.cadre_id):
         raise HTTPException(status_code=422, detail="Unknown cadre")
+    body.facility_staff_type = reg.check_facility_staff_type(db, body.cadre_id, body.facility_staff_type, required=True)
     if body.payment_method not in (None, "MOBILE_WALLET", "BANK"):
         raise HTTPException(status_code=422, detail="payment_method must be MOBILE_WALLET or BANK")
     reg.check_payment_method(db, body.cadre_id, body.payment_method)

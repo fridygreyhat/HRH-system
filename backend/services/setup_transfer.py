@@ -103,7 +103,7 @@ def user_data(db, row):
     staff_data = None
     if staff:
         staff_data = {key: getattr(staff, key) for key in (
-            "first_name", "middle_name", "last_name", "occupation", "occupation_other",
+            "first_name", "middle_name", "last_name", "occupation", "occupation_other", "facility_staff_type",
             "employment_start_date", "employment_end_date")}
         staff_data.update(cadre=db.get(Cadre, staff.cadre_id).code,
                           assignments=[assignment_data(db, a) for a in db.query(StaffAssignment).filter_by(staff_id=staff.id).order_by(StaffAssignment.start_date)])

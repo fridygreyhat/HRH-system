@@ -10,6 +10,7 @@ export { TZ_MOBILE_INPUT_PATTERN as PHONE_PATTERN } from '../../phones';
 import { normalizeTzMobile, TZ_MOBILE_HINT, TZ_MOBILE_INPUT_PATTERN, TZ_MOBILE_MESSAGE } from '../../phones';
 import { normalizeTin, TIN_HINT, TIN_INPUT_PATTERN, TIN_LABEL, TIN_MESSAGE } from '../../tin';
 import { EMPTY_PROVIDER_PAY, ProviderPay, ProviderPayFields, providerPayPayload } from './ProviderPayFields';
+import { FACILITY_STAFF_TYPE_MESSAGE, FACILITY_STAFF_TYPES, FacilityStaffTypeField, isHcp } from './FacilityStaffType';
 export const PAYMENT_METHODS = ['MOBILE_WALLET', 'BANK'];
 export const ENROLLMENT_SOURCES = ['MANUAL', 'ROSTER_IMPORT', 'ENGAGEMENT_LIST'];
 export const PAYMENT_CRITICAL = ['cadre_id', 'salary_scale', 'payment_method', 'payment_provider', 'payment_account', 'verified_phone', 'status',
@@ -24,19 +25,23 @@ export function OccupationFields({
   other,
   onOccupation,
   onOther,
+  required = false,
 }: {
   cadre: Cadre | undefined;
   occupation: string;
   other: string;
   onOccupation: (v: string) => void;
   onOther: (v: string) => void;
+  /** Registration asks for the position; older records may still have none. */
+  required?: boolean;
 }) {
   const options = cadre?.occupation_options || [];
+  const label = `Position${required ? ' *' : ''}`;
   return (
     <>
       {options.length ? (
-        <Field label="Occupation">
-          <select value={occupation} onChange={(e) => onOccupation(e.target.value)}>
+        <Field label={label} hint="From the HRH cadre list">
+          <select value={occupation} onChange={(e) => onOccupation(e.target.value)} required={required}>
             <option value="">—</option>
             {options.map((o) => (
               <option key={o} value={o}>
@@ -47,12 +52,12 @@ export function OccupationFields({
           </select>
         </Field>
       ) : (
-        <Field label="Occupation">
-          <input value={occupation} onChange={(e) => onOccupation(e.target.value)} maxLength={100} />
+        <Field label={label}>
+          <input value={occupation} onChange={(e) => onOccupation(e.target.value)} maxLength={100} required={required} />
         </Field>
       )}
       {isOther(occupation) && (
-        <Field label="Other occupation (specify)">
+        <Field label="Other position (specify)">
           <input value={other} onChange={(e) => onOther(e.target.value)} required maxLength={100} />
         </Field>
       )}
@@ -100,6 +105,7 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
     verified_phone: '',
     occupation: '',
     occupation_other: '',
+    facility_staff_type: '',
     salary_scale: '',
     employment_start_date: todayLocal(),
     enrollment_source: 'MANUAL',
@@ -128,6 +134,7 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
         ...payment,
         occupation: blankToNull(f.occupation),
         occupation_other: isOther(f.occupation) ? blankToNull(f.occupation_other) : null,
+        facility_staff_type: isHcp(cadre?.code) ? f.facility_staff_type : null,
         salary_scale: blankToNull(f.salary_scale),
         employment_start_date: f.employment_start_date,
         enrollment_source: f.enrollment_source,
@@ -140,6 +147,11 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
   const canPay = step === REGISTER_STEPS.length - 1;
   const next = (e: React.FormEvent) => {
     e.preventDefault();
+    if (step === 0 && isHcp(cadre?.code) && !f.facility_staff_type) {
+      setError(FACILITY_STAFF_TYPE_MESSAGE);
+      return;
+    }
+    setError('');
     setStep(step + 1);
   };
 
@@ -157,7 +169,7 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
           <p className="muted small">If this phone already exists, rotate the assignment instead.</p>
           <div className="grid-2">
             <Field label="Cadre (required)">
-              <select value={f.cadre_id} onChange={(e) => setF({ ...f, cadre_id: e.target.value, occupation: '', occupation_other: '' })} required>
+              <select value={f.cadre_id} onChange={(e) => setF({ ...f, cadre_id: e.target.value, occupation: '', occupation_other: '', facility_staff_type: '' })} required>
                 <option value="">Select…</option>
                 {cadres.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -172,7 +184,13 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
               other={f.occupation_other}
               onOccupation={(v) => setF({ ...f, occupation: v })}
               onOther={(v) => setF({ ...f, occupation_other: v })}
+              required
             />
+            {isHcp(cadre?.code) && (
+              <div className="grid-full">
+                <FacilityStaffTypeField value={f.facility_staff_type} onChange={(v) => setF({ ...f, facility_staff_type: v })} />
+              </div>
+            )}
             <Field label="First name (required)">
               <input value={f.first_name} onChange={set('first_name')} required maxLength={100} autoComplete="off" />
             </Field>
@@ -206,7 +224,9 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
         {step === 2 && <>
           <div className="wizard-summary">
             <strong>{[f.first_name, f.middle_name, f.last_name].filter(Boolean).join(' ')}</strong>
-            <span>{cadre?.name} · {f.verified_phone}</span>
+            <span>
+              {[cadre?.name, f.occupation, FACILITY_STAFF_TYPES.find((t) => t.value === f.facility_staff_type)?.label, f.verified_phone].filter(Boolean).join(' · ')}
+            </span>
           </div>
           {!assignment.organization_id && <Alert kind="warn">No CSO set; this person will not appear in any salary file.</Alert>}
           <div className="grid-2">
@@ -234,6 +254,7 @@ type EditKey =
   | 'last_name'
   | 'occupation'
   | 'occupation_other'
+  | 'facility_staff_type'
   | 'tin_number'
   | 'cadre_id'
   | 'salary_scale'
@@ -271,6 +292,7 @@ export function EditStaffModal({
     last_name: staff.last_name,
     occupation: staff.occupation || '',
     occupation_other: staff.occupation_other || '',
+    facility_staff_type: staff.facility_staff_type || '',
     tin_number: staff.tin_number || '',
     cadre_id: String(staff.cadre_id),
     salary_scale: staff.salary_scale || '',
@@ -346,6 +368,11 @@ export function EditStaffModal({
             onOccupation={(v) => setF({ ...f, occupation: v })}
             onOther={(v) => setF({ ...f, occupation_other: v })}
           />
+          {isHcp(staff.cadre) && (
+            <div className="grid-full">
+              <FacilityStaffTypeField name="edit_facility_staff_type" value={f.facility_staff_type} onChange={(v) => setF({ ...f, facility_staff_type: v })} required={false} />
+            </div>
+          )}
           <Field label={`TIN${lockedNote}`} hint="9 digits, e.g. 123-456-789.">
             <input inputMode="numeric" value={f.tin_number} onChange={set('tin_number')} pattern={TIN_INPUT_PATTERN} maxLength={13} placeholder="123-456-789" />
           </Field>

@@ -733,6 +733,8 @@ export interface StaffSummary {
   legal_name: string;
   cadre: string;
   occupation: string | null;
+  /** HCP only: GOVERNMENT or PROJECT facility staff. */
+  facility_staff_type?: string | null;
   status: string;
   phone: string;
   has_login: boolean;
@@ -756,6 +758,8 @@ export interface StaffDetail {
   tin_number?: string | null;
   occupation: string | null;
   occupation_other: string | null;
+  /** HCP only: GOVERNMENT or PROJECT facility staff. */
+  facility_staff_type?: string | null;
   salary_scale: string | null;
   status: string;
   employment_start_date: string | null;

@@ -121,9 +121,16 @@ class StaffData(Strict):
     last_name: str = Field(min_length=1, max_length=100)
     occupation: str | None = Field(default=None, max_length=100)
     occupation_other: str | None = Field(default=None, max_length=100)
+    facility_staff_type: Literal["GOVERNMENT", "PROJECT"] | None = None  # HCP only
     employment_start_date: date | None = None
     employment_end_date: date | None = None
     assignments: list[AssignmentData] = Field(max_length=100)
+
+    @model_validator(mode="after")
+    def staff_type(self):
+        if self.facility_staff_type and self.cadre != "HCP":
+            raise ValueError("Only HCP staff are Government or Project facility staff")
+        return self
 
     @model_validator(mode="after")
     def placements(self):

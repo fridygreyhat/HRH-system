@@ -33,7 +33,7 @@ CADRES = [
     {
         "code": "CHW", "name": "Community Health Worker", "form_title": "EpiC Project Weekly Work Log-Sheet – CHW",
         "hours_mode": "DIRECT", "uses_facility_geofence": False, "requires_facility_endorsement": False,
-        "uses_section": False, "occupation_options": [],
+        "uses_section": False, "occupation_options": ["CHW (HIV + TB)", "CHW/CBHSCO Focal Person", "Other"],
         "technical_reviewer_title": "Senior Regional Technical Officer, Community Engagement",
         "fields": [
             ("clients_screened_hiv_tb", "Clients screened for HIV and TB testing indicators", "Idadi ya Wateja Waliochunguzwa viashiria vya upimaji wa VVU na TB"),
@@ -46,7 +46,8 @@ CADRES = [
     {
         "code": "DATA_CLERK", "name": "Data Clerk", "form_title": "Weekly Work Log-Sheet – Data Clerks",
         "hours_mode": "START_END", "uses_facility_geofence": True, "requires_facility_endorsement": False,
-        "uses_section": True, "occupation_options": ["Data Clerk", "Data Entry Volunteer", "ART Nurse / Clinician", "Other"],
+        "uses_section": True, "occupation_options": ["Facility Data Clerk", "District Data Officer", "Data Intern", "Data Clerk (HVL Hub)",
+                                                     "PnP Facility HRH", "Other"],
         "technical_reviewer_title": "Regional Strategic Information Officer",
         "fields": [
             ("ctc_clients_registered", "Number of CTC clients registered per day", "Idadi ya wateja wa CTC waliosajiliwa kwa siku"),
@@ -59,7 +60,9 @@ CADRES = [
     {
         "code": "HCP", "name": "Health Care Provider", "form_title": "EpiC Project Weekly Work Log-Sheet",
         "hours_mode": "START_END", "uses_facility_geofence": True, "requires_facility_endorsement": False,
-        "uses_section": True, "occupation_options": ["Nurse", "Clinician", "Lab Tech", "Other"],
+        "uses_section": True, "occupation_options": ["OPD Tester", "Clinical Officer", "Enrolled Nurse", "Nurse", "Assistant Nursing Officer",
+                                                     "Medical/Health Attendant", "Laboratory Technician", "Laboratory Scientist",
+                                                     "PnP Facility HRH", "Other"],
         "technical_reviewer_title": "Senior Regional Technical Officer, Care & Treatment",
         "fields": [
             ("clients_reached_community", "Number of Clients Reached (For Community)", "Idadi ya wateja waliofikiwa (jamii)"),

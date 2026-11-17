@@ -45,6 +45,7 @@ class Staff(Base):
     __table_args__ = (
         CheckConstraint("status IN ('ACTIVE', 'EXITED')", name="status"),
         CheckConstraint("enrollment_source IN ('ROSTER_IMPORT', 'ENGAGEMENT_LIST', 'MANUAL')", name="enrollment_source"),
+        CheckConstraint("facility_staff_type IS NULL OR facility_staff_type IN ('GOVERNMENT', 'PROJECT')", name="facility_staff_type"),
     )
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), unique=True)
@@ -56,6 +57,8 @@ class Staff(Base):
     tin_number = Column(String(11), unique=True)  # Taxpayer Identification Number, 123-456-789; optional
     occupation = Column(String(100))
     occupation_other = Column(String(100))
+    # HCP only: GOVERNMENT (a government facility's own staff) or PROJECT (staff the project placed at the facility)
+    facility_staff_type = Column(String(20))
     salary_scale = Column(String(50))
     status = Column(String(20), default="ACTIVE", nullable=False)
     employment_start_date = Column(Date)

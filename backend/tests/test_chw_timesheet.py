@@ -31,7 +31,7 @@ def test_chw_payroll_keeps_daily_indicators_separate_from_services(api, period, 
     assert saved["entries"][0]["evidence_text"] == "Previous evidence"
     assert saved["entries"][0]["comment"] == "Previous comment"
     api.put(f"/worklogs/{log['id']}", "chw1", {"period_comment": "Previous period note"})
-    saved = api.put(f"/worklogs/{log['id']}", "chw1", {"occupation": "CHW"})
+    saved = api.put(f"/worklogs/{log['id']}", "chw1", {"occupation": "CHW (HIV + TB)"})
     assert saved["period_comment"] == "Previous period note"
 
 
