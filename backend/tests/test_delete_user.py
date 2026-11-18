@@ -57,7 +57,7 @@ def test_an_account_with_history_leaves_use_but_keeps_its_name_in_that_history(a
 
 
 def test_deleting_a_provider_account_keeps_the_staff_record(api, db):
-    staff = {**_staff(api, "CHW", phone(), "MOBILE_WALLET"), "tin_number": "300 400 501", "bank_name": "NMB",
+    staff = {**_staff(api, "CHW", phone(), "MOBILE_WALLET"), "tin_number": "300 400 591", "bank_name": "NMB",
              "bank_account_number": "0152278944"}
     user = account(api, "provider.leaving", roles=("PROVIDER",), staff=staff)
     staff_id = db.query(Staff.id).filter_by(user_id=user["id"]).scalar()
