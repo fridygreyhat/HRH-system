@@ -365,7 +365,51 @@ function LinkStaff({ user, onChanged }: { user: AdminUser; onChanged: (u: AdminU
   );
 }
 
-function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleInfo[] | null; onChanged: (u: AdminUser) => void }) {
+/** Delete an account: one never used goes completely; one with history leaves use but keeps its name in that history. */
+export function DeleteUser({ user, onDeleted }: { user: AdminUser; onDeleted: (message: string) => void }) {
+  const [typed, setTyped] = useState('');
+  const [reason, setReason] = useState('');
+  const action = useAction();
+  const ready = typed.trim() === user.username && reason.trim().length >= 5;
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!ready) return;
+    const result = await action.run(() => api.post<{ completely: boolean; staff_id: number | null }>(
+      `/admin/users/${user.id}/delete`, { confirmation: typed.trim(), reason: reason.trim() }));
+    if (result) {
+      onDeleted(result.completely
+        ? `${user.username} was deleted.`
+        : `${user.username} was deleted. Their past approvals and records keep their name, marked "(deleted)".`
+          + (result.staff_id ? ' Their staff record stays in the staff registry, without a login.' : ''));
+    }
+  };
+  return (
+    <form className="stack card" onSubmit={submit} aria-label={`Delete ${user.username}`}>
+      <h3>Delete user</h3>
+      <p className="muted">
+        The account is removed and its username and phone can be used again. This cannot be undone. If the account has
+        approved, paid or signed anything, that history keeps its name, marked "(deleted)".
+        {user.staff_id ? ' The linked staff record stays in the staff registry.' : ''}
+      </p>
+      <Field label={`Type ${user.username} to confirm`}>
+        <input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" spellCheck={false} />
+      </Field>
+      <Field label="Reason (required)">
+        <input value={reason} onChange={(e) => setReason(e.target.value)} minLength={5} maxLength={1000} />
+      </Field>
+      <Alert>{action.error}</Alert>
+      <div>
+        <button type="submit" className="btn btn-danger" disabled={action.busy || !ready}>
+          {action.busy ? 'Deleting…' : 'Delete user'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function ManageUser({ user, roles, onChanged, onDeleted }: {
+  user: AdminUser; roles: RoleInfo[] | null; onChanged: (u: AdminUser) => void; onDeleted: (message: string) => void;
+}) {
   const { me } = useAuth();
   const [editingStaff, setEditingStaff] = useState(false);
   const staffCadres = useApi<Cadre[]>(editingStaff ? '/admin/cadres' : null);
@@ -605,6 +649,8 @@ function ManageUser({ user, roles, onChanged }: { user: AdminUser; roles: RoleIn
           </div>
         </div>
       )}
+
+      {!isMe && <DeleteUser user={user} onDeleted={onDeleted} />}
     </div>
   );
 }
@@ -770,6 +816,11 @@ export function UsersSection() {
             user={selected}
             roles={roles}
             onChanged={(u) => setData((list) => (list ? list.map((x) => (x.id === u.id ? u : x)) : list))}
+            onDeleted={(message) => {
+              setData((list) => (list ? list.filter((x) => x.id !== selected.id) : list));
+              setSelectedId(null);
+              setNotice(message);
+            }}
           />
         </Drawer>
       )}

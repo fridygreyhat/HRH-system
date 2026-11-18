@@ -24,6 +24,9 @@ class User(Base):
     # Tokens also carry this counter; signing out (or a lockout) increments it, ending every session.
     session_version = Column(Integer, nullable=False, default=0, server_default=text("0"))
     created_at = created_at()
+    # A deleted account with history keeps its row, so the audit trail still names who did what; it can never sign in.
+    deleted_at = Column(DateTime(timezone=True))
+    deleted_by = Column(Integer, ForeignKey("users.id"))
 
 
 class Role(Base):

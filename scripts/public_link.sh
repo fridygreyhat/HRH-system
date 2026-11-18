@@ -10,7 +10,10 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p .data/logs .data/run
-LOG=.data/logs/tunnel.log PIDFILE=.data/run/tunnel.pid URLFILE=.data/run/public_url.txt
+LOG=.data/logs/tunnel.log PIDFILE=.data/run/tunnel.pid URLFILE=.data/run/public_url.txt EDGE_TRIES=.data/run/edge_tries
+# Cloudflare data centres near Tanzania (Dar es Salaam, Mombasa, Nairobi): a link through one of them answers fastest.
+NEAR_EDGES=${NEAR_EDGES:-"dar mba nbo"}
+MAX_EDGE_TRIES=${MAX_EDGE_TRIES:-5}
 CLOUDFLARED=$(command -v cloudflared || echo /opt/homebrew/bin/cloudflared)
 [[ -x $CLOUDFLARED ]] || { echo "Install cloudflared first: brew install cloudflared" >&2; exit 1; }
 
@@ -20,7 +23,7 @@ if [[ -f $PIDFILE ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
 fi
 if [[ "${1:-}" == "--background" ]]; then
   nohup perl -e 'use POSIX; POSIX::setsid(); exec @ARGV' "$0" >/dev/null 2>&1 </dev/null &
-  for _ in $(seq 1 30); do
+  for _ in $(seq 1 90); do  # a link far from Tanzania is replaced, which can take a minute
     sleep 1
     if [[ -s $URLFILE ]]; then echo "Public link: $(cat "$URLFILE")"; exit 0; fi
   done
@@ -46,8 +49,24 @@ while true; do
         pkill -f "cloudflared tunnel --no-autoupdate --url http://127.0.0.1:5000"
         break ;;
       *trycloudflare.com*)
-        url=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' <<<"$line" | head -1)
-        [[ -n $url ]] && { echo "$url" >"$URLFILE"; echo "$(date '+%F %T') Public link: $url"; } ;;
+        # Held back until the tunnel connects, so a link that is about to be replaced is never handed out.
+        pending=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' <<<"$line" | head -1) ;;
+      *"Registered tunnel connection"*)
+        [[ -n ${checked:-} ]] && continue  # only a link's first connection decides; a later reconnect keeps the link
+        checked=1
+        edge=$(grep -oE 'location=[a-z0-9]+' <<<"$line" | head -1)
+        edge=${edge#location=}
+        tries=$(cat "$EDGE_TRIES" 2>/dev/null || echo 0)
+        # Cloudflare picks the data centre each time a link opens. Far away (Durban, Johannesburg, Europe) every request
+        # takes about twice as long for users in Tanzania, so open a new link, a few times at most.
+        if [[ " $NEAR_EDGES " != *" ${edge:0:3} "* ]] && (( tries < MAX_EDGE_TRIES )); then
+          echo $((tries + 1)) >"$EDGE_TRIES"
+          echo "$(date '+%F %T') public_link: connected through Cloudflare $edge, far from Tanzania; opening a new link ($((tries + 1)) of $MAX_EDGE_TRIES)" | tee -a "$LOG"
+          pkill -f "cloudflared tunnel --no-autoupdate --url http://127.0.0.1:5000"
+          break
+        fi
+        rm -f "$EDGE_TRIES"
+        [[ -n ${pending:-} ]] && { echo "$pending" >"$URLFILE"; echo "$(date '+%F %T') Public link: $pending (Cloudflare $edge)"; } ;;
     esac
   done
   [[ -f .data/run/stop ]] && break

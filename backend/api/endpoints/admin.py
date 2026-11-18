@@ -607,7 +607,7 @@ def unlinked_staff(db: Session = Depends(get_db), _: CurrentUser = Depends(requi
 
 @router.get("/users")
 def list_users(db: Session = Depends(get_db), _: CurrentUser = Depends(require_roles(SYSTEM_ADMIN))):
-    return _users_out(db, db.query(User).order_by(User.username).all())
+    return _users_out(db, db.query(User).filter(User.deleted_at.is_(None)).order_by(User.username).all())
 
 
 @router.post("/users", status_code=201)
@@ -737,6 +737,79 @@ def deactivate(user_id: int, db: Session = Depends(get_db), current: CurrentUser
     system_audit.record(db, current, "user", user.id, "deactivate")
     _commit(db)
     return _user_out(db, user)
+
+
+# Rows that belong to the account itself and go with it. Anything else naming the user is history (approvals,
+# payments, sign-offs, the audit log): then the account is removed from use but its row stays, so history keeps its name.
+OWN_ROWS = {("user_roles", "user_id"), ("user_scopes", "user_id"), ("user_review_cadres", "user_id"),
+            ("sms_outbox", "user_id"), ("staff", "user_id"), ("users", "deleted_by")}
+
+
+def _history(db: Session, user_id: int) -> list[str]:
+    """Where the account appears in the system's records, other than its own roles, regions and messages."""
+    from sqlalchemy import select
+    from ...models import Base
+    found = []
+    for table in Base.metadata.sorted_tables:
+        for column in table.columns:
+            if any(fk.column.table.name == "users" for fk in column.foreign_keys) and (table.name, column.name) not in OWN_ROWS:
+                if db.execute(select(column).where(column == user_id).limit(1)).first():
+                    found.append(f"{table.name}.{column.name}")
+    return found
+
+
+class DeleteUserIn(BaseModel):
+    confirmation: str = Field(min_length=1, max_length=120)
+    reason: str = Field(min_length=5, max_length=1000)
+
+
+@router.post("/users/{user_id}/delete")
+def delete_user(user_id: int, body: DeleteUserIn, db: Session = Depends(get_db),
+                current: CurrentUser = Depends(require_roles(SYSTEM_ADMIN))):
+    """Delete an account. One never used is removed completely. One with history is removed from use: it leaves the
+    user list, loses its roles, regions and password, frees its username and phone, and ends every session, while
+    approvals and the audit trail keep naming who did what."""
+    user = db.query(User).filter_by(id=user_id).with_for_update().first()
+    if not user or user.deleted_at:
+        raise HTTPException(status_code=404, detail="User not found")
+    _guard_super_admin(db, current, user)
+    if user.id == current.id:
+        raise HTTPException(status_code=422, detail="You cannot delete your own account")
+    if body.confirmation.strip() != user.username:
+        raise HTTPException(status_code=422, detail=f"Type the username {user.username} to confirm")
+    if SUPER_ADMIN in get_user_roles(db, user.id):
+        others = (db.query(UserRole.user_id).join(Role, Role.id == UserRole.role_id).join(User, User.id == UserRole.user_id)
+                  .filter(Role.name == SUPER_ADMIN, User.id != user.id, User.is_active.is_(True), User.deleted_at.is_(None)).count())
+        if not others:
+            raise HTTPException(status_code=422, detail="This is the last super administrator; add another one first")
+    before = {**to_dict(user, exclude=("hashed_password", "session_version")), "roles": sorted(get_user_roles(db, user.id))}
+    staff = db.query(Staff).filter_by(user_id=user.id).first()
+    history = _history(db, user.id)
+    db.query(UserRole).filter_by(user_id=user.id).delete()
+    db.query(UserScope).filter_by(user_id=user.id).delete()
+    db.query(UserReviewCadre).filter_by(user_id=user.id).delete()
+    if staff:  # the staff record stays in the registry; a new account can be linked to it later
+        staff.user_id = None
+    if history:
+        user.username = f"deleted-{user.id}-{user.username}"[:100]
+        user.phone = f"deleted-{user.id}"[:20]
+        user.email = None
+        user.full_name = f"{user.full_name} (deleted)"[:255]
+        user.hashed_password = hash_password(secrets.token_urlsafe(32))
+        user.is_active = False
+        user.session_version = (user.session_version or 0) + 1
+        user.deleted_at, user.deleted_by = utcnow(), current.id
+        outcome = "removed from use; its history is kept"
+    else:
+        from ...models import SMSOutbox
+        db.query(SMSOutbox).filter_by(user_id=user.id).update({SMSOutbox.user_id: None})
+        db.flush()
+        db.delete(user)
+        outcome = "deleted completely"
+    system_audit.record(db, current, "user", user_id, "delete", before=before, reason=body.reason.strip(),
+                        after={"outcome": outcome, "history": history[:20], "staff_unlinked": staff.id if staff else None})
+    _commit(db)
+    return {"deleted": True, "completely": not history, "outcome": outcome, "staff_id": staff.id if staff else None}
 
 
 class UserUpdate(BaseModel):
