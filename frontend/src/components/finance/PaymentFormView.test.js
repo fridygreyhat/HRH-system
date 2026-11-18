@@ -3,7 +3,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { formAmount, PaymentFormView } from './PaymentFormView';
 
-const SERVICES = ['S/N', 'Name', 'Cadre', 'Region', 'Health facility', 'No. of days', 'Total amount', 'Mobile No. for (Mobile Wallet Payment)'];
+const SERVICES = ['S/N', 'Name', 'Cadre', 'Region', 'Health facility', 'No. of days', 'Services summary', 'Total amount', 'Mobile No. for (Mobile Wallet Payment)'];
 const PAYROLL = ['S/N', 'Name', 'Cadre', 'Region', 'Health facility', 'Monthly salary', 'No. of days filled', 'Total amount', 'Bank name', 'Account number'];
 const cellsOf = (html) => [...html.matchAll(/<td[^>]*>(.*?)<\/td>/g)].map((m) => m[1].replace(/<[^>]+>/g, ''));
 
@@ -16,15 +16,15 @@ test('amounts read as on the paper form', () => {
 test('the Services summary has name, region, facility, days, total of all services and mobile number', () => {
   const html = renderToStaticMarkup(<PaymentFormView sw={false} form={{
     kind: 'SERVICES', month: '2026-10', activity: 'Services payments - October 2026', venue: 'Iringa and Njombe', columns: SERVICES,
-    rows: [{ sn: 1, name: 'Asha Juma', cadre: 'CHW', region: 'Iringa', facility: 'Kidamali', services: 'Index testing', days: 10, subtotal: '400000', total: '400000', currency: 'TZS', mobile: '0700000001' }],
+    rows: [{ sn: 1, name: 'Asha Juma', cadre: 'CHW', region: 'Iringa', facility: 'Kidamali', services: 'Index testing', summary: 'Index testing outreach (10 days)', days: 10, subtotal: '400000', total: '400000', currency: 'TZS', mobile: '0700000001' }],
     totals: { TZS: '400000' },
   }} />);
   expect(html).toContain('EpiC PROJECT');
   expect(html).toContain('PAYMENT FORM');
   expect(html).toContain('Services payments - October 2026');
   expect(html).toContain('Venue: Iringa and Njombe');
-  expect(cellsOf(html).slice(0, 8)).toEqual(['1', 'Asha Juma', 'CHW', 'Iringa', 'Kidamali', '10', '400,000', '0700000001']);
-  expect(cellsOf(html).slice(8)).toEqual(['', 'TOTAL', '', '', '', '', '400,000', '']);
+  expect(cellsOf(html).slice(0, 9)).toEqual(['1', 'Asha Juma', 'CHW', 'Iringa', 'Kidamali', '10', 'Index testing outreach (10 days)', '400,000', '0700000001']);
+  expect(cellsOf(html).slice(9)).toEqual(['', 'TOTAL', '', '', '', '', '', '400,000', '']);
 });
 
 test('the Payroll form shows salary and bank, and says what is missing', () => {

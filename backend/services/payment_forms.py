@@ -26,7 +26,7 @@ BRAND = Path(__file__).resolve().parents[2] / "frontend" / "public" / "brand"
 LOGOS = ("usa-mark.png", "epic-logo.png", "fhi360-logo.png")
 PROJECT = "EpiC PROJECT"
 # The Services summary Central Finance pays from: one row per person, all services added together.
-SERVICES_COLUMNS = ["S/N", "Name", "Cadre", "Region", "Health facility", "No. of days", "Total amount",
+SERVICES_COLUMNS = ["S/N", "Name", "Cadre", "Region", "Health facility", "No. of days", "Services summary", "Total amount",
                     "Mobile No. for (Mobile Wallet Payment)"]
 # Payroll counts every day filled in on the timesheet (Services counts the days paid).
 PAYROLL_COLUMNS = ["S/N", "Name", "Cadre", "Region", "Health facility", "Monthly salary", "No. of days filled",
@@ -34,6 +34,13 @@ PAYROLL_COLUMNS = ["S/N", "Name", "Cadre", "Region", "Health facility", "Monthly
 MONEY = {"Monthly salary", "Total amount"}
 # Where the printed header breaks, so long titles wrap between words.
 HEADER_LINES = {"Mobile No. for (Mobile Wallet Payment)": "Mobile No. for<br/>(Mobile Wallet<br/>Payment)"}
+
+
+def services_summary(breakdown) -> str:
+    """What the person was paid for: each service with its paid days, e.g. "Index testing outreach (4 days)"."""
+    parts = [f"{item['service']} ({item['paid']} {'day' if item['paid'] == 1 else 'days'})"
+             for item in breakdown or [] if item.get("paid")]
+    return "; ".join(parts) or "—"
 
 
 def month_text(month):
@@ -81,7 +88,7 @@ def services_form(db, current, month, region_id=None, include_prf=False):
         "activity": f"Services payments - {month_text(month)}",
         "venue": joined(r["region"] for r in rows), "columns": SERVICES_COLUMNS,
         "rows": [{"sn": i, "name": r["name"], "cadre": r["cadre"], "region": r["region"], "facility": r["facility"],
-                  "services": r["services"], "breakdown": r["breakdown"],
+                  "services": r["services"], "breakdown": r["breakdown"], "summary": services_summary(r["breakdown"]),
                   "days": r["days"], "subtotal": str(r["amount"]), "total": str(r["amount"]), "currency": r["currency"],
                   "mobile": r["mobile"] or "", "claim_id": r["claim_id"]} for i, r in enumerate(rows, start=1)],
         "totals": _totals(rows, "amount"),
@@ -134,7 +141,8 @@ def money(value):
 def cells(form, row):
     """A row in the column order of the form."""
     if form["kind"] == "SERVICES":
-        return [row["sn"], row["name"], row.get("cadre") or "", row["region"], row["facility"], row["days"], money(row["total"]), row["mobile"]]
+        return [row["sn"], row["name"], row.get("cadre") or "", row["region"], row["facility"], row["days"],
+                row.get("summary") or "—", money(row["total"]), row["mobile"]]
     missing = "Salary on other row" if OTHER_ROW in row["checks"] else "Missing"
     return [row["sn"], row["name"], row.get("cadre") or "", row["region"], row["facility"], money(row["salary"]) or missing, row["days"],
             money(row["total"]), row["bank_name"] or "Missing", row["bank_account_number"] or "Missing"]
@@ -195,7 +203,7 @@ def form_flowables(form, width):
     data.append([p("") for _ in form["columns"]])
     data[-1][total_at] = p(total_text(form), ParagraphStyle("total", parent=right, fontName="Helvetica-Bold"))
     data[-1][1] = p("TOTAL", ParagraphStyle("totallabel", parent=body, fontName="Helvetica-Bold"))
-    shares = ([22, 100, 80, 55, 100, 65, 40, 65, 75, 85] if payroll else [22, 110, 85, 65, 110, 40, 70, 90])
+    shares = ([22, 100, 80, 55, 100, 65, 40, 65, 75, 85] if payroll else [22, 95, 75, 55, 95, 36, 130, 62, 80])
     widths = [width * s / sum(shares) for s in shares]
     table = Table(data, colWidths=widths, repeatRows=1)
     table.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, colors.black),
@@ -271,6 +279,8 @@ def workbook(form):
             cell.border = box
             if index in money_columns:
                 cell.number_format = "#,##0"
+            if columns[index - 1] == "Services summary":
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
     end = first + len(form["rows"]) + 1
     for index in range(1, last + 1):
         sheet.cell(end, index).border = box
@@ -282,7 +292,8 @@ def workbook(form):
     else:
         total = sheet.cell(end, total_column, total_text(form))
     total.font = bold
-    widths = {"S/N": 5, "Name": 28, "Cadre": 22, "Region": 13, "Health facility": 28, "Services": 26, "No. of days": 8, "No. of days filled": 9,
+    widths = {"S/N": 5, "Name": 28, "Cadre": 22, "Region": 13, "Health facility": 28, "Services": 26, "Services summary": 42,
+              "No. of days": 8, "No. of days filled": 9,
               "Monthly salary": 13, "Total amount": 14,
               "Mobile No. for (Mobile Wallet Payment)": 18, "Bank name": 16, "Account number": 18, "Bank branch": 14}
     for index, title in enumerate(columns, start=1):
@@ -384,12 +395,17 @@ def batch_services_form(db, batch, lines):
                                                    "mobile": mobile or ""})
         row["days"] |= paid_days
         row["amount"] += Decimal(str(line["amount"]))
+        for item in ((claim.calculation_snapshot or {}).get("lines", []) if claim else []):
+            if item.get("date"):
+                row.setdefault("service_days", {}).setdefault(item.get("activity") or "Service", set()).add(item["date"])
     rows = sorted(people.values(), key=lambda r: (r["region"], r["facility"], r["name"]))
     return {
         "kind": "SERVICES", "month": batch.reference,
         "activity": f"Services payments - batch {batch.reference}",
         "venue": joined(r["region"] for r in rows), "columns": SERVICES_COLUMNS,
         "rows": [{"sn": i, "name": r["name"], "cadre": r["cadre"], "region": r["region"], "facility": r["facility"], "days": len(r["days"]),
+                  "summary": services_summary([{"service": name, "paid": len(dates)}
+                                               for name, dates in sorted(r.get("service_days", {}).items())]),
                   "subtotal": str(r["amount"]), "total": str(r["amount"]), "currency": r["currency"], "mobile": r["mobile"]}
                  for i, r in enumerate(rows, start=1)],
         "totals": _totals([{"total": r["amount"], "currency": r["currency"]} for r in rows], "total"),

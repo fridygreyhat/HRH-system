@@ -14,6 +14,8 @@ export interface PaymentFormRow {
   currency: string;
   /** Services */
   services?: string;
+  /** What the person was paid for: each service with its paid days. */
+  summary?: string;
   mobile?: string;
   /** Payroll */
   salary?: string | null;
@@ -48,7 +50,7 @@ function cells(form: PaymentForm, row: PaymentFormRow, sw: boolean): React.React
   const missing = <span className="pf-missing">{sw ? 'Haipo' : 'Missing'}</span>;
   if (form.kind === 'SERVICES') {
     // The Services summary: one row per person, all services added together.
-    return [row.sn, row.name, row.cadre || '', row.region, row.facility, num(row.days), formAmount(row.total), row.mobile || missing];
+    return [row.sn, row.name, row.cadre || '', row.region, row.facility, num(row.days), row.summary || '—', formAmount(row.total), row.mobile || missing];
   }
   const salary = row.checks?.includes(OTHER_ROW) ? (sw ? 'Kwenye mstari mwingine' : 'On other row') : formAmount(row.salary) || missing;
   return [row.sn, row.name, row.cadre || '', row.region, row.facility, salary, num(row.days), formAmount(row.total),

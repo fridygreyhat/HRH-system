@@ -1619,3 +1619,6 @@ details[open].card > summary::before, details[open].folded > summary::before { t
 .picked-list li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.35rem 0.6rem; border: 1px solid var(--border); border-radius: 8px; }
 .provider-pay { border: 1px solid var(--border); border-radius: 12px; padding: 0.8rem 0.9rem; }
 .provider-pay legend { font-weight: 700; padding: 0 0.3rem; }
+
+/* Money must never be cut off: a long tile value wraps in a smaller size. */
+.kpi-value.is-long { font-size: 1.15rem; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }

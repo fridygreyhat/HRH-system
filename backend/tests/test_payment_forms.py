@@ -73,12 +73,13 @@ def _services_form_checks(api, db, v22, claim, empty_period):
     name = rows[0][1]
     assert name.value.startswith("=FORMULA") and name.data_type == "s"  # text, never a formula
     # The allowance is left blank for Finance; the total adds it as soon as it is typed in.
-    # The Services summary: name, region, facility, days, total of all services, mobile number.
+    # The Services summary: name, region, facility, days, what was done, total of all services, mobile number.
     assert rows[0][2].value and rows[0][3].value  # region and facility
     assert rows[0][2].value  # cadre
-    assert [cell.value for cell in rows[0][5:8]] == [1, 40000, "+255700000001"]
-    assert rows[-1][1].value == "TOTAL" and rows[-1][6].value == "=SUM(G8:G8)"
-    assert sheet.auto_filter.ref == "A7:H8"
+    assert rows[0][5].value == 1 and rows[0][6].value.endswith("(1 day)")  # each service with its paid days
+    assert [cell.value for cell in rows[0][7:9]] == [40000, "+255700000001"]
+    assert rows[-1][1].value == "TOTAL" and rows[-1][7].value == "=SUM(H8:H8)"
+    assert sheet.auto_filter.ref == "A7:I8"
 
     for user in ("chw1", "csofin1", v22["finance"]):
         api.get(f"/finance/services-payment-form?month={month}", user, expect=403)
@@ -232,16 +233,17 @@ def test_a_services_batch_excel_opens_on_the_summary_to_pay_from(api, db, empty_
     summary = book["Summary"]
     assert summary["A3"].value == "PAYMENT FORM" and batch["reference"] in summary["C4"].value
     assert [cell.value for cell in summary[7]] == payment_forms.SERVICES_COLUMNS
-    assert [cell.value for cell in summary[7]] == ["S/N", "Name", "Cadre", "Region", "Health facility", "No. of days", "Total amount",
-                                                    "Mobile No. for (Mobile Wallet Payment)"]
+    assert [cell.value for cell in summary[7]] == ["S/N", "Name", "Cadre", "Region", "Health facility", "No. of days", "Services summary",
+                                                    "Total amount", "Mobile No. for (Mobile Wallet Payment)"]
     person = [cell.value for cell in summary[8]]
     # One row per person: a batch takes every ready Services claim, so a person's claims are added together.
     head = [cell.value for cell in book["Details"][1]]
     mine = [row for row in book["Details"].iter_rows(min_row=2, values_only=True) if row[head.index("staff_name")] == person[1]]
-    assert person[0] == 1 and person[2] and person[3] and person[4] and person[5] >= 1 and person[7]
-    assert person[6] == sum(row[head.index("amount")] for row in mine)  # the summary adds the details up
+    assert person[0] == 1 and person[2] and person[3] and person[4] and person[5] >= 1 and person[8]
+    assert "day" in person[6]  # the services summary: each service with its paid days
+    assert person[7] == sum(row[head.index("amount")] for row in mine)  # the summary adds the details up
     last = summary.max_row
-    assert summary.cell(last, 2).value == "TOTAL" and summary.cell(last, 7).value == f"=SUM(G8:G{last - 1})"
+    assert summary.cell(last, 2).value == "TOTAL" and summary.cell(last, 8).value == f"=SUM(H8:H{last - 1})"
     details = [cell.value for cell in book["Details"][1]]
     assert "claim_id" in details and "budget_line" in details  # the full batch lines stay on the second sheet
 

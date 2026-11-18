@@ -127,7 +127,9 @@ function ProviderList({ rows, sw }: { rows: ProviderRow[]; sw: boolean }) {
                   <td className="num nowrap">
                     {row.monthly_salary ? money(row.monthly_salary) : '—'}
                     {row.monthly_salary && row.pay_components && (
-                      <span className="cell-sub">{row.pay_components.map((part) => `${part.name} ${money(part.amount)}`).join(' + ')}</span>
+                      <span className="cell-sub" title={row.pay_components.map((part) => `${part.name} ${money(part.amount)}`).join(' + ')}>
+                        {row.pay_components.map((part) => Number(part.amount).toLocaleString('en-US')).join(' + ')}
+                      </span>
                     )}
                   </td>
                   <td>{row.checks.length ? <span className="badge badge-warn">{row.checks.map((check) => (sw && CHECK_SW[check]) || check).join('; ')}</span> : <span className="badge badge-success">{sw ? 'Sawa' : 'OK'}</span>}</td>

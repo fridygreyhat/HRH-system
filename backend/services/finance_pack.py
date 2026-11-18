@@ -258,7 +258,7 @@ def form(data):
         if payroll:
             row.update(salary=p["amount"], bank_name=p["bank_name"], bank_account_number=p["bank_account_number"])
         else:
-            row.update(mobile=p["mobile"], claim_id=p["claim_id"], services="")
+            row.update(mobile=p["mobile"], claim_id=p["claim_id"], services="", summary=payment_forms.services_summary(p["breakdown"]))
         rows.append(row)
     return {"kind": data["work_type"], "month": data["month"], "activity": _title(data),
             "venue": payment_forms.joined(p["region"] for p in data["people"]),

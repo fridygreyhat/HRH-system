@@ -453,7 +453,8 @@ export function KpiStrip({ items, label: aria }: { items: Kpi[]; label?: string 
           <>
             {item.icon && <span className="kpi-icon" aria-hidden="true"><Icon name={item.icon} size={18} /></span>}
             <span className="kpi-text">
-              <span className="kpi-value">{item.value}</span>
+              {/* A long amount (TZS 565,000,000) wraps in a smaller size rather than being cut off. */}
+              <span className={`kpi-value${typeof item.value === 'string' && item.value.length > 11 ? ' is-long' : ''}`}>{item.value}</span>
               <span className="kpi-label">{item.label}</span>
               {item.note && <span className="kpi-note">{item.note}</span>}
             </span>
