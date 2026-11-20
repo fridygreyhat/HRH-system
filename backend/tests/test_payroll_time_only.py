@@ -1,4 +1,4 @@
-"""Payroll days record the time worked only: no activity to choose and no indicators to count, for every cadre."""
+"""Payroll days record the hours worked only: no start or end time, no activity and no indicators, for every cadre."""
 import pytest
 
 from .test_v22_finance import v22  # noqa: F401  (fixture)
@@ -27,24 +27,22 @@ def test_every_cadre_records_a_payroll_day_with_times_only(api, period, monkeypa
     monkeypatch.setattr(workflow_policy, "NEW_RECORD_WORKFLOW_VERSION", 2)
     assert api.get("/auth/me", provider)["client_settings"]["payroll_time_only"] is True
     log = api.post("/worklogs", provider, {"period_id": period["id"], "work_type": "PAYROLL"})
-    # One choice, the time worked, with no indicator fields and start/end times rather than an hours box.
+    # One choice, the hours worked, with no indicator fields and an hours box rather than start and end times.
     assert [a["key"] for a in log["cadre"]["activities"]] == ["daily_attendance"]
     only = log["cadre"]["activities"][0]
-    assert only["fields"] == [] and only["hours_input"] is False
+    assert only["fields"] == [] and only["hours_input"] is True
     assert log["cadre"]["fields"] == []
-    saved = api.put(f"/worklogs/{log['id']}/entries/{period['start_date']}", provider,
-                    {"activity_key": "daily_attendance", "start_time": "08:00", "end_time": "15:30", "measures": {}, **GPS})
+    path = f"/worklogs/{log['id']}/entries/{period['start_date']}"
+    saved = api.put(path, provider, {"activity_key": "daily_attendance", "hours_worked": 7.5, "measures": {}, **GPS})
     entry = saved["entries"][0]
-    assert float(entry["hours_worked"]) == 7.5 and entry["start_time"].startswith("08:00")
-    # A task or an indicator is refused; so is a day without its times.
+    assert float(entry["hours_worked"]) == 7.5 and entry["start_time"] is None and entry["end_time"] is None
+    # Times alone are not hours; a task or an indicator is refused; more than 8 hours is refused.
+    api.put(path, provider, {"activity_key": "daily_attendance", "start_time": "08:00", "end_time": "15:30", "measures": {}, **GPS}, expect=422)
     other = "chw_daily_timesheet" if provider == "chw1" else "opd_screening"
-    api.put(f"/worklogs/{log['id']}/entries/{period['start_date']}", provider,
-            {"activity_key": other, "start_time": "08:00", "end_time": "15:30", "measures": {}, **GPS}, expect=422)
-    api.put(f"/worklogs/{log['id']}/entries/{period['start_date']}", provider,
-            {"activity_key": "daily_attendance", "hours_worked": 7, "measures": {}, **GPS}, expect=422)
-    api.put(f"/worklogs/{log['id']}/entries/{period['start_date']}", provider,
-            {"activity_key": "daily_attendance", "start_time": "08:00", "end_time": "15:30",
-             "measures": {"opd_attendees": 3}, **GPS}, expect=422)
+    api.put(path, provider, {"activity_key": other, "hours_worked": 7.5, "measures": {}, **GPS}, expect=422)
+    api.put(path, provider, {"activity_key": "daily_attendance", "hours_worked": 7.5, "measures": {"opd_attendees": 3}, **GPS}, expect=422)
+    api.put(path, provider, {"activity_key": "daily_attendance", "hours_worked": 8.5, "measures": {}, **GPS}, expect=422)
+    assert float(api.put(path, provider, {"activity_key": "daily_attendance", "hours_worked": 8, "measures": {}, **GPS})["entries"][0]["hours_worked"]) == 8
     submitted = api.post(f"/worklogs/{log['id']}/actions/submit", provider, {"attest": True})
     assert submitted["status"] == "PENDING_CTC_VERIFICATION"
 
@@ -54,7 +52,7 @@ def test_the_payroll_day_limit_still_applies(api, period, monkeypatch, time_only
     monkeypatch.setattr(workflow_policy, "NEW_RECORD_WORKFLOW_VERSION", 2)
     log = api.post("/worklogs", "hcp1", {"period_id": period["id"], "work_type": "PAYROLL"})
     api.put(f"/worklogs/{log['id']}/entries/{period['start_date']}", "hcp1",
-            {"activity_key": "daily_attendance", "start_time": "07:00", "end_time": "17:00", "measures": {}, **GPS}, expect=422)
+            {"activity_key": "daily_attendance", "hours_worked": 10, "measures": {}, **GPS}, expect=422)
 
 
 def test_services_keep_their_activities(api, period, monkeypatch, time_only):
@@ -81,6 +79,6 @@ def test_a_day_recorded_with_an_activity_before_keeps_it_until_edited(api, db, p
     assert keys[0] == "daily_attendance" and activity["key"] in keys  # the old day still reads as recorded
     assert shown["entries"][0]["measures"]
     edited = api.put(f"/worklogs/{log['id']}/entries/{period['start_date']}", "hcp1",
-                     {"activity_key": "daily_attendance", "start_time": "08:00", "end_time": "12:00", "measures": {}, **GPS})
+                     {"activity_key": "daily_attendance", "hours_worked": 4, "measures": {}, **GPS})
     assert edited["entries"][0]["activity_key"] == "daily_attendance" and not edited["entries"][0]["measures"]
     assert db.query(WorkLogEntry).filter_by(work_log_id=log["id"]).one().activity_snapshot["fields"] == []

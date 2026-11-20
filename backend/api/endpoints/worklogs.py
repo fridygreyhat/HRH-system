@@ -487,8 +487,8 @@ def upsert_entry(log_id: int, entry_date: date, body: EntryIn, db: Session = Dep
     elif entry and log.work_type == "SERVICES":
         activity = {key: value for key, value in activity.items() if key != "additional_services"}
     from ...services.activity_catalog import time_only
-    # A time-only Payroll day is always its start and end time, whatever the cadre's usual hours entry.
-    direct_hours = not time_only(db, log) and (cadre.hours_mode == "DIRECT" or activity.get("hours_input", False))
+    # A time-only Payroll day is the hours worked that day (no start or end time), whatever the cadre's usual entry.
+    direct_hours = time_only(db, log) or cadre.hours_mode == "DIRECT" or activity.get("hours_input", False)
     backdate_hours = int(get_setting(db, "backdate_grace_hours"))
     earliest_allowed = datetime.now(TZ) - timedelta(hours=backdate_hours)
     # Timed activities use their completion time. Date-only CHW entries use

@@ -110,6 +110,13 @@ def salary_timesheets(cso_id: int, month: str = Query(pattern=MONTH), region_id:
                       setting: Setting | None = None, db: Session = Depends(get_db), current: CurrentUser = Depends(require_roles(CSO_FINANCE))):
     result = timesheets.signed(db, current, organization(db, current, cso_id), month, region_id, setting)
     result["providers"] = [{key: p[key] for key in timesheets.SCREEN_FIELDS} for p in result["providers"]]
+    # Once the CSO records a salary as paid (with its proof), the list it received shows it as paid.
+    paid = payroll_payments.paid_by_staff(db, month, [p["staff_id"] for p in result["providers"]])
+    for provider in result["providers"]:
+        amount = paid.get(provider["staff_id"], Decimal(0))
+        provider["paid_amount"] = str(amount)
+        provider["payment_status"] = payroll_payments.payment_status(provider["monthly_salary"], amount)
+    result["totals"]["paid_providers"] = len({p["staff_id"] for p in result["providers"] if p["payment_status"] == "PAID"})
     return result
 
 

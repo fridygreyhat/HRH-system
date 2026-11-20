@@ -31,6 +31,24 @@ def paid_by_staff(db, month: str, staff_ids=None) -> dict[int, Decimal]:
     return {staff_id: total for staff_id, total in query.group_by(PayrollPayment.staff_id)}
 
 
+def paid_in_full(db, month: str, staff_ids) -> set[int]:
+    """Providers whose salary for the month is recorded as paid in full (voided and failed payments do not count)."""
+    if not staff_ids:
+        return set()
+    rows = db.query(PayrollPayment.staff_id).filter(
+        PayrollPayment.month == month, PayrollPayment.status == "PAID", PayrollPayment.voided_at.is_(None),
+        PayrollPayment.staff_id.in_(list(staff_ids)),
+    ).group_by(PayrollPayment.staff_id).having(func.sum(PayrollPayment.amount) >= func.max(PayrollPayment.expected_amount))
+    return {staff_id for (staff_id,) in rows}
+
+
+def payment_status(salary, paid) -> str:
+    """PAID, PART_PAID or NOT_PAID for one provider's month, from the signed salary and what is recorded as paid."""
+    if paid <= 0:
+        return "NOT_PAID"
+    return "PAID" if salary is None or paid >= Decimal(salary) else "PART_PAID"
+
+
 def due(db, current, org, month: str) -> dict[int, dict]:
     """Each provider on the CSO's signed salary file this month: signed salary, paid so far, and what is still due."""
     result = signed(db, current, org, month)

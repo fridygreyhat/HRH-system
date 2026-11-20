@@ -73,6 +73,7 @@ def build(db, current, logs: list[WorkLog], month: str) -> dict:
                  "measures": measures[entry.id]} for entry in entries[log.id]]
         printed.append({
             "id": log.id, "status": log.status, "version": log.version, "work_type": log.work_type,
+            "workflow_version": log.workflow_version,
             "attested_at": log.attested_at, "period_comment": log.period_comment,
             "occupation": log.occupation, "occupation_other": log.occupation_other, "section": log.section,
             "staff": {"id": person.id, "name": person.legal_name, "first_name": person.first_name, "middle_name": person.middle_name,

@@ -12,6 +12,7 @@ import { useTheme } from './theme';
 import { WorkLogSummary } from './types';
 import { useStackedTables } from './stackTables';
 import { lazyPage, PageBoundary } from './lazyPage';
+import { OfflineSync } from './components/OfflineSync';
 
 // Screens download when first opened: signing in needs only the shell, the sign-in and the home page.
 const Admin = lazyPage(() => import('./pages/Admin').then((m) => m.Admin));
@@ -353,6 +354,7 @@ function App() {
           </div>
         </header>
         <main className="content" ref={mainRef} tabIndex={-1}>
+          <OfflineSync />
           {current ? (
             <React.Fragment key={`${current.key}-${route.id || ''}`}>
               {banded && (

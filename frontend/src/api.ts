@@ -1,3 +1,5 @@
+import { isOfflineRead, recall, remember, withPending } from './offlineStore';
+
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 const TOKEN_KEY = 'hrh_token';
 let memoryToken: string | null = null;
@@ -132,10 +134,24 @@ async function sendRetrying(method: string, path: string, body?: Payload, option
 }
 
 async function json<T>(method: string, path: string, body?: Payload, options?: { signal?: AbortSignal }): Promise<T> {
-  const res = await sendRetrying(method, path, body, options);
+  const offline = method === 'GET' && isOfflineRead(path);
+  let res: Response;
+  try {
+    res = await sendRetrying(method, path, body, options);
+  } catch (e) {
+    // No connection: a provider's own timesheets, as last seen on this phone, with the days still waiting to be sent.
+    const kept = offline && e instanceof ApiError && e.status === 0 ? recall<T>(path) : undefined;
+    if (kept !== undefined) return kept;
+    throw e;
+  }
   if (res.status === 204) return undefined as unknown as T;
   const type = res.headers.get('content-type') || '';
-  return (type.includes('application/json') ? res.json() : res.text()) as Promise<T>;
+  const result = (await (type.includes('application/json') ? res.json() : res.text())) as T;
+  if (offline) {
+    remember(path, result);
+    return withPending(path, result);
+  }
+  return result;
 }
 
 export interface BlobResult {

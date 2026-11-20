@@ -246,6 +246,10 @@ def queue_condition(current: CurrentUser):
                 condition = (WorkLog.workflow_version == version) & (WorkLog.work_type == kind) & (WorkLog.status == status) & WorkLog.assignment_id.in_(scope)
                 if version >= 2 and role in {TECHNICAL_OFFICER, RPM, REGIONAL_FINANCE}:
                     condition &= record_condition(current, WorkLog.assignment_id, WorkLog.cadre_id, role=role)
+                if kind == "PAYROLL" and status == APPROVED and role == REGIONAL_FINANCE:
+                    # Approved Payroll waits on Regional Finance only until they approve it; being able to return it
+                    # afterwards does not keep it waiting (it may already be signed, sent and paid by the CSO).
+                    condition &= WorkLog.finance_timesheet_approved_at.is_(None)
                 conditions.append(condition)
     rm = assignments_in_role_scope(current, RPM)
     if rm is not None:  # nothing else would bring this back: the claim is gone, so RM must reopen the work

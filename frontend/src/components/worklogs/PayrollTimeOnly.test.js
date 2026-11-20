@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { DayEntryForm } from './DayEntryForm';
 
-// Payroll records time only: the provider gives start and end time, with no activity to pick and no indicators.
+// Payroll records hours only: the provider gives the day's total hours, with no times, activity or indicators.
 jest.mock('../../AuthContext', () => ({
   useAuth: () => ({ t: (key) => key, lang: 'en', me: { client_settings: { payroll_time_only: true } } }),
 }));
@@ -21,7 +21,7 @@ afterEach(() => {
   container.remove();
 });
 
-const timeOnlyDay = { key: 'daily_attendance', label_en: 'Time worked', label_sw: 'Muda wa kazi', item_type: 'PAYROLL', fields: [], required_fields: [], hours_input: false };
+const timeOnlyDay = { key: 'daily_attendance', label_en: 'Hours worked', label_sw: 'Masaa ya kazi', item_type: 'PAYROLL', fields: [], required_fields: [], hours_input: true };
 const oldDay = { key: 'opd_screening', label_en: 'OPD screening', item_type: 'PAYROLL', fields: ['opd_attendees'], required_fields: ['opd_attendees'] };
 
 const render = (code, hoursMode = 'START_END', entry) => act(() => root.render(
@@ -35,18 +35,23 @@ const render = (code, hoursMode = 'START_END', entry) => act(() => root.render(
   />,
 ));
 
-test.each([['HCP', 'START_END'], ['CHW', 'DIRECT'], ['DATA_CLERK', 'START_END']])('%s Payroll day asks only for start and end time', (code, mode) => {
+const activitySelect = () => Array.from(container.querySelectorAll('select')).filter((select) => select.getAttribute('aria-label') !== 'Minutes worked');
+
+test.each([['HCP', 'START_END'], ['CHW', 'DIRECT'], ['DATA_CLERK', 'START_END']])('%s Payroll day asks only for the hours worked', (code, mode) => {
   render(code, mode);
-  expect(container.textContent).toContain('No activities or indicators are needed');
-  expect(container.querySelectorAll('input[type="time"]')).toHaveLength(2);
-  expect(container.querySelector('select')).toBeNull();
-  expect(container.querySelector('input[type="number"]')).toBeNull();
+  expect(container.textContent).toContain('enter the total hours you worked this day (up to 8 hours)');
+  expect(container.querySelectorAll('input[type="time"]')).toHaveLength(0);
+  const hours = container.querySelector('input[aria-label="Whole hours worked"]');
+  expect(hours).not.toBeNull();
+  expect(hours.getAttribute('max')).toBe('8');
+  expect(activitySelect()).toHaveLength(0);
   expect(container.textContent).not.toContain('OPD attendees');
 });
 
-test('a day recorded earlier with an activity opens as time only', () => {
-  render('HCP', 'START_END', { activity_key: 'opd_screening', start_time: '08:00:00', end_time: '15:00:00', hours_worked: 7, measures: { opd_attendees: 4 } });
-  expect(container.querySelector('select')).toBeNull();
-  expect(container.textContent).not.toContain('OPD attendees');
-  expect(Array.from(container.querySelectorAll('input[type="time"]')).map((input) => input.value)).toEqual(['08:00', '15:00']);
+test('a day recorded earlier with times opens as its hours', () => {
+  render('HCP', 'START_END', { activity_key: 'opd_screening', start_time: '08:00:00', end_time: '15:30:00', hours_worked: 7.5, measures: { opd_attendees: 4 } });
+  expect(activitySelect()).toHaveLength(0);
+  expect(container.querySelectorAll('input[type="time"]')).toHaveLength(0);
+  expect(container.querySelector('input[aria-label="Whole hours worked"]').value).toBe('7');
+  expect(container.querySelector('select[aria-label="Minutes worked"]').value).toBe('30');
 });

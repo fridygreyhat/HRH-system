@@ -107,3 +107,13 @@ def test_regional_finance_approves_rm_approved_payroll_once(api, db, period, v22
     assert approved["status"] == "APPROVED" and approved["finance_timesheet_approved_at"]  # same status, now approved
     assert ACTION not in approved["available_actions"]
     act(api, approved, ACTION, v22["finance"], confirmed("PAYROLL"), expect=403)  # only once
+
+
+def test_approved_payroll_leaves_the_regional_finance_queue(api, db, period, v22):
+    from .test_finance_routing import approved_payroll
+    log = approved_payroll(api, db, period)
+    queue = lambda: {row["id"] for row in api.get("/worklogs?queue=true&work_type=PAYROLL", v22["finance"])}
+    assert log["id"] in queue()
+    approved = act(api, log, ACTION, v22["finance"], confirmed("PAYROLL"))
+    assert log["id"] not in queue()
+    assert "return" in approved["available_actions"]  # still returnable if something is wrong

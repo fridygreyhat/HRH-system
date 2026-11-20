@@ -313,9 +313,14 @@ def signoff_status(db, current, today=None):
             state = "SIGNED"  # nothing approved, edited or withdrawn since the sign-off: no need to rebuild the report
         else:  # something moved since signing: compare the exact signed document
             state = "SIGNED" if row.digest == digest(monthly_summary(db, current, month, region_id, work_type)) else "CHANGED"
+        # Payroll the CSO has recorded as paid in full, of the providers on the signed report.
+        paid = 0
+        if row and work_type == "PAYROLL":
+            from .payroll_payments import paid_in_full
+            paid = len(paid_in_full(db, month, {p["staff_id"] for p in row.snapshot["regional"]["providers"]}))
         items.append({
             "month": month, "region_id": region_id, "region_name": names[region_id], "work_type": work_type,
-            "state": state, "providers": providers,
+            "state": state, "providers": providers, "paid_providers": paid,
             "approved_at": row.approved_at.isoformat() if row else None,
             "approved_by_name": row.snapshot["approved_by_name"] if row else None,
             "can_approve": can_approve(db, current, region_id),
@@ -372,8 +377,14 @@ def cso_payroll_status(db, current, today=None):
             signed = len({p["staff_id"] for org in organizations
                           for p in (row.snapshot["organizations"].get(str(org)) or {"providers": []})["providers"]
                           if p["cadre_code"] in codes})
+        paid = 0
+        if row and signed:
+            from .payroll_payments import paid_in_full
+            paid = len(paid_in_full(db, month, {p["staff_id"] for org in organizations
+                                                 for p in (row.snapshot["organizations"].get(str(org)) or {"providers": []})["providers"]
+                                                 if p["cadre_code"] in codes}))
         items.append({"month": month, "region_id": region, "region_name": names[region], "approved_providers": count,
-                      "state": "SIGNED" if row and signed else "WAITING", "signed_providers": signed,
+                      "state": "SIGNED" if row and signed else "WAITING", "signed_providers": signed, "paid_providers": paid,
                       "approved_by_name": row.snapshot["approved_by_name"] if row else None,
                       "approved_at": row.approved_at.isoformat() if row else None,
                       "withdrawn": None if row else withdrawal(db, month, region, "PAYROLL")})

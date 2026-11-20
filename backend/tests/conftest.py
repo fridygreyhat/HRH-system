@@ -275,6 +275,14 @@ def make_period(api: Api, db, amounts: dict | None = None) -> dict:
     # Ordinary test entries start on a Monday; weekend rules are tested explicitly.
     start += timedelta(days=(7 - start.weekday()) % 7 + 7 * lap)
     end = date(year, month, calendar.monthrange(year, month)[1])
+    if lap:
+        # The suite has gone round every month once: the earlier test period of this month (its test long finished)
+        # is archived, so its work does not count as already recorded for these dates or towards the week's hours.
+        from backend.models import PayPeriod
+        db.query(PayPeriod).filter(PayPeriod.period_label.like("TEST %"), PayPeriod.status != "ARCHIVED",
+                                   PayPeriod.start_date <= end, PayPeriod.end_date >= start).update(
+            {PayPeriod.status: "ARCHIVED"}, synchronize_session=False)
+        db.commit()
     p = api.post("/admin/pay-periods", "central1", {"start_date": str(start), "end_date": str(end), "period_label": f"TEST {start:%b %Y}", "status": "OPEN"})
     amounts = amounts or {}
     from backend.models import ClaimCategory, CSORegionAssignment, Organization

@@ -254,6 +254,8 @@ export interface WorkLogEntry {
   location_status: string;
   measures: Record<string, number>;
   location_exception: boolean;
+  /** Saved on this phone while offline, not yet sent to the server. */
+  pending?: boolean;
 }
 
 export interface ReturnFlag {

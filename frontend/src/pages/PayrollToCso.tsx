@@ -56,6 +56,13 @@ export function PayrollToCso() {
                           : item.state === 'CHANGED' ? (sw ? 'Imebadilika: tuma tena' : 'Changed: send again')
                             : item.withdrawn ? (sw ? 'Imechukuliwa tena: tuma upya' : 'Taken back: send again') : (sw ? 'Haijatumwa' : 'Not sent')}
                       </span>
+                      {item.state === 'SIGNED' && item.providers > 0 && (
+                        <span className={`badge ${(item.paid_providers || 0) >= item.providers ? 'badge-success' : 'badge-neutral'}`}>
+                          {(item.paid_providers || 0) >= item.providers
+                            ? (sw ? 'CSO imelipa wote' : 'Paid by CSO')
+                            : (sw ? `CSO imelipa ${num(item.paid_providers || 0)} kati ya ${num(item.providers)}` : `Paid by CSO: ${num(item.paid_providers || 0)} of ${num(item.providers)}`)}
+                        </span>
+                      )}
                       {item.to_approve ? (
                         <button type="button" className="btn btn-sm btn-primary" onClick={() => navigate('bulk-approval', `PAYROLL:${item.month}:${item.region_id}`)}>
                           {sw ? `Idhinisha ${num(item.to_approve)} kwanza` : `Approve ${num(item.to_approve)} timesheets first`}

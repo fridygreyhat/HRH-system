@@ -29,6 +29,9 @@ interface ProviderRow {
   /** The CHW package parts: monthly stipend, transport, communication. */
   pay_components?: { key: string; name: string; amount: string }[] | null;
   checks: string[];
+  /** Set from the salary payments the CSO recorded, with their proof. */
+  payment_status?: 'PAID' | 'PART_PAID' | 'NOT_PAID';
+  paid_amount?: string;
 }
 interface SalaryTimesheetSummary {
   regions: RegionStatus[];
@@ -38,7 +41,16 @@ interface SalaryTimesheetSummary {
   missing_bank: string[];
   missing_salary: string[];
   not_signed: string[];
-  totals: { providers: number; days_signed: number; hours: string; salary: string };
+  totals: { providers: number; days_signed: number; hours: string; salary: string; paid_providers?: number };
+}
+
+/** Paid, part paid or not paid yet, from the payments the CSO recorded for this month. */
+export function PaymentBadge({ row, sw }: { row: Pick<ProviderRow, 'payment_status' | 'paid_amount'>; sw: boolean }) {
+  if (row.payment_status === 'PAID') return <span className="badge badge-success">{sw ? 'Imelipwa' : 'Paid'}</span>;
+  if (row.payment_status === 'PART_PAID') {
+    return <span className="badge badge-warn">{sw ? 'Imelipwa sehemu' : 'Part paid'} · {money(row.paid_amount || 0)}</span>;
+  }
+  return <span className="badge badge-neutral">{sw ? 'Bado kulipwa' : 'Not paid yet'}</span>;
 }
 
 const NAMES_SHOWN = 10;
@@ -106,6 +118,7 @@ function ProviderList({ rows, sw }: { rows: ProviderRow[]; sw: boolean }) {
                 <th scope="col" className="num">{sw ? 'Siku zilizosainiwa' : 'Days signed'}</th>
                 <th scope="col" className="num">{sw ? 'Mshahara wa mwezi' : 'Monthly salary'}</th>
                 <th scope="col">{sw ? 'Ukaguzi' : 'Check'}</th>
+                <th scope="col">{sw ? 'Malipo' : 'Payment'}</th>
               </tr>
             </thead>
             <tbody>
@@ -133,6 +146,7 @@ function ProviderList({ rows, sw }: { rows: ProviderRow[]; sw: boolean }) {
                     )}
                   </td>
                   <td>{row.checks.length ? <span className="badge badge-warn">{row.checks.map((check) => (sw && CHECK_SW[check]) || check).join('; ')}</span> : <span className="badge badge-success">{sw ? 'Sawa' : 'OK'}</span>}</td>
+                  <td><PaymentBadge row={row} sw={sw} /></td>
                 </tr>
               ))}
             </tbody>
@@ -235,6 +249,12 @@ export function SalaryTimesheets({ csoId, noCso = false }: { csoId: string; noCs
                     { label: sw ? 'Siku zilizosainiwa' : 'Days signed', value: num(data.totals.days_signed), icon: 'calendar', tone: 'info' },
                     { label: sw ? 'Masaa ya kazi' : 'Hours worked', value: workHours(data.totals.hours), icon: 'clock', tone: 'info' },
                     { label: sw ? 'Jumla ya mshahara' : 'Total salary', value: money(data.totals.salary), icon: 'wallet', tone: 'success' },
+                    {
+                      label: sw ? 'Wamelipwa' : 'Paid',
+                      value: `${num(data.totals.paid_providers || 0)} / ${num(data.totals.providers)}`,
+                      icon: 'check', tone: (data.totals.paid_providers || 0) >= data.totals.providers ? 'success' : 'warn',
+                      note: sw ? 'kutoka malipo yaliyorekodiwa na uthibitisho' : 'from payments recorded with proof',
+                    },
                   ]}
                 />
                 <section className="cso-payment-form stack" aria-label={sw ? 'Fomu ya malipo ya mshahara' : 'Payroll payment form'}>

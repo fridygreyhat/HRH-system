@@ -13,6 +13,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from ..core.period_dates import pay_month_range
+from ..core.settings import get_setting
 from ..models import Cadre, Region, Staff
 from . import monthly_report_approval as reports
 from . import public_holidays
@@ -141,6 +142,8 @@ def signed(db, current, organization, month, region_id=None, setting=None):
     return {
         "month": month, "organization_name": organization.name, "regions": regions, "providers": providers,
         "work_setting": setting, "settings": setting_totals(providers),
+        # Payroll records hours only: the timesheet pages show each day's hours, not start and end times.
+        "hours_only": bool(get_setting(db, "payroll_time_only")),
         "holidays": public_holidays.between(db, *pay_month_range(month)),
         "missing_bank": flagged(BANK_MISSING), "missing_salary": flagged(SALARY_MISSING), "not_signed": flagged(NOT_SIGNED),
         "totals": {"providers": len({p["staff_id"] for p in providers}), "days": sum(p["days"] for p in providers),
@@ -228,7 +231,7 @@ KINDS = {
 }
 
 
-def timesheet_page(provider, month, holidays, details, footer, heading=None, kind=None, services=None):
+def timesheet_page(provider, month, holidays, details, footer, heading=None, kind=None, services=None, times=True):
     """One staff member's page: details, the month's attendance by day, and each activity's month total.
 
     Activities are month totals only: no per-day clinical counts leave the reviewers (a day's count at one facility
@@ -272,8 +275,8 @@ def timesheet_page(provider, month, holidays, details, footer, heading=None, kin
     sheet = Table([
         [bilingual("Tarehe", "Date")] + [Paragraph(f"{d.day}<br/>{WEEKDAYS_SW[d.weekday()]}", head) for d in dates]
         + [Paragraph("JUMLA<br/>TOTAL", head)],
-        line("Muda wa kuanza", "Start time", by_day(lambda day: day["start"])),
-        line("Muda wa kumaliza", "End time", by_day(lambda day: day["end"])),
+        *([line("Muda wa kuanza", "Start time", by_day(lambda day: day["start"])),
+           line("Muda wa kumaliza", "End time", by_day(lambda day: day["end"]))] if times else []),
         line("Masaa", "Hours worked", by_day(lambda day: hours_text(day["hours"])), hours_text(provider["hours"])),
         line("Siku za kazi", "Days worked", [Paragraph('<font name="ZapfDingbats">\u2713</font>', tiny)
                                              if d.isoformat() in days else "" for d in dates], str(provider["days"])),
@@ -352,7 +355,8 @@ def pdf_file(result):
         ]
         footer = [f"Days signed by provider: {provider['days_signed']}", "Idhini ya RM / RM approval: Completed",
                   f"Regional Finance sign-off: {provider['approved_by_name']}, {provider['approved_at']}", NOT_PAYMENT]
-        story += [PageBreak(), *timesheet_page(provider, result["month"], result["holidays"], details, footer, kind="PAYROLL")]
+        story += [PageBreak(), *timesheet_page(provider, result["month"], result["holidays"], details, footer, kind="PAYROLL",
+                                                  times=not result.get("hours_only"))]
     form = payment_forms.payroll_form(result)
     if form["rows"]:
         story += [PageBreak(), *payment_forms.form_flowables(form, landscape(A4)[0] - 56)]

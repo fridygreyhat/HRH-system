@@ -33,3 +33,11 @@ test('a region with Payroll timesheets still to approve is approved first, not s
   expect(html).toContain('Approve 4 timesheets first');
   expect(html).not.toContain('Review and send to CSO');
 });
+
+test('once the CSO records salaries as paid with proof, the sent month says how many are paid', () => {
+  mockStatus = [item('Njombe', 'SIGNED', { paid_providers: 1 }), item('Iringa', 'SIGNED', { paid_providers: 3 }), item('Mbeya', 'NOT_SIGNED')];
+  const html = renderToStaticMarkup(<PayrollToCso />);
+  expect(html).toContain('Paid by CSO: 1 of 3');
+  expect(html).toContain('>Paid by CSO<');
+  expect(html.match(/Paid by CSO/g)).toHaveLength(2); // not on the month that has not been sent
+});

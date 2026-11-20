@@ -24,12 +24,12 @@ def payroll_attendance(cadre_id):
 
 
 def payroll_time(cadre_id):
-    """A Payroll day while Payroll records time only: start and end time, no activity and no indicators."""
-    return {**payroll_attendance(cadre_id), "label_en": "Time worked", "label_sw": "Muda wa kazi", "hours_input": False}
+    """A Payroll day while Payroll records time only: the hours worked that day, no activity and no indicators."""
+    return {**payroll_attendance(cadre_id), "label_en": "Hours worked", "label_sw": "Masaa ya kazi", "hours_input": True}
 
 
 def time_only(db, log) -> bool:
-    """New Payroll timesheets record only when the provider worked (setting payroll_time_only); older ones keep their form."""
+    """New Payroll timesheets record only the hours worked each day (setting payroll_time_only); older ones keep their form."""
     return log.work_type == "PAYROLL" and log.workflow_version >= 2 and bool(get_setting(db, "payroll_time_only"))
 
 
@@ -201,7 +201,7 @@ def catalog_for_log(db, log) -> list[dict]:
 def resolve_activity(db, log, key: str, day, existing=None) -> dict:
     if time_only(db, log):
         if key != "daily_attendance":
-            raise HTTPException(422, "A Payroll day records the time worked only. Enter the start and end time.")
+            raise HTTPException(422, "A Payroll day records the hours worked only. Enter the hours you worked.")
         return payroll_time(log.cadre_id)
     chw_payroll = log.work_type == "PAYROLL" and db.get(Cadre, log.cadre_id).code == "CHW"
     code = db.get(Cadre, log.cadre_id).code

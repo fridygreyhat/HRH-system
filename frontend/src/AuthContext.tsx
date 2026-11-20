@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api, ApiError, getToken, onUnauthorized, setToken } from './api';
+import { clearOffline, pendingItems } from './offlineStore';
 import { MessageKey, translate } from './i18n';
 import { Lang, Me } from './types';
 
@@ -25,11 +26,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLang] = useState<Lang>('sw');
 
   const logout = useCallback(() => {
+    const waiting = pendingItems().length;
+    // Work saved without internet is only on this phone: signing out deletes it, so ask first.
+    if (waiting && !window.confirm(lang === 'sw'
+      ? `Kazi ${waiting} iliyohifadhiwa bila mtandao bado haijatumwa. Ukitoka, itafutwa kwenye simu hii. Toka hata hivyo?`
+      : `${waiting} saved while offline ${waiting === 1 ? 'has' : 'have'} not been sent yet. Signing out deletes ${waiting === 1 ? 'it' : 'them'} from this phone. Sign out anyway?`)) return;
     // End the session on the server too, so the token stops working even if a copy remains on this device.
     if (getToken()) api.post('/auth/logout').catch(() => undefined);
     setToken(null);
     setMe(null);
-  }, []);
+    clearOffline(); // nothing of this person's stays on a shared phone
+  }, [lang]);
 
   useEffect(() => {
     onUnauthorized(() => {

@@ -7,6 +7,7 @@ import { Icon } from '../components/Icon';
 import { Alert, AsyncState, Field, StatusBadge, WorkTypeChip } from '../components/ui';
 import { num, payMonth, payMonthDates, todayLocal, workHours, workTypeName } from '../format';
 import { useAction, useApi } from '../hooks';
+import { useReloadOnSync } from '../offline';
 import { PayPeriod, WorkLogDetail, WorkLogSummary } from '../types';
 import { resolveWorkLogMonth, workMonthLabel } from './workLogStart';
 import './polish-provider.css';
@@ -19,6 +20,7 @@ export function MyWorkLogs() {
   // Government facility staff HCPs are paid for Services only.
   const servicesOnly = isHcp && me?.staff?.facility_staff_type === 'GOVERNMENT';
   const logs = useApi<WorkLogSummary[]>('/worklogs?mine=true');
+  useReloadOnSync(logs.reload);
   const periods = useApi<PayPeriod[]>('/admin/pay-periods');
   const [openId, setOpenId] = useState<number | null>(null);
   const [editorMonth, setEditorMonth] = useState<string | undefined>();

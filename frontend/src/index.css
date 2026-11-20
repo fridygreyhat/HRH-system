@@ -446,6 +446,10 @@ td.flagged, .flagged-field { outline: 2px solid var(--warn-fg); outline-offset: 
 .legend .lg-holiday::before { box-shadow: inset 0 -3px 0 var(--warn-fg); }
 .legend .lg-entry::before { background: var(--success-bg); border-color: var(--success-fg); }
 .legend .lg-flag::before { background: var(--warn-bg); border-color: var(--warn-fg); }
+/* Saved on the phone without internet, not sent yet: dashed until the server has it. */
+.day.has-entry.is-pending { background: var(--info-bg); color: var(--info-fg); border: 2px dashed var(--info-fg); }
+.legend .lg-pending::before { background: var(--info-bg); border: 2px dashed var(--info-fg); }
+.offline-banner { margin-bottom: 1rem; }
 
 .bi-label { display: flex; flex-direction: column; }
 .bi-label .bi-secondary { font-weight: 400; font-size: 0.78rem; color: var(--muted); text-transform: none; }

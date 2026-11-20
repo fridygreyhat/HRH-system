@@ -1,6 +1,7 @@
-/* HRH Pay service worker: fast start and an offline notice. It never stores data, sign-ins or downloads:
-   /api/ requests always go to the network, so nothing private stays on a shared phone. */
-const VERSION = 'hrh-pay-v4';
+/* HRH Pay service worker: the app opens without internet once installed (the pages and screens are kept here).
+   It never stores data, sign-ins or downloads: /api/ requests always go to the network. A provider's own timesheets
+   and the days saved offline are kept by the app itself (offlineStore.ts) and deleted at sign-out. */
+const VERSION = 'hrh-pay-v5';
 const SHELL = ['/', '/manifest.webmanifest', '/favicon.svg', '/icons/icon-192.png', '/brand/fhi360-logo.png', '/brand/usa-mark.png'];
 
 const OFFLINE_PAGE = `<!doctype html><html lang="sw"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">

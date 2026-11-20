@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { api } from '../../api';
+import { saveEntry } from '../../offline';
 import { useAuth } from '../../AuthContext';
 import { dateOnly, weekday } from '../../format';
 import { useAction } from '../../hooks';
@@ -63,7 +64,7 @@ interface Props {
 /** One day's entry: hours (or start/end), one input per cadre field, evidence and optional GPS. */
 export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved, onClose }: Props) {
   const { t, lang, me } = useAuth();
-  // Payroll records only when the provider worked: start and end time, no activity and no indicators.
+  // Payroll records only the hours worked each day: no start or end time, no activity and no indicators.
   const timeOnly = log.work_type === 'PAYROLL' && log.workflow_version >= 2 && me?.client_settings.payroll_time_only === true;
   const requiresGps = ['CHW', 'HCP', 'DATA_CLERK'].includes(log.cadre.code);
   const captureGps = requiresGps || captureOnEntry;
@@ -104,7 +105,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
   const selectedIndicatorGroup = selectedActivity?.groups?.find((group) => group.key === indicatorGroupKey)
     || selectedActivity?.groups?.[0];
   const requiresLocation = Boolean(selectedActivity?.requires_location || activityKey === 'secondary_facility');
-  const direct = !timeOnly && (log.cadre.hours_mode === 'DIRECT' || Boolean(selectedActivity?.hours_input));
+  const direct = timeOnly || log.cadre.hours_mode === 'DIRECT' || Boolean(selectedActivity?.hours_input);
   const attendanceOnly = timeOnly || (log.work_type === 'PAYROLL' && !isChw && !isHcp && !isDataClerk);
   const visibleFields = attendanceOnly || (!isHcp && !isChw && !isDataClerk && selectedActivity?.item_type === 'PAYROLL')
     ? []
@@ -198,8 +199,9 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
       payload.end_time = end;
     }
     if (captureGps && gps) Object.assign(payload, gps);
-    const result = await save.run(() => api.put<WorkLogDetail>(`/worklogs/${log.id}/entries/${date}`, payload));
-    if (result) onSaved(result);
+    // Without internet the day is kept on this phone and sent when the connection is back.
+    const result = await save.run(() => saveEntry(log as WorkLogDetail, date, payload));
+    if (result) onSaved(result.log);
   };
 
   const del = async () => {
@@ -264,8 +266,8 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
       {timeOnly && (
         <p className="notice notice-info" role="note">
           {lang === 'sw'
-            ? 'Mshahara: weka muda ulioanza na kumaliza kazi siku hii. Hakuna shughuli wala viashiria vya kujaza.'
-            : 'Payroll: enter the time you started and finished work this day. No activities or indicators are needed.'}
+            ? `Mshahara: weka jumla ya masaa uliyofanya kazi siku hii (hadi saa ${maximumHours}). Hakuna shughuli wala viashiria vya kujaza.`
+            : `Payroll: enter the total hours you worked this day (up to ${maximumHours} hours). No activities or indicators are needed.`}
         </p>
       )}
       {!timeOnly && activities.length > 0 && (log.work_type !== 'PAYROLL' || isHcp || ((isChw || isDataClerk) && activities.length > 1)) && (

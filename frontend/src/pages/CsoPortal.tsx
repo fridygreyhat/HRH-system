@@ -195,6 +195,8 @@ interface CsoPayrollStatus {
   state: 'SIGNED' | 'WAITING';
   approved_providers: number;
   signed_providers: number;
+  /** Salaries on the signed report recorded as paid in full, with proof. */
+  paid_providers?: number;
   approved_by_name: string | null;
   approved_at: string | null;
   /** Signed, then taken back by the system because a timesheet on it was returned: not to be paid from. */
@@ -319,7 +321,10 @@ export function CsoPortal({ initialSection }: { initialSection?: 'export' } = {}
               value: num(received.reduce((total, row) => total + row.signed_providers, 0)), icon: 'users', tone: received.length ? 'success' : 'neutral',
               note: waiting.length
                 ? (sw ? `Mikoa ${num(waiting.length)} inasubiri Fedha ya Mkoa` : `${num(waiting.length)} waiting for Regional Finance`)
-                : (sw ? 'Watoa huduma, kutoka Fedha ya Mkoa' : 'providers, signed by Regional Finance'),
+                : received.length
+                  ? (sw ? `${num(received.reduce((t, row) => t + (row.paid_providers || 0), 0))} wamelipwa, kutoka Fedha ya Mkoa`
+                    : `${num(received.reduce((t, row) => t + (row.paid_providers || 0), 0))} paid · signed by Regional Finance`)
+                  : (sw ? 'Watoa huduma, kutoka Fedha ya Mkoa' : 'providers, signed by Regional Finance'),
               onClick: () => jump('export'), active: section === 'export',
             },
             {
@@ -336,7 +341,7 @@ export function CsoPortal({ initialSection }: { initialSection?: 'export' } = {}
               onClick: () => jump('routec'), active: section === 'routec',
             },
             {
-              label: sw ? 'Yamelipwa' : 'Paid', value: num(paid.length), icon: 'check', tone: 'success',
+              label: sw ? 'Madai yaliyolipwa' : 'Claims paid', value: num(paid.length), icon: 'check', tone: 'success',
               note: money(sum(paid, (c) => Number(c.amount_paid || 0))), onClick: () => jump('recon'), active: section === 'recon',
             },
           ]}

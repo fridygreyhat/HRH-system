@@ -2,6 +2,7 @@ import { ApprovalStepper } from './ApprovalStepper';
 import { AdminAudit } from '../AdminAudit';
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api';
+import { submitLog, useReloadOnSync } from '../../offline';
 import { useAuth } from '../../AuthContext';
 import { dateOnly, datesBetween, dayOfMonth, money, num, periodDateError, todayLocal, WORKLOG_ACTION_LABELS, weekday, workHours } from '../../format';
 import { useAction, useApi } from '../../hooks';
@@ -132,7 +133,7 @@ export function DayCalendar({
   flaggedDates: Set<string>;
   onSelect: (d: string) => void;
 }) {
-  const { t, lang } = useAuth();
+  const { t, lang, me } = useAuth();
   const today = todayLocal();
   const dates = useMemo(() => datesBetween(log.period.start_date, log.period.end_date),
     [log.period.start_date, log.period.end_date]);
@@ -155,6 +156,8 @@ export function DayCalendar({
   }).format(new Date(`${value}-01T00:00:00Z`));
   const byDate = new Map(log.entries.map((e) => [e.entry_date, e]));
   const chwPayroll = ['CHW', 'HCP', 'DATA_CLERK'].includes(log.cadre.code) && log.work_type === 'PAYROLL';
+  // Payroll records hours only: each worked date needs the hours worked, nothing to count.
+  const timeOnly = log.work_type === 'PAYROLL' && log.workflow_version >= 2 && me?.client_settings.payroll_time_only === true;
   const sundayOff = !log.review_summary.limits.sunday_allowed;
   const missingDates = dates.filter(d => d <= today && !byDate.has(d) &&
     !(sundayOff && new Date(`${d}T00:00:00Z`).getUTCDay() === 0));
@@ -179,9 +182,11 @@ export function DayCalendar({
       {chwPayroll && <div className="notice notice-info cal-missing">
         <div className="cal-missing-text">
           <strong>{lang === 'sw' ? 'Jaza daftari la mwezi mzima' : `Complete your monthly ${log.cadre.code === 'DATA_CLERK' ? 'Data Clerk' : log.cadre.code} timesheet`}</strong>
-          <p>{lang === 'sw'
-            ? 'Chagua kila tarehe uliyofanya kazi. Weka 0 ikiwa hakuna shughuli.'
-            : 'Choose each date you worked. Enter 0 where nothing happened.'}
+          <p>{timeOnly
+            ? (lang === 'sw' ? 'Chagua kila tarehe uliyofanya kazi na uweke jumla ya masaa ya siku hiyo.' : 'Choose each date you worked and enter the total hours worked that day.')
+            : lang === 'sw'
+              ? 'Chagua kila tarehe uliyofanya kazi. Weka 0 ikiwa hakuna shughuli.'
+              : 'Choose each date you worked. Enter 0 where nothing happened.'}
             {' '}<span className="cal-missing-count">{lang === 'sw'
               ? `Tarehe zilizopita bila rekodi: ${missingDates.length}.`
               : `${missingDates.length} past eligible dates have no entry.`}</span>
@@ -218,8 +223,9 @@ export function DayCalendar({
           const future = d > today;
           const sunday = sundayOff && new Date(`${d}T00:00:00Z`).getUTCDay() === 0;
           const disabled = future || (!log.can_edit && !entry) || (chwPayroll && sunday && !entry);
-          const classes = ['day', entry ? 'has-entry' : '', holidays.has(d) ? 'is-holiday' : '', flaggedDates.has(d) ? 'is-flagged' : '', selected === d ? 'is-selected' : ''].filter(Boolean).join(' ');
-          const state = future ? t('future') : chwPayroll && sunday && !entry ? (lang === 'sw' ? 'Jumapili hairuhusiwi' : 'Sunday excluded') : flaggedDates.has(d) ? t('flagged') : entry ? `${t('recorded')}: ${workHours(entry.hours_worked)}` : '';
+          const classes = ['day', entry ? 'has-entry' : '', entry?.pending ? 'is-pending' : '', holidays.has(d) ? 'is-holiday' : '', flaggedDates.has(d) ? 'is-flagged' : '', selected === d ? 'is-selected' : ''].filter(Boolean).join(' ');
+          const waiting = entry?.pending ? (lang === 'sw' ? 'imehifadhiwa kwenye simu, haijatumwa' : 'saved on this phone, not sent yet') : '';
+          const state = future ? t('future') : chwPayroll && sunday && !entry ? (lang === 'sw' ? 'Jumapili hairuhusiwi' : 'Sunday excluded') : flaggedDates.has(d) ? t('flagged') : entry ? `${t('recorded')}: ${workHours(entry.hours_worked)}${waiting ? ` (${waiting})` : ''}` : '';
           return (
             <button
               key={d}
@@ -240,6 +246,7 @@ export function DayCalendar({
       <div className="legend" aria-hidden>
         <span className="lg-entry">{t('recorded')}</span>
         <span className="lg-flag">{t('flagged')}</span>
+        {log.entries.some((entry) => entry.pending) && <span className="lg-pending">{lang === 'sw' ? 'Kwenye simu, haijatumwa' : 'On this phone, not sent yet'}</span>}
         <span>{t('future')}</span>
         {holidays.size > 0 && <span className="lg-holiday">{lang === 'sw' ? 'Sikukuu' : 'Public holiday'}</span>}
       </div>
@@ -253,6 +260,7 @@ export function DayCalendar({
 function SubmitPanel({ log, onSubmitted }: { log: WorkLogDetail; onSubmitted: (l: WorkLogDetail) => void }) {
   const { me, t, lang } = useAuth();
   const [attest, setAttest] = useState(false);
+  const [queued, setQueued] = useState(false);
   const { busy, error, run } = useAction();
   const gpsRequired = !!me?.client_settings.gps_required_on_submit;
   const gpsOnSubmit = gpsRequired || !!me?.client_settings.gps_capture_events.includes('SUBMIT');
@@ -261,11 +269,13 @@ function SubmitPanel({ log, onSubmitted }: { log: WorkLogDetail; onSubmitted: (l
     const result = await run(async () => {
       const fix = gpsOnSubmit ? await captureLocation() : null;
       if (gpsRequired && !fix) throw new Error(t('gpsRequired'));
-      return api.post<WorkLogDetail>(`/worklogs/${log.id}/actions/submit`, { attest: true, ...(fix || {}) });
+      // Without internet the submission is kept on this phone and sent after the days still waiting.
+      return submitLog(log, { attest: true, ...(fix || {}) });
     });
-    if (result) {
+    if (result?.queued) setQueued(true);
+    if (result?.log) {
       setAttest(false);
-      onSubmitted(result);
+      onSubmitted(result.log);
     }
   };
   return (
@@ -282,6 +292,9 @@ function SubmitPanel({ log, onSubmitted }: { log: WorkLogDetail; onSubmitted: (l
       </label>
       {gpsOnSubmit && <span className="field-hint">{lang === 'sw' ? 'Mahali ulipo panarekodiwa unapowasilisha.' : 'Your location is recorded when you submit.'}</span>}
       <Alert>{error}</Alert>
+      {queued && <Alert kind="info">{lang === 'sw'
+        ? 'Hakuna mtandao: uwasilishaji umehifadhiwa kwenye simu hii na utatumwa wenyewe mtandao ukirudi.'
+        : 'No internet: your submission is saved on this phone and will be sent by itself when you are back online.'}</Alert>}
       <div className="row">
         <button className="btn btn-primary btn-lg submit-button" disabled={!attest || busy || log.entries.length === 0}>
           {busy ? t('submitting') : t('submit')}
@@ -322,6 +335,7 @@ function PayoutEstimate({ logId, version }: { logId: number; version: string }) 
 export function WorkLogEditor({ logId, initialDate, initialMonth, onBack }: { logId: number; initialDate?: string; initialMonth?: string; onBack: () => void }) {
   const { me, t, lang } = useAuth();
   const { data: log, error, loading, setData, reload } = useApi<WorkLogDetail>(`/worklogs/${logId}`);
+  useReloadOnSync(reload); // days saved offline were just sent: show what the server now holds
   const [selected, setSelected] = useState<string | null>(initialDate || null);
   const [cancelling, setCancelling] = useState(false);
   const [recalling, setRecalling] = useState(false);

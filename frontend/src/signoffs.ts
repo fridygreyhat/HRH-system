@@ -15,6 +15,8 @@ export interface SignoffItem {
   can_approve: boolean;
   /** Payroll: timesheets Regional Finance still has to approve before the month can be signed and sent. */
   to_approve?: number;
+  /** Payroll: providers on the signed report whose salary the CSO has recorded as paid in full, with proof. */
+  paid_providers?: number;
   /** Set when the month was signed, then taken back because a timesheet on it was returned, reopened or cancelled. */
   withdrawn?: Withdrawal | null;
 }

@@ -242,7 +242,7 @@ def test_each_row_names_the_region_facility_and_cadre_before_and_in_the_export(a
     assert listed == [{"staff_id": setup["staff_id"], "provider_name": setup["person"].legal_name, "cadre_name": cadre,
                        "facility_name": facility, "community_area_name": area, "work_setting": "Community" if area else "Facility",
                        "region_name": region, "days_signed": 1, "monthly_salary": "900000.00", "pay_components": None,
-                       "checks": []}]
+                       "checks": [], "paid_amount": "0", "payment_status": "NOT_PAID"}]
     row = file_rows(api, setup)[0]
     assert (row["Region"], row["Facility"], row["Community area"], row["Cadre"]) == (region, facility, area or "", cadre)
 

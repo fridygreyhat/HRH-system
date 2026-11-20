@@ -122,6 +122,7 @@ export function PrintWorkLog({ logId, reviewLog, embedded = false, onReady }: { 
 
 /** The fields one paper form needs; a batch print sends only these. */
 export type PrintableLog = Pick<WorkLogDetail, 'id' | 'version' | 'status' | 'period' | 'entries' | 'cadre' | 'assignment' | 'staff'
+  | 'work_type' | 'workflow_version'
   | 'occupation' | 'occupation_other' | 'section' | 'period_comment' | 'service_targets' | 'audit' | 'attested_at'>;
 
 export const monthLabel = (value: string) => new Intl.DateTimeFormat('en-GB', {
@@ -140,8 +141,9 @@ export function TimesheetPaper({ log, month, embedded = false }: { log: Printabl
   const byDate = new Map(entries.map((e) => [e.entry_date, e]));
   const measureTotal = (key: string) => entries.reduce((sum, entry) => sum + (dayValues(entry)[key] || 0), 0);
   const additional = (d: string) => byDate.get(d)?.activity_snapshot?.additional_services || [];
-  // Hours-only cadres show start and end rows too once a day has them (a time-only Payroll day always does).
-  const direct = log.cadre.hours_mode === 'DIRECT' && !entries.some((entry) => entry.start_time);
+  // Payroll records hours only: no start and end rows. Hours-only cadres show them once a day has times.
+  const hoursOnlyPayroll = log.work_type === 'PAYROLL' && (log.workflow_version || 0) >= 2 && me?.client_settings.payroll_time_only === true;
+  const direct = hoursOnlyPayroll || (log.cadre.hours_mode === 'DIRECT' && !entries.some((entry) => entry.start_time));
   const a = log.assignment;
   const comments = entries.filter((e) => e.comment);
 
@@ -159,8 +161,9 @@ export function TimesheetPaper({ log, month, embedded = false }: { log: Printabl
   const locationOf = (d: string) => Array.from(new Set([byDate.get(d)?.activity_location, ...additional(d).map((service) => service.activity_location)].filter(Boolean))).join(' + ');
   // The same activity every day is said once in the header rather than in every date column, so the month fits one page.
   const activities = Array.from(new Set(dates.map(activityOf).filter(Boolean)));
-  const oneActivity = activities.length <= 1;
-  if (!oneActivity) rows.push({ key: 'activity', sw: 'Aina ya shughuli', en: 'Activity', cell: activityOf, total: '' });
+  // None at all (a time-only Payroll month): no activity line.
+  const oneActivity = activities.length === 1;
+  if (activities.length > 1) rows.push({ key: 'activity', sw: 'Aina ya shughuli', en: 'Activity', cell: activityOf, total: '' });
   if (dates.some((d) => locationOf(d))) rows.push({ key: 'location', sw: 'Kituo kingine', en: 'Secondary facility', cell: locationOf, total: '' });
   rows.push({
     key: 'hours',
