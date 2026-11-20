@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 
+from ..core.settings import get_setting
 from ..models import ActivityRate, Cadre, CadreFormField, StaffAssignment, WorkLogEntry, PayPeriod
 from .activities import ACTIVITIES, CASCADES, activity_for
 from .chw_forms import CHW_GROUPS, chw_builtins
@@ -20,6 +21,16 @@ def payroll_attendance(cadre_id):
         "fields": [], "required_fields": [], "field_definitions": [], "rate_value": None,
         "currency": "TZS", "unit_type": "PER_HOUR", "billable_field": None, "cadre_id": cadre_id,
     }
+
+
+def payroll_time(cadre_id):
+    """A Payroll day while Payroll records time only: start and end time, no activity and no indicators."""
+    return {**payroll_attendance(cadre_id), "label_en": "Time worked", "label_sw": "Muda wa kazi", "hours_input": False}
+
+
+def time_only(db, log) -> bool:
+    """New Payroll timesheets record only when the provider worked (setting payroll_time_only); older ones keep their form."""
+    return log.work_type == "PAYROLL" and log.workflow_version >= 2 and bool(get_setting(db, "payroll_time_only"))
 
 
 def attendance_only(activity):
@@ -132,6 +143,14 @@ def _builtins(db, cadre_id: int) -> list[dict]:
 
 
 def catalog_for_log(db, log) -> list[dict]:
+    if time_only(db, log):
+        # One choice, the time worked. Days recorded earlier with an activity keep it, as recorded, for the record.
+        result, keys = [payroll_time(log.cadre_id)], {"daily_attendance"}
+        for entry in db.query(WorkLogEntry).filter(WorkLogEntry.work_log_id == log.id):
+            if entry.activity_snapshot and entry.activity_key not in keys:
+                result.append(deepcopy(entry.activity_snapshot))
+                keys.add(entry.activity_key)
+        return result
     reporting = log.work_type == "PAYROLL" and db.get(Cadre, log.cadre_id).code in {"CHW", "HCP", "DATA_CLERK"}
     if log.workflow_version < 2:
         if reporting:
@@ -148,6 +167,8 @@ def catalog_for_log(db, log) -> list[dict]:
     priced = []
     for row in rows:
         successor = db.query(ActivityRate).filter(ActivityRate.supersedes_id == row.id).first()
+        if not row.is_active and not successor:
+            continue  # stopped by a Technical Officer: no longer offered (days already recorded keep it, below)
         if row.effective_start_date <= period.end_date and (not successor or successor.effective_start_date > period.start_date):
             item = definition_out(row)
             item["effective_end_date"] = str(successor.effective_start_date) if successor else None
@@ -178,6 +199,10 @@ def catalog_for_log(db, log) -> list[dict]:
 
 
 def resolve_activity(db, log, key: str, day, existing=None) -> dict:
+    if time_only(db, log):
+        if key != "daily_attendance":
+            raise HTTPException(422, "A Payroll day records the time worked only. Enter the start and end time.")
+        return payroll_time(log.cadre_id)
     chw_payroll = log.work_type == "PAYROLL" and db.get(Cadre, log.cadre_id).code == "CHW"
     code = db.get(Cadre, log.cadre_id).code
     if log.work_type == "PAYROLL" and code in {"HCP", "DATA_CLERK"}:

@@ -24,3 +24,10 @@ test('Services retains finance and payment steps', () => {
   expect(html).toContain('Routed to FHI360');
   expect(html).toContain('Paid');
 });
+
+test.each(['SERVICES', 'PAYROLL'])('a %s draft reads as not submitted yet, with nothing waiting on a reviewer', (workType) => {
+  const html = renderToStaticMarkup(<ApprovalStepper status="DRAFT" audit={[]} workflowVersion={2} workType={workType} hoursInStatus={7} />);
+  expect(html).toContain('Not submitted yet · being filled');
+  expect(html).not.toContain('Waiting');
+  expect(html).not.toContain('step-current');
+});

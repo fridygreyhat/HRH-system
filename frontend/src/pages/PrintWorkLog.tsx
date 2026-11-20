@@ -140,7 +140,8 @@ export function TimesheetPaper({ log, month, embedded = false }: { log: Printabl
   const byDate = new Map(entries.map((e) => [e.entry_date, e]));
   const measureTotal = (key: string) => entries.reduce((sum, entry) => sum + (dayValues(entry)[key] || 0), 0);
   const additional = (d: string) => byDate.get(d)?.activity_snapshot?.additional_services || [];
-  const direct = log.cadre.hours_mode === 'DIRECT';
+  // Hours-only cadres show start and end rows too once a day has them (a time-only Payroll day always does).
+  const direct = log.cadre.hours_mode === 'DIRECT' && !entries.some((entry) => entry.start_time);
   const a = log.assignment;
   const comments = entries.filter((e) => e.comment);
 
@@ -149,8 +150,10 @@ export function TimesheetPaper({ log, month, embedded = false }: { log: Printabl
     rows.push({ key: 'start', sw: 'Muda wa kuanza', en: 'Start time', cell: (d) => (byDate.get(d)?.start_time ? timeShort(byDate.get(d)?.start_time) : ''), total: '' });
     rows.push({ key: 'end', sw: 'Muda wa kumaliza', en: 'End time', cell: (d) => (byDate.get(d)?.end_time ? timeShort(byDate.get(d)?.end_time) : ''), total: '' });
   }
+  // A time-only Payroll day has no activity to name.
   const activityOf = (d: string) => [
-    log.cadre.activities?.find((activity) => activity.key === byDate.get(d)?.activity_key)?.label_en,
+    byDate.get(d)?.activity_key === 'daily_attendance' ? undefined
+      : log.cadre.activities?.find((activity) => activity.key === byDate.get(d)?.activity_key)?.label_en,
     ...additional(d).map((service) => service.activity.label_en),
   ].filter(Boolean).join(' + ');
   const locationOf = (d: string) => Array.from(new Set([byDate.get(d)?.activity_location, ...additional(d).map((service) => service.activity_location)].filter(Boolean))).join(' + ');
@@ -289,7 +292,10 @@ export function TimesheetPaper({ log, month, embedded = false }: { log: Printabl
             <SignBox titleSw="Mfawidhi wa kituo" titleEn="Facility in-charge endorsement" row={signOff(log, 'facility_endorse')} />
           )}
           <SignBox titleSw="Mapitio ya kitaalamu" titleEn="Technical review" row={signOff(log, 'endorse')} done={AFTER_TECHNICAL.includes(log.status)} />
-          <SignBox titleSw="Idhini ya RM" titleEn="RM approval" row={signOff(log, 'authorize')} done={AFTER_RM.includes(log.status)} />
+          {/* RM approval is shown while it is required, and on records the RM approved or still holds. */}
+          {(me?.client_settings.rm_approval_required !== false || !!signOff(log, 'authorize') || ['PENDING_RPM_AUTHORIZATION', 'BUDGET_HOLD'].includes(log.status)) && (
+            <SignBox titleSw="Idhini ya RM" titleEn="RM approval" row={signOff(log, 'authorize')} done={AFTER_RM.includes(log.status)} />
+          )}
         </div>
         <p style={{ marginTop: '0.5rem' }}>
           Work log #{log.id} · version {log.version} · status {log.status} · printed {dateTime(new Date().toISOString())}.

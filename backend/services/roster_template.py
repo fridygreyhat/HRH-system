@@ -29,6 +29,10 @@ GUIDE = {  # column: (what to enter, example)
     "last_name": ("Last name (surname).", "Mwakyusa"),
     "phone": ("Mobile number. It identifies the person: a number already registered moves that person to the "
               "place on this row instead of adding someone new. Spaces and dashes are ignored.", "0712345678"),
+    "id_type": ("Identity document: NIDA for the National ID, VOTER for the Voter ID. Required for a person not yet "
+                "registered.", "NIDA"),
+    "id_number": ("The ID number as on the card. NIDA: 20 digits (dashes optional). Voter ID: letters and digits as "
+                  "printed. One number belongs to one person only.", "19900101-12345-12345-12"),
     "tin_number": ("Taxpayer Identification Number (TIN), 9 digits, if the person has one. Leave blank otherwise.", "123-456-789"),
     "cadre": ("Cadre code from the list (not the full name).", "CHW"),
     "occupation": ("Position within the cadre, e.g. Clinical Officer or Facility Data Clerk. See Accepted values for "
@@ -109,6 +113,7 @@ def build_template(db: Session, region_ids: Optional[set[int]]) -> bytes:
     choices = {
         "cadre": [c.code for c in cadres],
         "facility_staff_type": ["GOVERNMENT", "PROJECT"],
+        "id_type": ["NIDA", "VOTER"],
         "region": [r.name for r in regions],
         "section": [s.code for s in sections],
         "organization": [o.name for o in orgs],
@@ -145,7 +150,8 @@ def build_template(db: Session, region_ids: Optional[set[int]]) -> bytes:
         cell.font = Font(bold=True)
     for column in ROSTER_COLUMNS:
         text, example = GUIDE[column]
-        guide.append([column, "Yes" if column in ROSTER_REQUIRED else "No", text, example])
+        required = "Yes" if column in ROSTER_REQUIRED else "New staff" if column in ("id_type", "id_number") else "No"
+        guide.append([column, required, text, example])
     guide.column_dimensions["A"].width = 18
     guide.column_dimensions["B"].width = 10
     guide.column_dimensions["C"].width = 90
@@ -164,6 +170,8 @@ def build_template(db: Session, region_ids: Optional[set[int]]) -> bytes:
             accepted.append(["occupation", option, f"for {c.code}", "", ""])
     for code, label in (("GOVERNMENT", "Government facility staff"), ("PROJECT", "Project facility staff")):
         accepted.append(["facility_staff_type", code, label, "", "for HCP"])
+    for code, label in (("NIDA", "National ID (NIDA)"), ("VOTER", "Voter ID")):
+        accepted.append(["id_type", code, label, "", ""])
     for s in sections:
         accepted.append(["section", s.code, s.name, "", ""])
     for o in orgs:

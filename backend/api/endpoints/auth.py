@@ -106,6 +106,8 @@ def me(current: CurrentUser = Depends(get_current_user), db: Session = Depends(g
             "gps_capture_events": get_setting(db, "gps_capture_events"),
             "otp_length": get_setting(db, "otp_length"),
             "provider_otp_required": get_setting(db, "provider_otp_required"),
+            "rm_approval_required": get_setting(db, "rm_approval_required"),
+            "payroll_time_only": get_setting(db, "payroll_time_only"),
             "gps_required_on_submit": get_setting(db, "gps_required_on_submit"),
         },
     }

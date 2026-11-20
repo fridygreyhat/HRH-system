@@ -8,7 +8,8 @@ import '../../pages/polish-review.css';
 
 /**
  * Visual map of the approval journey every cadre follows. Historical provider confirmations remain
- * visible in the audit cycle; when confirmation is disabled the stage is omitted from active flows.
+ * visible in the audit cycle; when confirmation is disabled the stage is omitted from active flows. RM approval works the
+ * same way: switched off, the RM step shows only on records the RM approved or still holds.
  * Who acted and when comes from the audit trail of the current submission cycle.
  */
 const ALL_STEPS = [
@@ -53,7 +54,23 @@ const CURRENT: Record<string, number> = {
   APPROVED: 5,
 };
 
+/** The first step of a draft: the provider is still filling it in. */
+const NOT_SUBMITTED = { en: 'Not submitted yet · being filled', sw: 'Bado halijawasilishwa · linajazwa' };
+
 type StepState = 'done' | 'current' | 'upcoming' | 'warn' | 'danger' | 'muted';
+
+/** How many of the full journey's steps before `index` are not shown (provider SMS code, RM approval). */
+function hiddenBefore(index: number, steps: { action: string }[]): number {
+  return ALL_STEPS.slice(0, index).filter((step) => !steps.some((shown) => shown.action === step.action)).length;
+}
+
+/** Statuses that are with the RM: such a record shows the RM step even after RM approval was switched off. */
+const AT_RM = ['PENDING_RPM_AUTHORIZATION', 'BUDGET_HOLD'];
+
+/** Whether the RM step belongs on this record: RM approval is on, or this submission is or was at the RM. */
+function showsRm(rmRequired: boolean, status: string, audit: WorkLogAudit[]): boolean {
+  return rmRequired || AT_RM.includes(status) || latestCycleHas(audit, 'authorize');
+}
 
 function states(status: string, audit: WorkLogAudit[], steps: typeof ALL_STEPS): { current: number; state: StepState[]; note: string | null } {
   if (status === 'CANCELLED') return { current: -1, state: steps.map(() => 'muted'), note: 'Cancelled' };
@@ -62,13 +79,11 @@ function states(status: string, audit: WorkLogAudit[], steps: typeof ALL_STEPS):
     const oldStatus = rejected?.old_status || '';
     const oldIndex: Record<string, number> = { PENDING_CTC_VERIFICATION: 1, PENDING_PROVIDER_OTP_CONFIRMATION: 2, PENDING_TECHNICAL_REVIEW: 3, PENDING_RPM_AUTHORIZATION: 4 };
     const oldStage = oldIndex[oldStatus] ?? 3;
-    const hasOtp = steps.some((step) => step.action === 'confirm_otp');
-    const at = !hasOtp && oldStage > 2 ? oldStage - 1 : oldStage;
+    const at = oldStage - hiddenBefore(oldStage, steps);
     return { current: at, state: steps.map((_, i) => (i < at ? 'done' : i === at ? 'danger' : 'muted')), note: 'Rejected' };
   }
   const allCurrent = CURRENT[status] ?? 0;
-  const hasOtp = steps.some((step) => step.action === 'confirm_otp');
-  const current = !hasOtp && allCurrent > 2 ? allCurrent - 1 : status === 'PENDING_PROVIDER_OTP_CONFIRMATION' && !hasOtp ? 2 : allCurrent;
+  const current = allCurrent - hiddenBefore(allCurrent, steps);
   const state = steps.map((_, i): StepState => {
     if (i < current) return 'done';
     if (i > current) return 'upcoming';
@@ -88,9 +103,9 @@ function completedBy(audit: WorkLogAudit[]): Record<string, WorkLogAudit> {
   return result;
 }
 
-function latestCycleHasOtp(audit: WorkLogAudit[]): boolean {
+function latestCycleHas(audit: WorkLogAudit[], action: string): boolean {
   const lastSubmit = audit.map((row) => row.action).lastIndexOf('submit');
-  return audit.slice(lastSubmit >= 0 ? lastSubmit : 0).some((row) => row.action === 'confirm_otp');
+  return audit.slice(lastSubmit >= 0 ? lastSubmit : 0).some((row) => row.action === action);
 }
 
 export function ApprovalStepper({
@@ -119,6 +134,7 @@ export function ApprovalStepper({
   const { lang, me } = useAuth();
   const l = lang === 'sw' ? 'sw' : 'en';
   const otpSkipped = me?.client_settings.provider_otp_required === false;
+  const rmShown = showsRm(me?.client_settings.rm_approval_required !== false, status, audit);
   if (workflowVersion === 2 && workType !== 'PAYROLL') {
     const routeAction = status === 'ROUTED_CSO' ? 'route_cso' : 'route_fhi360';
     const allV2Steps = [
@@ -133,17 +149,18 @@ export function ApprovalStepper({
       { action: 'paid', title: 'Paid', sw: 'Imelipwa' },
     ];
     const stepTitle = (step: (typeof allV2Steps)[number]) => (step.action === 'endorse' && technicalReviewer ? technicalReviewer : l === 'sw' ? step.sw : step.title);
-    const showOtpV2 = !otpSkipped || latestCycleHasOtp(audit);
+    const showOtpV2 = !otpSkipped || latestCycleHas(audit, 'confirm_otp');
     // Records past finance review before this approval existed have no timesheet step to show.
     const noTimesheetStep = !financeTimesheetApproved && ['FINANCE_REVIEWED', 'ROUTED_FHI360', 'ROUTED_CSO', 'PAID', 'APPROVED'].includes(status);
-    const v2Steps = allV2Steps.filter((step) => (showOtpV2 || step.action !== 'confirm_otp') && !(noTimesheetStep && step.action === 'finance_timesheet_approve'));
+    const v2Steps = allV2Steps.filter((step) => (showOtpV2 || step.action !== 'confirm_otp') && (rmShown || step.action !== 'authorize')
+      && !(noTimesheetStep && step.action === 'finance_timesheet_approve'));
     const v2Position: Record<string, number> = {
       DRAFT: 0, RETURNED_TO_PROVIDER: 0, PENDING_CTC_VERIFICATION: 1, PENDING_PROVIDER_OTP_CONFIRMATION: 2,
       PENDING_TECHNICAL_REVIEW: 3, PENDING_RPM_AUTHORIZATION: 4, PENDING_FINANCE_REVIEW: financeTimesheetApproved ? 6 : 5,
       FINANCE_REVIEWED: 7, ROUTED_FHI360: 8, ROUTED_CSO: 8, PAID: 9, APPROVED: 9,
     };
     const basePosition = v2Position[status] ?? 0;
-    const currentStep = basePosition - (!showOtpV2 && basePosition > 2 ? 1 : 0) - (noTimesheetStep ? 1 : 0);
+    const currentStep = basePosition - (!showOtpV2 && basePosition > 2 ? 1 : 0) - (!rmShown && basePosition > 4 ? 1 : 0) - (noTimesheetStep ? 1 : 0);
     const doneRows: Record<string, WorkLogAudit> = {};
     audit.forEach((row) => { doneRows[row.action] = row; });
     const rejected = status === 'REJECTED';
@@ -163,13 +180,14 @@ export function ApprovalStepper({
             const isPaid = step.action === 'paid';
             const routeIndex = v2Steps.findIndex((item) => item.action === routeAction);
             const done = isPaid ? status === 'PAID' : index < currentStep || (index === routeIndex && (status === 'ROUTED_FHI360' || status === 'ROUTED_CSO' || status === 'PAID'));
-            const currentState = rejected && index === Math.min(currentStep, 5) ? 'danger' : done ? 'done' : index === currentStep && !isPaid ? 'current' : 'upcoming';
+            const currentState = rejected && index === Math.min(currentStep, 5) ? 'danger' : done ? 'done' : index === currentStep && !isPaid && status !== 'DRAFT' ? 'current' : 'upcoming';
             const auditRow = doneRows[step.action];
             const title = stepTitle(step);
             return <li key={`${step.action}-${index}`} className={`step step-${currentState}`} aria-current={currentState === 'current' ? 'step' : undefined}>
               <span className="step-marker" aria-hidden="true">{currentState === 'done' ? <Icon name="check" size={15} /> : currentState === 'danger' ? <Icon name="close" size={14} /> : index + 1}</span>
               <div className="step-text"><span className="step-title">{title}</span><span className="step-sub">
-                {auditRow ? `${auditRow.actor_name || (l === 'sw' ? 'Imerekodiwa' : 'Recorded')} · ${dateTime(auditRow.timestamp)}`
+                {status === 'DRAFT' && index === 0 ? NOT_SUBMITTED[l]
+                  : auditRow ? `${auditRow.actor_name || (l === 'sw' ? 'Imerekodiwa' : 'Recorded')} · ${dateTime(auditRow.timestamp)}`
                   : currentState === 'done' ? (l === 'sw' ? 'Imekamilika' : 'Completed')
                     : currentState === 'current' ? `${l === 'sw' ? 'Inasubiri' : 'Waiting'}${hoursInStatus !== undefined ? ` · ${ageText(hoursInStatus, l)}` : ''}`
                       : isPaid ? (l === 'sw' ? 'Bado haijalipwa' : 'Not yet paid') : l === 'sw' ? 'Bado' : 'Pending'}
@@ -180,8 +198,8 @@ export function ApprovalStepper({
       </div>
     );
   }
-  const showOtp = !otpSkipped || latestCycleHasOtp(audit);
-  const steps = (showOtp ? ALL_STEPS : ALL_STEPS.filter((step) => step.action !== 'confirm_otp'))
+  const showOtp = !otpSkipped || latestCycleHas(audit, 'confirm_otp');
+  const steps = ALL_STEPS.filter((step) => (showOtp || step.action !== 'confirm_otp') && (rmShown || step.action !== 'authorize'))
     .map((step) => (communityOnly && step.action === 'verify' ? CSO_TECHNICAL_STEP : step));
   const { current, state, note } = states(status, audit, steps);
   const by = completedBy(audit);
@@ -207,7 +225,7 @@ export function ApprovalStepper({
               <div className="step-text">
                 <span className="step-title">{step[l]}</span>
                 <span className="step-sub">
-                  {row ? (
+                  {status === 'DRAFT' && i === 0 ? NOT_SUBMITTED[l] : row ? (
                     <>
                       {row.actor_name || who} · {dateTime(row.timestamp)}
                     </>
@@ -236,7 +254,7 @@ export function ApprovalStepper({
           </span>
           <div className="step-text">
             <span className="step-title">{DONE_LABEL[l]}</span>
-            <span className="step-sub">{approved && by.authorize ? dateTime(by.authorize.timestamp) : workType === 'PAYROLL' ? (l === 'sw' ? 'Ripoti ya kazi ya mwezi' : 'Monthly work report') : l === 'sw' ? 'Si malipo bado' : 'Not yet a payment'}</span>
+            <span className="step-sub">{approved && (by.authorize || by.endorse) ? dateTime((by.authorize || by.endorse).timestamp) : workType === 'PAYROLL' ? (l === 'sw' ? 'Ripoti ya kazi ya mwezi' : 'Monthly work report') : l === 'sw' ? 'Si malipo bado' : 'Not yet a payment'}</span>
           </div>
         </li>
       </ol>
@@ -245,12 +263,12 @@ export function ApprovalStepper({
   );
 }
 
-/** Five dots for list rows: done, current (or warning) and upcoming steps. */
+/** Dots for list rows: done, current (or warning) and upcoming steps. */
 export function MiniStepper({ status }: { status: string }) {
   const { me } = useAuth();
-  const otpSkipped = me?.client_settings.provider_otp_required === false;
-  const showOtp = !otpSkipped;
-  const steps = showOtp ? ALL_STEPS : ALL_STEPS.filter((step) => step.action !== 'confirm_otp');
+  const showOtp = me?.client_settings.provider_otp_required !== false;
+  const rmShown = showsRm(me?.client_settings.rm_approval_required !== false, status, []);
+  const steps = ALL_STEPS.filter((step) => (showOtp || step.action !== 'confirm_otp') && (rmShown || step.action !== 'authorize'));
   const { state } = states(status, [], steps);
   const done = status === 'APPROVED';
   return (

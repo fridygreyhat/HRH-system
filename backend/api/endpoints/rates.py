@@ -35,6 +35,10 @@ class RateIn(BaseModel):
     min_days_per_month: int = Field(ge=0, le=31)
 
 
+class RetireIn(BaseModel):
+    reason: str = Field(min_length=5, max_length=1000)
+
+
 class RevisionIn(BaseModel):
     rate_value: Decimal = Field(gt=0, max_digits=15, decimal_places=2)
     effective_start_date: date
@@ -134,5 +138,24 @@ def revise_rate(rate_id: int, body: RevisionIn, db: Session = Depends(get_db), c
     db.add(row)
     db.flush()
     audit.record(db, current, "activity_rate", row.id, "revise", after=definition_out(row), reason="New immutable rate version")
+    db.commit()
+    return definition_out(row)
+
+
+@router.post("/{rate_id}/retire")
+def retire_rate(rate_id: int, body: RetireIn, db: Session = Depends(get_db), current=Depends(require_roles(TECHNICAL_OFFICER))):
+    """Stop offering a Service from today: providers can no longer choose it. Days already recorded, approved or paid
+    keep their amounts, and the version stays in the history."""
+    row = db.query(ActivityRate).filter(ActivityRate.id == rate_id).with_for_update().first()
+    if not row:
+        raise HTTPException(404, "Activity rate not found")
+    if not may_manage(current, row.region_id, row.cadre_id):
+        raise HTTPException(403, "Activity rate is outside your Region × Cadre")
+    if not row.is_active:
+        raise HTTPException(409, "This Service is already stopped or replaced by a newer version")
+    if len(body.reason.strip()) < 5:
+        raise HTTPException(422, "Give the reason for stopping this Service.")
+    row.is_active = False
+    audit.record(db, current, "activity_rate", row.id, "retire", after=definition_out(row), reason=body.reason.strip())
     db.commit()
     return definition_out(row)

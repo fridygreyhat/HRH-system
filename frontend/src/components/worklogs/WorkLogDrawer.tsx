@@ -470,7 +470,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
             <div className="row">
               <span className="badge badge-neutral">{tr('Weekday daily limit', 'Kikomo cha kila siku ya kazi')}: {log.review_summary?.limits.daily_hours} h</span>
               <span className="badge badge-neutral">{tr('Monday–Friday limit', 'Kikomo cha Jumatatu–Ijumaa')}: {log.review_summary?.limits.weekly_hours} h</span>
-              <span className="badge badge-neutral">{tr('Saturday clinics', 'Kliniki za Jumamosi')}: {log.review_summary?.limits.saturday_min_hours}–{log.review_summary?.limits.saturday_max_hours} h</span>
+              <span className="badge badge-neutral">{tr('Saturday clinics', 'Kliniki za Jumamosi')}: {Number(log.review_summary?.limits.saturday_min_hours) === Number(log.review_summary?.limits.saturday_max_hours) ? log.review_summary?.limits.saturday_max_hours : `${log.review_summary?.limits.saturday_min_hours}–${log.review_summary?.limits.saturday_max_hours}`} h</span>
               <span className="badge badge-neutral">{tr('No Sunday work', 'Hakuna kazi Jumapili')}</span>
             </div>
             {(log.review_summary?.months || []).map((month) => (
@@ -675,7 +675,7 @@ export function WorkLogDrawer({ logId, onClose, onChanged }: { logId: number; on
         <ReasonDialog
           title={decisionLabel(action)}
           description={regionalDecision && action === 'return'
-            ? tr('Send back to the cadre Technical reviewer. Technical and RM review again.', 'Rudisha kwa mkaguzi wa Kitaalamu wa kada. Kitaalamu na RM watapitia tena.')
+            ? tr('Send back to the cadre Technical reviewer. It goes through the approval steps again from technical review.', 'Rudisha kwa mkaguzi wa Kitaalamu wa kada. Litapitia tena hatua za idhini kuanzia mapitio ya Kitaalamu.')
             : regionalDecision && action === 'reject'
               ? tr('Reject to the provider for correction and resubmission.', 'Kataa kwa mtoa huduma ili arekebishe na awasilishe tena.')
               : (sw && ACTION_HELP_SW[action]) || ACTION_HELP[action]}

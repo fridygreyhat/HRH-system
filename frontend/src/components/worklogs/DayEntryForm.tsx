@@ -62,7 +62,9 @@ interface Props {
 
 /** One day's entry: hours (or start/end), one input per cadre field, evidence and optional GPS. */
 export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved, onClose }: Props) {
-  const { t, lang } = useAuth();
+  const { t, lang, me } = useAuth();
+  // Payroll records only when the provider worked: start and end time, no activity and no indicators.
+  const timeOnly = log.work_type === 'PAYROLL' && log.workflow_version >= 2 && me?.client_settings.payroll_time_only === true;
   const requiresGps = ['CHW', 'HCP', 'DATA_CLERK'].includes(log.cadre.code);
   const captureGps = requiresGps || captureOnEntry;
   const dayOfWeek = new Date(`${date}T12:00:00Z`).getUTCDay();
@@ -71,6 +73,8 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
   const limits = log.review_summary.limits;
   const minimumHours = isSaturday ? Number(limits.saturday_min_hours) : 0.25;
   const maximumHours = Number(isSaturday ? limits.saturday_max_hours : limits.daily_hours);
+  const saturdaySpan = Number(limits.saturday_min_hours) === Number(limits.saturday_max_hours)
+    ? limits.saturday_max_hours : `${limits.saturday_min_hours}–${limits.saturday_max_hours}`;
   const backdateAccess = log.backdate_access;
   const dateGrant = backdateAccess?.grants.find((grant) => grant.entry_date === date);
   const cadreActivities = log.cadre.activities || [];
@@ -78,11 +82,11 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
     ? cadreActivities.filter((activity) => !activity.item_type || activity.item_type === log.work_type)
     : cadreActivities;
   const applicableActivities = allActivities.filter((activity) =>
-    !(log.cadre.code === 'HCP' && log.work_type === 'PAYROLL' && activity.key === 'daily_attendance') &&
+    (timeOnly ? activity.key === 'daily_attendance' : !(log.cadre.code === 'HCP' && log.work_type === 'PAYROLL' && activity.key === 'daily_attendance')) &&
     (!activity.effective_start_date || activity.effective_start_date <= date) &&
     (!activity.effective_end_date || date < activity.effective_end_date),
   );
-  const activities = entry?.activity_key && !(log.cadre.code === 'HCP' && log.work_type === 'PAYROLL' && entry.activity_key === 'daily_attendance') && !applicableActivities.some((activity) => activity.key === entry.activity_key)
+  const activities = !timeOnly && entry?.activity_key && !(log.cadre.code === 'HCP' && log.work_type === 'PAYROLL' && entry.activity_key === 'daily_attendance') && !applicableActivities.some((activity) => activity.key === entry.activity_key)
     ? [...applicableActivities, ...allActivities.filter((activity) => activity.key === entry.activity_key)]
     : applicableActivities;
   const isHcp = log.cadre.code === 'HCP';
@@ -92,7 +96,7 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
   const defaultChwActivity = applicableActivities.find((activity) => activity.key === 'chw_daily_timesheet');
   const defaultClerkActivity = applicableActivities.find((activity) => activity.key === 'data_clerk_daily_timesheet');
   const attendance = log.work_type === 'PAYROLL' ? (isChw ? defaultChwActivity : isDataClerk ? defaultClerkActivity : undefined) || applicableActivities.find((activity) => activity.key === 'daily_attendance') : undefined;
-  const [activityKey, setActivityKey] = useState((isHcp && entry?.activity_key === 'daily_attendance' ? '' : entry?.activity_key) || attendance?.key || (isHcp ? '' : (isChw ? defaultChwActivity : isDataClerk ? defaultClerkActivity : undefined)?.key || applicableActivities[0]?.key || allActivities[0]?.key || ''));
+  const [activityKey, setActivityKey] = useState(timeOnly ? 'daily_attendance' : (isHcp && entry?.activity_key === 'daily_attendance' ? '' : entry?.activity_key) || attendance?.key || (isHcp ? '' : (isChw ? defaultChwActivity : isDataClerk ? defaultClerkActivity : undefined)?.key || applicableActivities[0]?.key || allActivities[0]?.key || ''));
   const selectedActivity = activities.find((activity) => activity.key === activityKey);
   const activityType = selectedActivity?.item_type || log.work_type;
   const [indicatorGroupKey, setIndicatorGroupKey] = useState('');
@@ -100,8 +104,8 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
   const selectedIndicatorGroup = selectedActivity?.groups?.find((group) => group.key === indicatorGroupKey)
     || selectedActivity?.groups?.[0];
   const requiresLocation = Boolean(selectedActivity?.requires_location || activityKey === 'secondary_facility');
-  const direct = log.cadre.hours_mode === 'DIRECT' || Boolean(selectedActivity?.hours_input);
-  const attendanceOnly = log.work_type === 'PAYROLL' && !isChw && !isHcp && !isDataClerk;
+  const direct = !timeOnly && (log.cadre.hours_mode === 'DIRECT' || Boolean(selectedActivity?.hours_input));
+  const attendanceOnly = timeOnly || (log.work_type === 'PAYROLL' && !isChw && !isHcp && !isDataClerk);
   const visibleFields = attendanceOnly || (!isHcp && !isChw && !isDataClerk && selectedActivity?.item_type === 'PAYROLL')
     ? []
     : selectedActivity
@@ -228,8 +232,8 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
 
       <p className={isSunday ? 'alert alert-warn' : 'muted small day-form-limits'}>
         {lang === 'sw'
-          ? `Jumatatu–Ijumaa: hadi saa ${limits.daily_hours} kwa siku, ${limits.weekly_hours} kwa wiki. Jumamosi: saa ${limits.saturday_min_hours}–${limits.saturday_max_hours}. Hakuna kazi Jumapili.`
-          : `Mon–Fri: up to ${limits.daily_hours} hours per day, ${limits.weekly_hours} per week. Saturday: ${limits.saturday_min_hours}–${limits.saturday_max_hours} hours. No Sunday work.`}
+          ? `Jumatatu–Ijumaa: hadi saa ${limits.daily_hours} kwa siku, ${limits.weekly_hours} kwa wiki. Jumamosi: saa ${saturdaySpan}. Hakuna kazi Jumapili.`
+          : `Mon–Fri: up to ${limits.daily_hours} hours per day, ${limits.weekly_hours} per week. Saturday: ${saturdaySpan} hours. No Sunday work.`}
       </p>
       {backdateAccess && backdateAccess.enabled !== false && (
         <p className="notice notice-info" role="note">
@@ -257,7 +261,14 @@ export function DayEntryForm({ log, date, entry, flags, captureOnEntry, onSaved,
         </div>
       )}
 
-      {activities.length > 0 && (log.work_type !== 'PAYROLL' || isHcp || ((isChw || isDataClerk) && activities.length > 1)) && (
+      {timeOnly && (
+        <p className="notice notice-info" role="note">
+          {lang === 'sw'
+            ? 'Mshahara: weka muda ulioanza na kumaliza kazi siku hii. Hakuna shughuli wala viashiria vya kujaza.'
+            : 'Payroll: enter the time you started and finished work this day. No activities or indicators are needed.'}
+        </p>
+      )}
+      {!timeOnly && activities.length > 0 && (log.work_type !== 'PAYROLL' || isHcp || ((isChw || isDataClerk) && activities.length > 1)) && (
         <Field
           label={isHcp
             ? log.work_type === 'PAYROLL' ? (lang === 'sw' ? 'Shughuli ya daftari la siku / kaskedi' : 'Daily timesheet activity / cascade')

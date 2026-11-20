@@ -242,8 +242,9 @@ def _guard_daily_service_claim(db, log):
             raise HTTPException(409, "A service payment claim already covers one of these dates. Record all same-day services together; only one daily service amount is payable.")
 
 
-def prepare_after_rpm(db, current, log):
-    """Price verified Services without choosing configuration or committing funds."""
+def prepare_after_rpm(db, current, log, role=RPM):
+    """Price verified Services without choosing configuration or committing funds. Run at the last operational approval:
+    RM's, or the technical review's while RM approval is switched off (`role` says which)."""
     if log.work_type == "PAYROLL":
         return None
     _guard_daily_service_claim(db, log)
@@ -271,7 +272,7 @@ def prepare_after_rpm(db, current, log):
     db.add(claim)
     db.flush()
     _components(db, claim, snapshot)
-    claims.audit(db, current, claim, "rpm_prepare", RPM, None, claim.payment_status,
+    claims.audit(db, current, claim, "rpm_prepare" if role == RPM else "prepare", role, None, claim.payment_status,
                  details={"work_log_id": log.id, "amount": str(claim.amount), "budget_committed": False})
     return claim
 

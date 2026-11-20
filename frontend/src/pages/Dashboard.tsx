@@ -22,6 +22,7 @@ import {
   num,
   roleLabel,
   todayLocal,
+  workTypeName,
 } from '../format';
 import { useApi } from '../hooks';
 import { Cadre, DashboardData, Named, PayPeriod } from '../types';
@@ -156,7 +157,13 @@ function DashboardBody({ d, periodSelected, sw }: { d: DashboardData; periodSele
   const ownerName = (o: string) => (sw && OWNER_SW[o]) || roleLabel(o);
   const exceptionName = (a: string) => (sw && EXCEPTION_SW[a]) || label(WORKLOG_ACTION_LABELS, a);
   const routeName = (r: string) => (sw ? ROUTE_LABELS_SW[r] || (r === 'UNROUTED' ? 'Hakuna njia ya malipo' : r) : ROUTE_NAMES[r] || r);
-  const pipeline = PIPELINE.filter((s) => d.work_logs.by_status[s]).map((s) => ({ key: s, label: statusName(s), value: d.work_logs.by_status[s] }));
+  // Each step split by work type, so a Services draft is never mistaken for Payroll.
+  const byType = (s: string) => d.work_logs.by_status_type?.[s] || {};
+  const typeSplit = (s: string) => (['SERVICES', 'PAYROLL', 'LEGACY'] as const)
+    .filter((type) => byType(s)[type])
+    .map((type) => `${workTypeName(type, sw ? 'sw' : 'en')} ${num(byType(s)[type])}`)
+    .join(' · ');
+  const pipeline = PIPELINE.filter((s) => d.work_logs.by_status[s]).map((s) => ({ key: s, label: statusName(s), value: d.work_logs.by_status[s], note: typeSplit(s) }));
   const routeRow = (r: string) => (
     <span className="row-inline nowrap">
       <span className={`route-dot route-${r}`}>{r === 'UNROUTED' ? '!' : r}</span>
@@ -182,7 +189,7 @@ function DashboardBody({ d, periodSelected, sw }: { d: DashboardData; periodSele
             tone: 'info',
             label: sw ? 'Zinasubiri mapitio' : 'Awaiting review',
             value: num(waiting),
-            note: sw ? 'CTC, kitaalamu na RM' : 'CTC, technical and RM stages',
+            note: sw ? 'Hatua za mapitio kabla ya fedha' : 'Review stages before finance',
           },
           {
             icon: 'clock',
@@ -211,14 +218,16 @@ function DashboardBody({ d, periodSelected, sw }: { d: DashboardData; periodSele
       <div className="grid-charts">
         <ChartCard
           title={sw ? 'Mtiririko wa kumbukumbu za kazi' : 'Work-log pipeline'}
-          subtitle={sw ? 'Kumbukumbu katika kila hatua' : 'Logs at each step'}
+          subtitle={sw ? 'Kumbukumbu katika kila hatua, Huduma na Mshahara' : 'Logs at each step, Services and Payroll'}
           table={
             <table>
               <thead>
                 <tr>
                   <th scope="col">{sw ? 'Hali' : 'Status'}</th>
+                  <th scope="col" className="num">{workTypeName('SERVICES', sw ? 'sw' : 'en')}</th>
+                  <th scope="col" className="num">{workTypeName('PAYROLL', sw ? 'sw' : 'en')}</th>
                   <th scope="col" className="num">
-                    {sw ? 'Kumbukumbu' : 'Logs'}
+                    {sw ? 'Jumla' : 'Total'}
                   </th>
                 </tr>
               </thead>
@@ -226,6 +235,8 @@ function DashboardBody({ d, periodSelected, sw }: { d: DashboardData; periodSele
                 {pipeline.map((p) => (
                   <tr key={p.key}>
                     <td>{p.label}</td>
+                    <td className="num">{num(byType(p.key).SERVICES || 0)}</td>
+                    <td className="num">{num(byType(p.key).PAYROLL || 0)}</td>
                     <td className="num">{num(p.value)}</td>
                   </tr>
                 ))}

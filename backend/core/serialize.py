@@ -43,4 +43,6 @@ def mask_payment_fields(values: dict) -> dict:
             out[key] = mask_phone(out[key])
     if out.get("tin_number"):
         out["tin_number"] = "***-***-" + str(out["tin_number"])[-3:]
+    if out.get("id_number"):
+        out["id_number"] = "•••" + str(out["id_number"])[-4:]
     return out

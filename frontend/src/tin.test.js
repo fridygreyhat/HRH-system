@@ -12,7 +12,7 @@ test('a TIN is optional, 9 digits, and kept as 123-456-789', () => {
 });
 
 test('a provider registered as a new user must give TIN, bank name and account number', () => {
-  const base = { ...emptyHealthWorker(), cadre_id: '1', cadre_code: 'CHW', occupation: 'CHW (HIV + TB)', first_name: 'Asha', last_name: 'Komba', assignment: { ...emptyHealthWorker().assignment, region_id: '11' } };
+  const base = { ...emptyHealthWorker(), cadre_id: '1', cadre_code: 'CHW', occupation: 'CHW (HIV + TB)', first_name: 'Asha', last_name: 'Komba', national_id: { id_type: 'VOTER', id_number: 'T-1000-1234-567' }, assignment: { ...emptyHealthWorker().assignment, region_id: '11' } };
   const pay = { tin_number: '100 200 301', bank_name: ' CRDB Bank ', bank_account_number: '0152 2789 4400' };
   expect(healthWorkerPayload({ ...base, pay }, '0755123501').staff).toMatchObject({
     tin_number: '100-200-301', bank_name: 'CRDB Bank', bank_account_number: '015227894400' });

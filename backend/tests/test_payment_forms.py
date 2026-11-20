@@ -257,3 +257,74 @@ def test_payroll_form_counts_every_day_filled_in_on_the_timesheet():
                                "Total amount", "Bank name", "Account number"]
     row = form["rows"][0]
     assert (row["name"], row["cadre"], row["region"], row["facility"], row["days"]) == ("Asha Juma", "Community Health Worker", "Iringa", "Kidamali", 22)
+
+
+def test_a_long_services_summary_lists_one_service_per_line_most_days_first():
+    """Seven services: every one is listed, one per line with its days, so the lines add up to "No. of days"."""
+    services = ["Index testing outreach", "SNS-RNR testing outreach", "TB contact tracing", "Special and weekend clinics",
+                "Community TB active case finding", "Outreach services", "Weekend clinic data entry"]
+    breakdown = [{"service": s, "paid": d, "amount": "0"} for s, d in zip(services, [1, 3, 2, 2, 4, 1, 1])]
+    breakdown += [{"service": "Outreach services", "paid": 1, "amount": "0"}, {"service": "Unpaid shortfall", "paid": 0}]
+    lines = payment_forms.summary_lines(breakdown)
+    assert lines[0] == ["Community TB active case finding", 4] and lines[1] == ["SNS-RNR testing outreach", 3]
+    assert len(lines) == 7 and sum(days for _, days in lines) == 15  # the same service twice is counted once, unpaid left out
+    text = payment_forms.services_summary(breakdown)
+    assert text.splitlines()[0] == "Community TB active case finding (4 days)" and text.count("\n") == 6
+    assert "Weekend clinic data entry (1 day)" in text.splitlines()
+
+    rows = [{"sn": 1, "name": "Janeth Mandepu", "cadre": "Health Care Provider", "region": "Njombe", "facility": "Kifanya Dispensary",
+             "days": 15, "summary": text, "summary_lines": lines, "subtotal": "150000", "total": "150000", "currency": "TZS",
+             "mobile": "+255710000003"}]
+    form = {"kind": "SERVICES", "month": "2026-10", "activity": "Services payments - October 2026", "venue": "Njombe",
+            "columns": payment_forms.SERVICES_COLUMNS, "rows": rows, "totals": {"TZS": "150000"}}
+    assert payment_forms.pdf_file(form).startswith(b"%PDF")
+    sheet = load_workbook(io.BytesIO(payment_forms.xlsx_file(form))).active
+    cell = sheet.cell(8, payment_forms.SERVICES_COLUMNS.index("Services summary") + 1)
+    assert cell.value == text and cell.alignment.wrap_text
+    assert sheet.row_dimensions[8].height >= 13 * 7  # tall enough to show every line
+
+
+def _many(facilities=3, each=4):
+    """A Services form for many people in several facilities, as Central Finance downloads it for a whole region."""
+    rows, sn = [], 0
+    for f in range(facilities):
+        for i in range(each):
+            sn += 1
+            days = 1 + (i % 3)
+            rows.append({"sn": sn, "name": f"Person {sn:03d}", "cadre": "Community Health Worker", "region": "Njombe",
+                         "facility": f"Facility {f + 1}", "days": days, "summary": f"Outreach services ({days} days)",
+                         "summary_lines": [["Outreach services", days]], "subtotal": str(days * 20000), "total": str(days * 20000),
+                         "currency": "TZS", "mobile": f"+2557100{sn:05d}"})
+    total = sum(int(r["total"]) for r in rows)
+    return {"kind": "SERVICES", "month": "2026-10", "activity": "Services payments - October 2026", "venue": "Njombe",
+            "columns": payment_forms.SERVICES_COLUMNS, "rows": rows, "totals": {"TZS": str(total)}}
+
+
+def test_a_form_for_many_people_has_a_facility_summary_subtotals_and_page_n_of_m(readable_pdf):
+    import re
+    form = _many(facilities=3, each=150)  # 450 people: several pages
+    pdf = payment_forms.pdf_file(form)
+    count = len(re.findall(rb"/Type /Page\b(?!s)", pdf))
+    assert count > 3
+    assert all(f"Page {n} of {count}".encode() in pdf for n in range(1, count + 1))
+    assert pdf.index(b"Summary by health facility") < pdf.index(b"TOTAL \\(3 facilities\\)") < pdf.index(b"Person 001")
+    for f in (1, 2, 3):
+        assert f"Subtotal: Facility {f}, Njombe \\(150 people\\)".encode() in pdf
+    assert b"TOTAL \\(450 people\\)" in pdf and b"18,000,000" in pdf  # 450 people, 900 days at 20,000
+    assert b"/MediaBox [ 0 0 841.8898 595.2756 ]" in pdf  # landscape A4: one person per line
+
+    book = load_workbook(io.BytesIO(payment_forms.xlsx_file(form)))
+    assert book.sheetnames == ["Payment form", "By facility"]
+    main = book["Payment form"]
+    assert main.max_row == 7 + 450 + 1 and main.freeze_panes == "A8"  # one row per person, no subtotal rows to break filters
+    assert main.cell(main.max_row, 6).value == "=SUM(F8:F457)" and main.cell(main.max_row, 8).value == "=SUM(H8:H457)"
+    by = [row for row in book["By facility"].iter_rows(min_row=4, values_only=True)]
+    assert by[:3] == [("Njombe", f"Facility {f}", 150, 300, 6000000.0) for f in (1, 2, 3)]
+    assert by[3][1] == "TOTAL (3 facilities)" and by[3][4] == "=SUM(E4:E6)"
+
+
+def test_a_form_for_one_facility_has_no_subtotals(readable_pdf):
+    form = _many(facilities=1, each=5)
+    pdf = payment_forms.pdf_file(form)
+    assert b"Subtotal" not in pdf and b"Summary by health facility" not in pdf and b"TOTAL \\(5 people\\)" in pdf
+    assert load_workbook(io.BytesIO(payment_forms.xlsx_file(form))).sheetnames == ["Payment form"]

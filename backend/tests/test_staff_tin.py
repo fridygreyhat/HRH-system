@@ -51,10 +51,10 @@ def test_new_user_registered_as_a_health_worker_keeps_the_tin(api, db):
 
 
 def test_roster_import_takes_a_tin_column_and_fills_a_missing_one(api, db):
-    head = "first_name,last_name,phone,tin_number,cadre,region,start_date\n"
-    rows = ("Roster,Tin,0799 000 401,100 200 304,CHW,Iringa,2023-01-01\n"
-            "Roster,NoTin,0799 000 402,,CHW,Iringa,2023-01-01\n"
-            "Roster,BadTin,0799 000 403,12,CHW,Iringa,2023-01-01\n")
+    head = "first_name,last_name,phone,tin_number,cadre,region,start_date,id_type,id_number\n"
+    rows = ("Roster,Tin,0799 000 401,100 200 304,CHW,Iringa,2023-01-01,VOTER,T-1000-0799-401\n"
+            "Roster,NoTin,0799 000 402,,CHW,Iringa,2023-01-01,VOTER,T-1000-0799-402\n"
+            "Roster,BadTin,0799 000 403,12,CHW,Iringa,2023-01-01,VOTER,T-1000-0799-403\n")
     result = api.call("POST", "/staff/import", "central1", files={"file": ("roster.csv", head + rows, "text/csv")}, expect=201)
     assert (result["created_count"], result["error_count"]) == (2, 1) and "9-digit" in result["errors"][0]["error"]
     assert db.query(Staff).filter_by(tin_number="100-200-304").one().last_name == "Tin"

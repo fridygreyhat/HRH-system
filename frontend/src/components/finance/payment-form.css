@@ -28,3 +28,16 @@
 .payment-form .pf-table td:nth-child(2), .payment-form .pf-table td:nth-child(4) { min-width: 6.5rem; }
 .payment-form .pf-table th:nth-child(8) { width: 6.5rem; }
 .payment-form .pf-table td:last-child { white-space: nowrap; }
+
+/* The Services summary: one service per line, its days right-aligned, a hairline between lines. */
+.services-summary { list-style: none; margin: 0; padding: 0; min-width: 14rem; }
+.services-summary li { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+.services-summary li + li { border-top: 1px solid var(--border); }
+.services-summary li span:first-child { min-width: 0; }
+.services-summary .num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Many facilities: a summary table first, then a shaded subtotal after each facility's people. */
+.pf-summary { margin-bottom: 16px; }
+.pf-summary caption { text-align: left; font-weight: 700; padding-bottom: 6px; }
+.pf-subtotal th, .pf-subtotal td, .pf-table tfoot th { font-weight: 700; background: var(--surface-2); text-align: left; }
+.pf-subtotal td.num, .pf-table tfoot td.num { text-align: right; }

@@ -30,6 +30,13 @@ def hour_limits(db: Session, work_type: str = "SERVICES") -> dict[str, Decimal]:
         limits["weekly_hours"] = min(limits["weekly_hours"], Decimal(40))
         limits["saturday_max_hours"] = min(limits["saturday_max_hours"], Decimal(8))
         limits["saturday_min_hours"] = min(limits["saturday_min_hours"], limits["saturday_max_hours"])
+    else:
+        # Services are additional work beside the payroll day: a shorter day, on weekdays and Saturdays alike.
+        services_day = Decimal(str(get_setting(db, "services_max_daily_hours")))
+        limits["daily_hours"] = min(limits["daily_hours"], services_day)
+        limits["weekly_hours"] = min(limits["weekly_hours"], services_day * 5)
+        limits["saturday_max_hours"] = min(limits["saturday_max_hours"], services_day)
+        limits["saturday_min_hours"] = min(limits["saturday_min_hours"], limits["saturday_max_hours"])
     return limits
 
 
@@ -40,7 +47,8 @@ def day_hours_violation(day: date, total: Decimal, limits: dict[str, Decimal]) -
         minimum, maximum = limits["saturday_min_hours"], limits["saturday_max_hours"]
         if minimum <= total <= maximum:
             return None
-        code, message = "SATURDAY_HOURS", f"Saturday weekend clinics require {hours_text(minimum)}–{hours_text(maximum)} total hours (this date would total {hours_text(total)})."
+        span = hours_text(maximum) if minimum == maximum else f"{hours_text(minimum)}–{hours_text(maximum)}"
+        code, message = "SATURDAY_HOURS", f"Saturday weekend clinics require {span} total hours (this date would total {hours_text(total)})."
     elif total > limits["daily_hours"]:
         code, message = "DAILY_HOURS", f"Weekday hours may not exceed {hours_text(limits['daily_hours'])} per day (this date would total {hours_text(total)})."
     else:

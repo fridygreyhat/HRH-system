@@ -9,6 +9,8 @@ import { AssignmentFields, AssignmentValue, EMPTY_ASSIGNMENT, assignmentPayload,
 export { TZ_MOBILE_INPUT_PATTERN as PHONE_PATTERN } from '../../phones';
 import { normalizeTzMobile, TZ_MOBILE_HINT, TZ_MOBILE_INPUT_PATTERN, TZ_MOBILE_MESSAGE } from '../../phones';
 import { normalizeTin, TIN_HINT, TIN_INPUT_PATTERN, TIN_LABEL, TIN_MESSAGE } from '../../tin';
+import { identityPayload, IdType } from '../../nationalId';
+import { EMPTY_NATIONAL_ID, NationalIdFields, NationalIdValue } from './NationalIdFields';
 import { EMPTY_PROVIDER_PAY, NO_PROVIDER_PAY, ProviderPay, ProviderPayFields, providerPayPayload, SERVICES_ONLY_NOTE } from './ProviderPayFields';
 import { FACILITY_STAFF_TYPE_MESSAGE, FACILITY_STAFF_TYPES, FacilityStaffTypeField, isHcp } from './FacilityStaffType';
 export const PAYMENT_METHODS = ['MOBILE_WALLET', 'BANK'];
@@ -111,6 +113,7 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
     enrollment_source: 'MANUAL',
   });
   const [pay, setPay] = useState<ProviderPay>(EMPTY_PROVIDER_PAY);
+  const [nationalId, setNationalId] = useState<NationalIdValue>(EMPTY_NATIONAL_ID);
   const [assignment, setAssignment] = useState<AssignmentValue>(EMPTY_ASSIGNMENT);
   const [step, setStep] = useState(0);
   const { busy, error, setError, run } = useAction();
@@ -127,6 +130,12 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
       setError(payment);
       return;
     }
+    const identity = identityPayload(nationalId.id_type, nationalId.id_number);
+    if (typeof identity === 'string') {
+      setError(identity);
+      setStep(0);
+      return;
+    }
     const created = await run(() =>
       api.post<StaffSummary>('/staff', {
         cadre_id: Number(f.cadre_id),
@@ -134,6 +143,7 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
         middle_name: blankToNull(f.middle_name),
         last_name: f.last_name.trim(),
         verified_phone: f.verified_phone.trim(),
+        ...identity,
         ...payment,
         occupation: blankToNull(f.occupation),
         occupation_other: isOther(f.occupation) ? blankToNull(f.occupation_other) : null,
@@ -152,6 +162,11 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
     e.preventDefault();
     if (step === 0 && isHcp(cadre?.code) && !f.facility_staff_type) {
       setError(FACILITY_STAFF_TYPE_MESSAGE);
+      return;
+    }
+    const identity = step === 0 ? identityPayload(nationalId.id_type, nationalId.id_number) : null;
+    if (typeof identity === 'string') {
+      setError(identity);
       return;
     }
     setError('');
@@ -206,6 +221,7 @@ export function CreateStaffModal({ cadres, onClose, onCreated }: { cadres: Cadre
             <Field label="Mobile phone (required)" hint={TZ_MOBILE_HINT}>
               <input type="tel" value={f.verified_phone} onChange={set('verified_phone')} required pattern={TZ_MOBILE_INPUT_PATTERN} autoComplete="off" />
             </Field>
+            <NationalIdFields value={nationalId} onChange={setNationalId} />
             <Field label="Employment start date (required)">
               <input type="date" value={f.employment_start_date} onChange={set('employment_start_date')} required />
             </Field>
@@ -269,6 +285,8 @@ type EditKey =
   | 'occupation_other'
   | 'facility_staff_type'
   | 'tin_number'
+  | 'id_type'
+  | 'id_number'
   | 'cadre_id'
   | 'salary_scale'
   | 'payment_method'
@@ -307,6 +325,8 @@ export function EditStaffModal({
     occupation_other: staff.occupation_other || '',
     facility_staff_type: staff.facility_staff_type || '',
     tin_number: staff.tin_number || '',
+    id_type: staff.id_type || '',
+    id_number: staff.id_number || '',
     cadre_id: String(staff.cadre_id),
     salary_scale: staff.salary_scale || '',
     payment_method: staff.payment_method || '',
@@ -339,7 +359,17 @@ export function EditStaffModal({
       return;
     }
     const changes: Record<string, string | number | null> = {};
+    if (changed.includes('id_type') || changed.includes('id_number')) {
+      // The type and number travel together; an ID on file can be corrected but not removed.
+      const identity = identityPayload(f.id_type as IdType | '', f.id_number, Boolean(staff.id_number));
+      if (typeof identity === 'string') {
+        setError(identity);
+        return;
+      }
+      Object.assign(changes, identity);
+    }
     changed.forEach((k) => {
+      if (k === 'id_type' || k === 'id_number') return;
       if (k === 'cadre_id') changes[k] = Number(f.cadre_id);
       else if (k === 'tin_number') changes[k] = normalizeTin(f.tin_number) || null;
       else if (k === 'first_name' || k === 'last_name' || k === 'verified_phone' || k === 'status') changes[k] = f[k].trim();
@@ -386,6 +416,11 @@ export function EditStaffModal({
               <FacilityStaffTypeField name="edit_facility_staff_type" value={f.facility_staff_type} onChange={(v) => setF({ ...f, facility_staff_type: v })} required={false} />
             </div>
           )}
+          <NationalIdFields
+            value={{ id_type: f.id_type as IdType | '', id_number: f.id_number }}
+            onChange={(v) => setF({ ...f, id_type: v.id_type, id_number: v.id_number })}
+            required={Boolean(staff.id_number)}
+          />
           <Field label={`TIN${lockedNote}`} hint="9 digits, e.g. 123-456-789.">
             <input inputMode="numeric" value={f.tin_number} onChange={set('tin_number')} pattern={TIN_INPUT_PATTERN} maxLength={13} placeholder="123-456-789" />
           </Field>

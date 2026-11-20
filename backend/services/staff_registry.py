@@ -12,6 +12,7 @@ from sqlalchemy.exc import DataError
 from sqlalchemy.orm import Session
 
 from ..core.phones import same_number, tz_mobile
+from ..core.national_id import identity
 from ..core.tin import tin_number
 from ..core import audit as system_audit
 from ..core.roles import PROVIDER
@@ -85,6 +86,11 @@ def validate_changes(db: Session, staff: Staff, changes: dict) -> None:
             raise HTTPException(status_code=409, detail="Another staff member already has this phone")
     if "tin_number" in changes:
         changes["tin_number"] = _checked_tin(db, changes["tin_number"], staff.id)
+    if "id_type" in changes or "id_number" in changes:
+        # Both travel together; an existing ID can be corrected but not removed.
+        changes["id_type"], changes["id_number"] = checked_identity(
+            db, changes.get("id_type", staff.id_type), changes.get("id_number", staff.id_number), staff.id,
+            required=staff.id_number is not None)
     if "facility_staff_type" in changes:
         changes["facility_staff_type"] = check_facility_staff_type(
             db, changes.get("cadre_id", staff.cadre_id), changes["facility_staff_type"], required=False)
@@ -108,13 +114,24 @@ def _checked_tin(db: Session, value, staff_id: Optional[int]) -> Optional[str]:
     return tin
 
 
+def checked_identity(db: Session, kind, number, staff_id: Optional[int], required: bool) -> tuple[Optional[str], Optional[str]]:
+    """A valid National ID or Voter ID (or neither, when not required), not already on another staff record."""
+    try:
+        kind, number = identity(kind, number, required)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    if number and db.query(Staff.id).filter(Staff.id_type == kind, Staff.id_number == number, Staff.id != (staff_id or -1)).first():
+        raise HTTPException(status_code=409, detail="Another staff member already has this ID number. Check the number.")
+    return kind, number
+
+
 def check_payment_method(db: Session, cadre_id: Optional[int], method: Optional[str]) -> None:
     """Cadres listed in the bank_only_cadres setting (HCP by default) are paid into a bank account only."""
     cadre = db.get(Cadre, cadre_id) if cadre_id else None
     if cadre and method and method != "BANK" and cadre.code in get_setting(db, "bank_only_cadres"):
         raise HTTPException(status_code=422, detail=f"{cadre.name} staff must be paid into a bank account, not a mobile wallet")
 EDITABLE_FIELDS = {"first_name", "middle_name", "last_name", "occupation", "occupation_other", "tin_number",
-                   "facility_staff_type"} | PAYMENT_CRITICAL_FIELDS
+                   "facility_staff_type", "id_type", "id_number"} | PAYMENT_CRITICAL_FIELDS
 
 
 def apply_payment_correction(staff: Staff, changes: dict) -> None:
@@ -191,7 +208,7 @@ def exit_staff(db: Session, current: CurrentUser, staff: Staff, end_date: date, 
     system_audit.record(db, current, "staff", staff.id, "exit", after={"end_date": end_date}, reason=reason)
 
 
-ROSTER_COLUMNS = ["first_name", "middle_name", "last_name", "phone", "tin_number", "cadre", "occupation", "facility_staff_type", "salary_scale", "region",
+ROSTER_COLUMNS = ["first_name", "middle_name", "last_name", "phone", "id_type", "id_number", "tin_number", "cadre", "occupation", "facility_staff_type", "salary_scale", "region",
                   "district", "ward", "facility", "community_area", "section", "organization", "start_date"]
 ROSTER_REQUIRED = ["first_name", "last_name", "phone", "cadre", "region", "start_date"]
 
@@ -287,6 +304,9 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
                 }
                 staff = db.query(Staff).filter(Staff.verified_phone.in_(same_number(phone))).first()
                 tin = _checked_tin(db, row.get("tin_number"), staff.id if staff else None)
+                # A new person needs their National ID or Voter ID; for someone already registered it may be left blank.
+                id_kind, id_no = checked_identity(db, row.get("id_type"), row.get("id_number"), staff.id if staff else None,
+                                                  required=staff is None)
                 if staff:
                     current_row = db.query(StaffAssignment).filter(StaffAssignment.staff_id == staff.id, StaffAssignment.end_date.is_(None)).first()
                     # A regional admin may only change people who currently work in their own region.
@@ -298,6 +318,14 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
                             raise ValueError("This person already has a different TIN on file; correct it on their staff record")
                         staff.tin_number = tin  # a TIN given for someone who had none is filled in
                         system_audit.record(db, current, "staff", staff.id, "update", after={"tin_number": tin},
+                                            reason=f"Roster import {filename} line {line_no}")
+                    if id_no and (staff.id_type, staff.id_number) != (id_kind, id_no):
+                        if outside:
+                            raise ValueError("This phone belongs to a staff member outside your administrative region")
+                        if staff.id_number:  # a correction is made on the staff record, where it is audited with a reason
+                            raise ValueError("This person already has a different ID number on file; correct it on their staff record")
+                        staff.id_type, staff.id_number = id_kind, id_no
+                        system_audit.record(db, current, "staff", staff.id, "update", after=mask_payment_fields({"id_type": id_kind, "id_number": id_no}),
                                             reason=f"Roster import {filename} line {line_no}")
                     if current_row and all(getattr(current_row, k) == v for k, v in assignment.items()):
                         continue  # same place
@@ -313,6 +341,8 @@ def import_roster(db: Session, current: CurrentUser, filename: str, content: str
                         last_name=row["last_name"].strip(),
                         verified_phone=phone,
                         tin_number=tin,
+                        id_type=id_kind,
+                        id_number=id_no,
                         occupation=(row.get("occupation") or "").strip() or None,
                         facility_staff_type=check_facility_staff_type(db, cadre.id, _staff_type_cell(row.get("facility_staff_type")), required=False),
                         salary_scale=(row.get("salary_scale") or "").strip() or None,

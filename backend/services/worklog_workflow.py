@@ -107,7 +107,8 @@ def stage_owner(db: Session, log: WorkLog) -> str:
 
 def transitions_for(log):
     if getattr(log, "work_type", None) == "PAYROLL":
-        # Payroll ends with RM's operational approval. It is not a payable claim. Regional Finance then approves each
+        # Payroll ends with the last operational approval (RM's, or the technical review's while RM approval is off). It
+        # is not a payable claim. Regional Finance then approves each
         # timesheet (or returns it) before signing the region's month and sending it to the CSO.
         return {**{key: value for key, value in TRANSITIONS.items() if key[1] not in {"hold", "release"}},
                 (APPROVED, FINANCE_TIMESHEET_APPROVE): (APPROVED, REGIONAL_FINANCE),
@@ -304,6 +305,13 @@ def transition(
     next_status, role = transitions_for(log)[(old, action)]
     role = acting_role(db, log, role)
     now = utcnow()
+    # RM approval switched off: the technical review approves the timesheet, which goes where RM's approval would have
+    # sent it (Payroll: approved, for the monthly report; Services: Regional Finance). Older records keep their workflow.
+    skip_rm = (action == "endorse" and next_status == PENDING_RPM and log.workflow_version >= 2
+               and not get_setting(db, "rm_approval_required"))
+    if skip_rm:
+        next_status = transitions_for(log)[(PENDING_RPM, "authorize")][0]
+        details = {**(details or {}), "rm_approval": "not required"}
     if action == "verify":
         log.version += 1
         log.confirmed_version = None
@@ -324,15 +332,15 @@ def transition(
     log.status = next_status
     if log.workflow_version >= 2:
         from . import finance_gate
-        if action == "authorize" and next_status == PENDING_FINANCE:
-            claim = finance_gate.prepare_after_rpm(db, current, log)
+        if (action == "authorize" or skip_rm) and next_status == PENDING_FINANCE:
+            claim = finance_gate.prepare_after_rpm(db, current, log, role=role)
             details = {**(details or {}), "prepared_claim_id": claim.id if claim else None}
             log.approved_at = now
             _clear_finance_timesheet_approval(log)
         elif action == FINANCE_TIMESHEET_APPROVE:
             log.finance_timesheet_approved_by = current.id
             log.finance_timesheet_approved_at = now
-        elif action == "authorize":  # a resubmitted Payroll timesheet needs Regional Finance's approval again
+        elif action == "authorize" or skip_rm:  # a resubmitted Payroll timesheet needs Regional Finance's approval again
             _clear_finance_timesheet_approval(log)
         elif action == "finance_review":
             finance_gate.review(db, current, log, (details or {}).get("category_id"),

@@ -9,11 +9,11 @@ from unittest.mock import patch
 
 import pytest
 
-from .conftest import ENTRY, PASSWORD, approved_log, category_id, draft_log
+from .conftest import ENTRY, PASSWORD, approved_log, category_id, draft_log, national_id
 from .test_claims import _batch_for, _ready
 
 ROOT = Path(__file__).resolve().parents[2]
-ROSTER = "first_name,last_name,phone,cadre,region,start_date\n"
+ROSTER = "first_name,last_name,phone,cadre,region,start_date,id_type,id_number\n"
 
 
 def _login(api, username, password=PASSWORD):
@@ -223,6 +223,9 @@ def test_form_types_are_saved_in_one_spelling(api):
 
 # Imports
 def _roster(api, rows, user="central1"):
+    # A new person needs a National ID or Voter ID; every row here gets its own.
+    rows = "".join((f"{line},NIDA,{national_id()['id_number']}" if line.count(",") >= 5 else line) + "\n"
+                   for line in rows.splitlines() if line)
     return api.call("POST", "/staff/import", user, files={"file": ("roster.csv", ROSTER + rows, "text/csv")}, expect=201)
 
 

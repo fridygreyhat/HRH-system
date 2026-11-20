@@ -63,6 +63,12 @@ def client():
         session.merge(SystemSetting(key="backdate_grace_hours", value=1000000))
         # Legacy OTP-specific regression cases opt in; the app default is now off.
         session.merge(SystemSetting(key="provider_otp_required", value=True))
+        # Likewise the RM step: the app default is off; tests of the RM step keep it, test_no_rm_approval switches it off.
+        session.merge(SystemSetting(key="rm_approval_required", value=True))
+        # And Payroll's daily forms: the app records time only; test_payroll_time_only switches that on.
+        session.merge(SystemSetting(key="payroll_time_only", value=False))
+        # Most tests record full-day Services entries; the four-hour Services day has its own test.
+        session.merge(SystemSetting(key="services_max_daily_hours", value=9.0))
         session.commit()
     from fastapi.testclient import TestClient
 
@@ -86,6 +92,13 @@ def pytest_configure(config):
 
 
 _tins = itertools.count(900_000_001)
+_national_ids = itertools.count(1)
+
+
+def national_id() -> dict:
+    """A National ID (NIDA) no other test staff record has: 20 digits, written 19900101-00000-00000-01."""
+    digits = f"19900101{next(_national_ids):012d}"
+    return {"id_type": "NIDA", "id_number": f"{digits[:8]}-{digits[8:13]}-{digits[13:18]}-{digits[18:]}"}
 
 
 @functools.lru_cache(maxsize=1)
@@ -97,9 +110,11 @@ def _hcp_cadre_id() -> int | None:
 
 
 def provider_pay(staff: dict) -> dict:
-    """Fill in a unique TIN, bank details and (for an HCP) the facility staff type where a test leaves them out."""
+    """Fill in a unique TIN, bank details, National ID and (for an HCP) the facility staff type where a test leaves them out."""
     if "facility_staff_type" not in staff and staff.get("cadre_id") == _hcp_cadre_id():
         staff = {**staff, "facility_staff_type": "GOVERNMENT"}
+    if "id_number" not in staff:  # required at registration; only test_staff_national_id.py is about that rule
+        staff = {**national_id(), **staff}
     if "tin_number" in staff and "bank_account_number" in staff:
         return staff
     tin = str(next(_tins))

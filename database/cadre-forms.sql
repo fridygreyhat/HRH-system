@@ -74,6 +74,7 @@ FROM (VALUES
 ('DATA_CLERK', 'ctc_eligible_lists_shared', 'Weekly eligible-client lists shared with HCPs', 'Orodha za wateja wanaostahili zimeshirikiwa na HCP', 'INTEGER', 27),
 ('DATA_CLERK', 'ctc_hvl_eid_results_shared', 'HVL/EID results shared with HCPs (Yes/No)', 'Majibu ya HVL/EID yameshirikiwa na HCP (Ndiyo/Hapana)', 'BOOLEAN', 28),
 ('DATA_CLERK', 'ctc_secondary_facility', 'Data-entry support provided at a secondary facility (Yes/No)', 'Msaada wa takwimu umetolewa kituo kingine (Ndiyo/Hapana)', 'BOOLEAN', 29),
+('DATA_CLERK', 'dc_secondary_records_entered', 'Records entered at the secondary facility', 'Kumbukumbu zilizoingizwa katika kituo kingine', 'INTEGER', 30),
 ('HCP', 'clients_reached_community', 'Number of Clients Reached (For Community)', 'Idadi ya wateja waliofikiwa (jamii)', 'INTEGER', 0),
 ('HCP', 'clients_tested_hiv', 'Number of clients Tested For HIV', 'Idadi ya wateja waliopimwa VVU', 'INTEGER', 1),
 ('HCP', 'clients_tested_index', 'Number of clients tested – Index', 'Idadi ya wateja waliopimwa – Index', 'INTEGER', 2),

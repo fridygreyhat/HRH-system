@@ -16,6 +16,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from . import services_finance_exports as services
@@ -36,11 +37,26 @@ MONEY = {"Monthly salary", "Total amount"}
 HEADER_LINES = {"Mobile No. for (Mobile Wallet Payment)": "Mobile No. for<br/>(Mobile Wallet<br/>Payment)"}
 
 
+def summary_lines(breakdown) -> list[list]:
+    """Each paid service once with its days, most days first: [["Index testing outreach", 4], ...]."""
+    days: dict[str, int] = {}
+    for item in breakdown or []:
+        if item.get("paid"):
+            days[item["service"]] = days.get(item["service"], 0) + int(item["paid"])
+    return [[service, count] for service, count in sorted(days.items(), key=lambda pair: (-pair[1], pair[0]))]
+
+
+def day_text(count) -> str:
+    return f"{count} {'day' if count == 1 else 'days'}"
+
+
 def services_summary(breakdown) -> str:
-    """What the person was paid for: each service with its paid days, e.g. "Index testing outreach (4 days)"."""
-    parts = [f"{item['service']} ({item['paid']} {'day' if item['paid'] == 1 else 'days'})"
-             for item in breakdown or [] if item.get("paid")]
-    return "; ".join(parts) or "—"
+    """What the person was paid for, one service per line, e.g. "Index testing outreach (4 days)".
+
+    However many services a person did, every one is listed: the form is the record Central Finance pays from, and the
+    lines add up to the "No. of days" beside them.
+    """
+    return "\n".join(f"{service} ({day_text(count)})" for service, count in summary_lines(breakdown)) or "—"
 
 
 def month_text(month):
@@ -89,6 +105,7 @@ def services_form(db, current, month, region_id=None, include_prf=False):
         "venue": joined(r["region"] for r in rows), "columns": SERVICES_COLUMNS,
         "rows": [{"sn": i, "name": r["name"], "cadre": r["cadre"], "region": r["region"], "facility": r["facility"],
                   "services": r["services"], "breakdown": r["breakdown"], "summary": services_summary(r["breakdown"]),
+                  "summary_lines": summary_lines(r["breakdown"]),
                   "days": r["days"], "subtotal": str(r["amount"]), "total": str(r["amount"]), "currency": r["currency"],
                   "mobile": r["mobile"] or "", "claim_id": r["claim_id"]} for i, r in enumerate(rows, start=1)],
         "totals": _totals(rows, "amount"),
@@ -148,18 +165,60 @@ def cells(form, row):
             money(row["total"]), row["bank_name"] or "Missing", row["bank_account_number"] or "Missing"]
 
 
+def facility_groups(rows):
+    """Rows by region and facility, in the order they come (the forms are sorted by region, facility and name)."""
+    groups: dict[tuple, list] = {}
+    for row in rows:
+        groups.setdefault((row.get("region") or "", row.get("facility") or ""), []).append(row)
+    return list(groups.items())
+
+
+def sum_text(rows):
+    """The amount of some rows, as on the form: the number alone for one currency, else each currency with its total."""
+    totals: dict[str, Decimal] = {}
+    for row in rows:
+        if row.get("total") not in (None, ""):
+            totals[row.get("currency") or ""] = totals.get(row.get("currency") or "", Decimal(0)) + Decimal(str(row["total"]))
+    if len(totals) <= 1:
+        return money(next(iter(totals.values()), Decimal(0)))
+    return "; ".join(f"{currency} {money(total)}" for currency, total in sorted(totals.items()))
+
+
 def total_text(form):
     if len(form["totals"]) == 1:  # one currency: the number alone, as on the paper form
         return money(next(iter(form["totals"].values())))
     return "; ".join(f"{currency} {money(total)}" for currency, total in sorted(form["totals"].items())) or "0"
 
 
+class NumberedCanvas(Canvas):
+    """Draws "Page N of M" once every page is known, so a missing page of a long form is noticed."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._pages = []
+
+    def showPage(self):
+        self._pages.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        count = len(self._pages)
+        for state in self._pages:
+            self.__dict__.update(state)
+            self.saveState()
+            self.setFont("Helvetica", 7)
+            self.drawRightString(self._pagesize[0] - 24, 14, f"Page {self._pageNumber} of {count}")
+            self.restoreState()
+            super().showPage()
+        super().save()
+
+
 def pdf_file(form):
-    page = landscape(A4) if form["kind"] == "PAYROLL" else A4
+    page = landscape(A4)  # one person on one line, even with a long name, cadre or list of services
     output = io.BytesIO()
     SimpleDocTemplate(output, pagesize=page, leftMargin=24, rightMargin=24, topMargin=24, bottomMargin=30,
                       title=f"Payment form {form['month']}").build(
-        form_flowables(form, page[0] - 48), onFirstPage=_page_number, onLaterPages=_page_number)
+        form_flowables(form, page[0] - 48), onFirstPage=_page_label, onLaterPages=_page_label, canvasmaker=NumberedCanvas)
     return output.getvalue()
 
 
@@ -197,31 +256,89 @@ def form_flowables(form, width):
                                 ("LINEBELOW", (0, 2), (0, 2), 0.5, colors.black)]))
 
     numeric = {i for i, c in enumerate(form["columns"]) if c in MONEY or c in ("S/N", "No. of days", "No. of days filled")}
-    data = [[Paragraph(HEADER_LINES.get(c, escape(c)), head) for c in form["columns"]]]
-    data += [[p(v, right if i in numeric else body) for i, v in enumerate(cells(form, row))] for row in form["rows"]]
-    total_at = form["columns"].index("Total amount")
-    data.append([p("") for _ in form["columns"]])
-    data[-1][total_at] = p(total_text(form), ParagraphStyle("total", parent=right, fontName="Helvetica-Bold"))
-    data[-1][1] = p("TOTAL", ParagraphStyle("totallabel", parent=body, fontName="Helvetica-Bold"))
-    shares = ([22, 100, 80, 55, 100, 65, 40, 65, 75, 85] if payroll else [22, 95, 75, 55, 95, 36, 130, 62, 80])
+    shares = ([22, 100, 80, 55, 100, 65, 40, 65, 75, 85] if payroll else [22, 118, 104, 56, 124, 36, 210, 62, 84])
     widths = [width * s / sum(shares) for s in shares]
+    summary_at = form["columns"].index("Services summary") if "Services summary" in form["columns"] else None
+    days_style = ParagraphStyle("formdays", parent=right, wordWrap=None)
+
+    def summary_cell(row):
+        """One service per line with its days in a right-hand column, so a long list stays easy to add up."""
+        lines = row.get("summary_lines")
+        if not lines:
+            return p(row.get("summary") or "—")
+        inner = widths[summary_at] - 6
+        days_width = 34
+        cell = Table([[p(service), Paragraph(day_text(count).replace(" ", "&nbsp;"), days_style)] for service, count in lines],
+                     colWidths=[inner - days_width, days_width])
+        cell.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
+                                  ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                                  ("TOPPADDING", (0, 0), (-1, -1), 1), ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                                  ("LINEBELOW", (0, 0), (-1, -2), 0.25, colors.HexColor("#bbbbbb"))]))
+        return cell
+
+    bold = ParagraphStyle("formbold", parent=body, fontName="Helvetica-Bold")
+    bold_right = ParagraphStyle("total", parent=right, fontName="Helvetica-Bold")
+    columns = form["columns"]
+    total_at = columns.index("Total amount")
+    days_at = columns.index("No. of days" if "No. of days" in columns else "No. of days filled")
+    facility_at = columns.index("Health facility")
+    groups = facility_groups(form["rows"])
+    several = len(groups) > 1
+    shade = colors.HexColor("#f2f2f2")
+
+    def sum_row(label, rows):
+        """A subtotal (or the total) across the name to facility columns, with its days and amount."""
+        line = [p("") for _ in columns]
+        line[1] = p(label, bold)
+        line[days_at] = p(f"{sum(int(r.get('days') or 0) for r in rows):,}", bold_right)
+        line[total_at] = p(sum_text(rows), bold_right)
+        return line
+
+    data = [[Paragraph(HEADER_LINES.get(c, escape(c)), head) for c in columns]]
+    extra = []
+    for (region, facility), members in groups:
+        data += [[summary_cell(row) if i == summary_at else p(v, right if i in numeric else body)
+                  for i, v in enumerate(cells(form, row))] for row in members]
+        if several:
+            people = f"{len(members)} {'person' if len(members) == 1 else 'people'}"
+            data.append(sum_row(f"Subtotal: {facility or 'No facility'}, {region} ({people})", members))
+            at = len(data) - 1
+            extra += [("SPAN", (1, at), (facility_at, at)), ("BACKGROUND", (0, at), (-1, at), shade)]
+    data.append(sum_row(f"TOTAL ({len(form['rows'])} {'person' if len(form['rows']) == 1 else 'people'})", form["rows"]))
+    data[-1][total_at] = p(total_text(form), bold_right)
+    extra.append(("SPAN", (1, len(data) - 1), (facility_at, len(data) - 1)))
     table = Table(data, colWidths=widths, repeatRows=1)
     table.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, colors.black),
                                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#efefef")),
                                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                               ("LEFTPADDING", (0, 0), (-1, -1), 3), ("RIGHTPADDING", (0, 0), (-1, -1), 3)]))
+                               ("LEFTPADDING", (0, 0), (-1, -1), 3), ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                               # one line per person: tight rows fit about 40 people on a page
+                               ("TOPPADDING", (0, 1), (-1, -1), 1.5), ("BOTTOMPADDING", (0, 1), (-1, -1), 2), *extra]))
     note = ("Approved does not mean paid. Total amount is all of the person's services for the period." if not payroll else
             "Signed Payroll from the Regional Finance sign-off. Approved does not mean paid. "
             "Total amount is the monthly salary.")
-    return [header, Spacer(1, 6), table, Spacer(1, 6), p(note)]
+    story = [header, Spacer(1, 6)]
+    if several:  # many facilities: what each one comes to, to check against before reading the full list
+        rows = [[p(t, head) for t in ("Region", "Health facility", "People", "Days", "Total amount")]]
+        rows += [[p(region), p(facility or "No facility"), p(f"{len(members):,}", right),
+                  p(f"{sum(int(r.get('days') or 0) for r in members):,}", right), p(sum_text(members), right)]
+                 for (region, facility), members in groups]
+        rows.append([p(""), p(f"TOTAL ({len(groups)} facilities)", bold), p(f"{len(form['rows']):,}", bold_right),
+                     p(f"{sum(int(r.get('days') or 0) for r in form['rows']):,}", bold_right), p(total_text(form), bold_right)])
+        summary = Table(rows, colWidths=[width * s for s in (0.16, 0.36, 0.12, 0.12, 0.24)], repeatRows=1, hAlign="LEFT")
+        summary.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+                                     ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#efefef")),
+                                     ("BACKGROUND", (0, -1), (-1, -1), shade), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+        story += [p("Summary by health facility", bold), Spacer(1, 3), summary, Spacer(1, 10),
+                  p("Every person, by health facility", bold), Spacer(1, 3)]
+    return story + [table, Spacer(1, 6), p(note)]
 
 
-def _page_number(canvas, document):
-    """A form of thousands of people runs to hundreds of pages: each says which page it is and what it belongs to."""
+def _page_label(canvas, document):
+    """What the page belongs to; the page number is added by NumberedCanvas."""
     canvas.saveState()
     canvas.setFont("Helvetica", 7)
     canvas.drawString(document.leftMargin, 14, f"Payment form · {document.title.removeprefix('Payment form ')}")
-    canvas.drawRightString(document.pagesize[0] - document.rightMargin, 14, f"Page {document.page}")
     canvas.restoreState()
 
 
@@ -281,10 +398,16 @@ def workbook(form):
                 cell.number_format = "#,##0"
             if columns[index - 1] == "Services summary":
                 cell.alignment = Alignment(wrap_text=True, vertical="top")
+                lines = str(value).count("\n") + 1
+                if lines > 1:  # Excel does not grow a row for line breaks by itself
+                    sheet.row_dimensions[first + offset].height = max(15, 13 * lines + 2)
     end = first + len(form["rows"]) + 1
     for index in range(1, last + 1):
         sheet.cell(end, index).border = box
     sheet.cell(end, 2, "TOTAL").font = bold
+    days_column = columns.index("No. of days" if "No. of days" in columns else "No. of days filled") + 1
+    days_letter = sheet.cell(first, days_column).column_letter
+    sheet.cell(end, days_column, f"=SUM({days_letter}{first + 1}:{days_letter}{end - 1})").font = bold
     total_column = columns.index("Total amount") + 1
     if len(form["totals"]) <= 1:
         total = sheet.cell(end, total_column, f"=SUM({total_letter}{first + 1}:{total_letter}{end - 1})")
@@ -301,11 +424,46 @@ def workbook(form):
     sheet.freeze_panes = sheet.cell(first + 1, 1)
     # Filter buttons on the header: thousands of rows can be narrowed to one region or facility.
     sheet.auto_filter.ref = f"A{first}:{sheet.cell(first, last).column_letter}{end - 1}"
-    sheet.page_setup.orientation = "landscape" if form["kind"] == "PAYROLL" else "portrait"
+    sheet.page_setup.orientation = "landscape"
     sheet.page_setup.fitToWidth, sheet.page_setup.fitToHeight = 1, 0
     sheet.sheet_properties.pageSetUpPr.fitToPage = True
     sheet.print_title_rows = f"{first}:{first}"
+    groups = facility_groups(form["rows"])
+    if len(groups) > 1:
+        _facility_sheet(book, form, groups)
     return book
+
+
+def _facility_sheet(book, form, groups):
+    """Second sheet: each facility's people, days and amount, adding up to the form's total. The first sheet stays
+    one row per person, so it can be sorted and filtered."""
+    sheet = book.create_sheet("By facility")
+    bold = Font(bold=True)
+    box = Border(*(Side(style="thin"),) * 4)
+    sheet.append([form["activity"]])
+    sheet["A1"].font = Font(bold=True, size=12)
+    sheet.append([])
+    titles = ["Region", "Health facility", "People", "Days", "Total amount"]
+    sheet.append(titles)
+    for cell in sheet[3]:
+        cell.font, cell.border = bold, box
+        cell.fill = PatternFill("solid", fgColor="EFEFEF")
+    for (region, facility), members in groups:
+        amounts = [Decimal(str(r["total"])) for r in members if r.get("total") not in (None, "")]
+        sheet.append([region, facility or "No facility", len(members), sum(int(r.get("days") or 0) for r in members),
+                      float(sum(amounts, Decimal(0)))])
+    end = sheet.max_row + 1
+    sheet.append(["", f"TOTAL ({len(groups)} facilities)", f"=SUM(C4:C{end - 1})", f"=SUM(D4:D{end - 1})", f"=SUM(E4:E{end - 1})"])
+    for row in sheet.iter_rows(min_row=4, max_row=end):
+        for cell in row:
+            cell.border = box
+        row[4].number_format = "#,##0"
+    for cell in sheet[end]:
+        cell.font = bold
+    for letter, width in zip("ABCDE", (16, 34, 10, 10, 16)):
+        sheet.column_dimensions[letter].width = width
+    sheet.freeze_panes = "A4"
+    sheet.auto_filter.ref = f"A3:E{end - 1}"
 
 
 
@@ -404,8 +562,9 @@ def batch_services_form(db, batch, lines):
         "activity": f"Services payments - batch {batch.reference}",
         "venue": joined(r["region"] for r in rows), "columns": SERVICES_COLUMNS,
         "rows": [{"sn": i, "name": r["name"], "cadre": r["cadre"], "region": r["region"], "facility": r["facility"], "days": len(r["days"]),
-                  "summary": services_summary([{"service": name, "paid": len(dates)}
-                                               for name, dates in sorted(r.get("service_days", {}).items())]),
+                  "summary": services_summary(served := [{"service": name, "paid": len(dates)}
+                                                         for name, dates in sorted(r.get("service_days", {}).items())]),
+                  "summary_lines": summary_lines(served),
                   "subtotal": str(r["amount"]), "total": str(r["amount"]), "currency": r["currency"], "mobile": r["mobile"]}
                  for i, r in enumerate(rows, start=1)],
         "totals": _totals([{"total": r["amount"], "currency": r["currency"]} for r in rows], "total"),

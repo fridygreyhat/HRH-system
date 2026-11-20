@@ -33,7 +33,12 @@ DATA_CLERK_REQUIRED = [key for group in DATA_CLERK_GROUPS[:4] for key in group["
 DATA_CLERK_RETIRED_FIELDS = frozenset({
     "ctc_hts_dataset_uploaded", "ctc_hvl_eid_requests", "ctc_hvl_eid_results_received", "ctc_secondary_facility",
 })
-DATA_CLERK_KEYS = {"data_clerk_daily_timesheet", "data_clerk_secondary_facility", "data_clerk_weekend_clinic"}
+# Services a Data Clerk is paid for per day: weekend clinics, and data entry at a secondary facility (its name is typed
+# on the day, with the number of records entered there).
+SECONDARY_FACILITY_SERVICE = "data_clerk_secondary_facility_service"
+SECONDARY_RECORDS = "dc_secondary_records_entered"
+LOCATION_KEYS = {"data_clerk_secondary_facility", SECONDARY_FACILITY_SERVICE}
+DATA_CLERK_KEYS = {"data_clerk_daily_timesheet", "data_clerk_secondary_facility", "data_clerk_weekend_clinic", SECONDARY_FACILITY_SERVICE}
 DATA_CLERK_CASCADES = [
     ("ctc_tpt_initiated", "ctc_tpt_eligible", "TPT initiations exceed eligible clients"),
     ("hts_clients_positive", "hts_clients_registered", "HIV-positive clients exceed HTS entries"),
@@ -46,9 +51,9 @@ def clerk_metadata(item):
     item.update(
         groups=[{**deepcopy(group), "fields": [key for key in group["fields"] if key in keys]}
                 for group in DATA_CLERK_GROUPS if keys.intersection(group["fields"])],
-        required_fields=[key for key in DATA_CLERK_REQUIRED if key in keys],
+        required_fields=[key for key in [*DATA_CLERK_REQUIRED, SECONDARY_RECORDS] if key in keys],
         cascade_pairs=[deepcopy(pair) for pair in DATA_CLERK_CASCADES if pair[0] in keys and pair[1] in keys],
-        requires_location=(item.get("source_key") or item["key"]) == "data_clerk_secondary_facility",
+        requires_location=(item.get("source_key") or item["key"]) in LOCATION_KEYS,
     )
     return item
 
@@ -65,8 +70,11 @@ def data_clerk_builtins(fields, cadre_id):
         ("data_clerk_daily_timesheet", "Daily Data Clerk timesheet", "Daftari la kila siku la Data Clerk", "PAYROLL"),
         ("data_clerk_secondary_facility", "Data entry at a secondary facility", "Uingizaji wa takwimu katika kituo kingine", "PAYROLL"),
         ("data_clerk_weekend_clinic", "Weekend Clinics", "Kliniki za mwisho wa wiki", "SERVICES"),
+        (SECONDARY_FACILITY_SERVICE, "Secondary facility", "Kituo cha pili", "SERVICES"),
     ]:
-        activity_keys = keys if kind == "PAYROLL" else []
+        if key == SECONDARY_FACILITY_SERVICE and SECONDARY_RECORDS not in fields:
+            continue  # a database from before the field existed
+        activity_keys = keys if kind == "PAYROLL" else [SECONDARY_RECORDS] if key == SECONDARY_FACILITY_SERVICE else []
         result.append(clerk_metadata({
             "key": key, "label_en": en, "label_sw": sw, "item_type": kind, "cadre_id": cadre_id,
             "fields": list(activity_keys), "field_definitions": [deepcopy(fields[field]) for field in activity_keys],

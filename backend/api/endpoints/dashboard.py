@@ -61,6 +61,9 @@ def dashboard(
         func.count(WorkLog.id).filter(age >= reminder_after).label("over_threshold"),
     ).group_by(WorkLog.status)}
     by_status = {status: row.count for status, row in by_age.items()}
+    by_status_type: dict[str, dict[str, int]] = {}
+    for status, work_type, count in log_q.with_entities(WorkLog.status, WorkLog.work_type, func.count(WorkLog.id)).group_by(WorkLog.status, WorkLog.work_type):
+        by_status_type.setdefault(status, {})[work_type or "LEGACY"] = count
     queues = []
     for status, owner in wf.STAGE_OWNER.items():
         row = by_age.get(status)
@@ -142,6 +145,7 @@ def dashboard(
         "work_logs": {
             "reminder_after_hours": reminder_after,
             "by_status": by_status,
+            "by_status_type": by_status_type,
             "queues": queues,
             "completeness": {
                 "active_staff": active,

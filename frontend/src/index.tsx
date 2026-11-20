@@ -6,6 +6,7 @@ import { captureInstallOffer } from './pwa/InstallPrompt';
 import { registerServiceWorker } from './pwa/register';
 import '@fontsource-variable/inter';
 import './index.css';
+import './theme-green.css';
 
 captureInstallOffer();
 

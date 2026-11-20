@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../AuthContext';
+import { idTypeLabel } from '../../nationalId';
 import { phoneCheckText } from '../../phones';
 import { useApi } from '../../hooks';
 import { CADRE_NAMES, cadreName, dateOnly, humanize } from '../../format';
@@ -100,6 +101,7 @@ export function StaffDrawer({ staffId, cadres, onClose, onChanged, startLogin = 
                     ['Last name', s.last_name],
                     ['Verified phone', s.verified_phone],
                     ['SMS to this number', phoneCheckText(s.phone_check)?.text],
+                    [s.id_number ? idTypeLabel(s.id_type) : 'National ID / Voter ID', s.id_number || 'Not recorded'],
                     ['TIN', s.tin_number || 'Not recorded'],
                     ['Cadre', cadre ? `${cadre.name} (${s.cadre})` : s.cadre],
                     ['Position', s.occupation && s.occupation_other ? `${s.occupation}: ${s.occupation_other}` : s.occupation],

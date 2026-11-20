@@ -24,7 +24,7 @@ test('Regional Finance sees each region\'s Payroll and whether it has gone to th
 
 test('with nothing approved, the page says so', () => {
   mockStatus = [];
-  expect(renderToStaticMarkup(<PayrollToCso />)).toContain('No RM-approved Payroll in the last three pay months.');
+  expect(renderToStaticMarkup(<PayrollToCso />)).toContain('No approved Payroll in the last three pay months.');
 });
 
 test('a region with Payroll timesheets still to approve is approved first, not signed', () => {

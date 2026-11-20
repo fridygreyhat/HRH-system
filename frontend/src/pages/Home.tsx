@@ -163,7 +163,7 @@ const SETUP: SetupStep[] = [
   {
     key: 'users', page: 'admin', roles: ['SYSTEM_ADMIN', 'SUPER_ADMIN'], path: '/admin/users', done: data => data.length > 1,
     title: { en: 'Create the reviewer logins', sw: 'Unda akaunti za wakaguzi' },
-    hint: { en: 'CTC, Technical, RM, Finance and a second admin', sw: 'CTC, Kitaalamu, RM, Fedha na msimamizi wa pili' },
+    hint: { en: 'CTC, Technical, Finance and a second admin', sw: 'CTC, Kitaalamu, Fedha na msimamizi wa pili' },
   },
   {
     key: 'services', page: 'rates', roles: ['SUPER_ADMIN'], path: '/rates', done: data => data.length > 0,

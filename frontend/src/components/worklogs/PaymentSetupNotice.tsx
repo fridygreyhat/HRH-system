@@ -22,7 +22,7 @@ export function PaymentSetupNotice({ exceptions, workType = 'SERVICES' }: { exce
     !['No priced activity entries are available.', 'The validated payment amount must be greater than zero.'].includes(message)));
   return <div className="alert alert-warn" role="status">
     <strong>{sw ? 'Mpangilio wa malipo unahitajika' : 'Payment setup required'}</strong>
-    <p>{sw ? 'RM anaweza kuidhinisha. Malipo hayawezi kutumwa hadi viwango viwekwe.' : 'RM can approve. Payment cannot be routed until amounts are set.'}</p>
+    <p>{sw ? 'Jedwali linaweza kuidhinishwa. Malipo hayawezi kutumwa hadi viwango viwekwe.' : 'The timesheet can still be approved. Payment cannot be routed until amounts are set.'}</p>
     <ul>{messages.map((message, index) => <li key={index}>{message}</li>)}</ul>
   </div>;
 }

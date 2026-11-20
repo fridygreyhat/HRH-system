@@ -143,6 +143,8 @@ FIELD_SPECS = {
         ("ctc_eligible_lists_shared", "Weekly eligible-client lists shared with HCPs", "Orodha za wateja wanaostahili zimeshirikiwa na HCP"),
         ("ctc_hvl_eid_results_shared", "HVL/EID results shared with HCPs (Yes/No)", "Majibu ya HVL/EID yameshirikiwa na HCP (Ndiyo/Hapana)", "BOOLEAN"),
         ("ctc_secondary_facility", "Data-entry support provided at a secondary facility (Yes/No)", "Msaada wa takwimu umetolewa kituo kingine (Ndiyo/Hapana)", "BOOLEAN"),
+        # The Services "Secondary facility" day: how much was entered there (the facility's name is typed on the day).
+        ("dc_secondary_records_entered", "Records entered at the secondary facility", "Kumbukumbu zilizoingizwa katika kituo kingine"),
     ],
     "HCP": [
         ("hcp_index_appointments", "Index contacts with appointments", "Watu waliotajwa wenye miadi"),

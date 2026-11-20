@@ -6,6 +6,8 @@ import { Alert, Field, Tabs } from '../ui';
 import { AssignmentFields, AssignmentPayload, AssignmentValue, EMPTY_ASSIGNMENT, assignmentPayload } from './AssignmentFields';
 import { OccupationFields } from './StaffForms';
 import { EMPTY_PROVIDER_PAY, NO_PROVIDER_PAY, ProviderPay, ProviderPayFields, providerPayPayload, SERVICES_ONLY_NOTE } from './ProviderPayFields';
+import { identityPayload, IdType } from '../../nationalId';
+import { EMPTY_NATIONAL_ID, NationalIdFields, NationalIdValue } from './NationalIdFields';
 import { FACILITY_STAFF_TYPE_MESSAGE, FacilityStaffType, FacilityStaffTypeField, isHcp } from './FacilityStaffType';
 
 /** Active staff record that has no login yet (GET /admin/unlinked-staff). */
@@ -29,6 +31,8 @@ export interface HealthWorkerValue {
   occupation_other: string;
   /** HCP only: Government or Project facility staff. */
   facility_staff_type: FacilityStaffType | '';
+  /** National ID (NIDA) or Voter ID: required when registering. */
+  national_id: NationalIdValue;
   /** TIN and bank details: required of every provider registered here. */
   pay: ProviderPay;
   employment_start_date: string;
@@ -45,6 +49,8 @@ export type HealthWorkerPayload =
         middle_name: string | null;
         last_name: string;
         verified_phone: string;
+        id_type: IdType | null;
+        id_number: string | null;
         /** Empty for Government facility staff, who are paid for Services only. */
         tin_number: string | null;
         bank_name: string | null;
@@ -69,6 +75,7 @@ export const emptyHealthWorker = (): HealthWorkerValue => ({
   occupation: '',
   occupation_other: '',
   facility_staff_type: '',
+  national_id: EMPTY_NATIONAL_ID,
   pay: EMPTY_PROVIDER_PAY,
   employment_start_date: todayLocal(),
   assignment: EMPTY_ASSIGNMENT,
@@ -96,6 +103,8 @@ export function healthWorkerPayload(v: HealthWorkerValue, phone: string): Health
   if (!v.occupation.trim()) return 'Choose the position, e.g. Clinical Officer or Facility Data Clerk.';
   const hcp = isHcp(v.cadre_code);
   if (hcp && !v.facility_staff_type) return FACILITY_STAFF_TYPE_MESSAGE;
+  const identity = identityPayload(v.national_id.id_type, v.national_id.id_number);
+  if (typeof identity === 'string') return identity;
   if (!v.assignment.region_id) return 'Choose the region where this health worker is placed.';
   if (!v.employment_start_date) return 'Enter the employment start date.';
   // Government facility staff are paid for Services only: no TIN or bank account.
@@ -110,6 +119,7 @@ export function healthWorkerPayload(v: HealthWorkerValue, phone: string): Health
       middle_name: v.middle_name.trim() || null,
       last_name: v.last_name.trim(),
       verified_phone: phone.trim(),
+      ...identity,
       ...payment,
       occupation: v.occupation.trim() || null,
       occupation_other: other ? v.occupation_other.trim() || null : null,
@@ -215,6 +225,7 @@ export function HealthWorkerFields({
                 <FacilityStaffTypeField name="worker_facility_staff_type" value={value.facility_staff_type} onChange={(v) => set({ facility_staff_type: v })} />
               </div>
             )}
+            <NationalIdFields value={value.national_id} onChange={(national_id) => set({ national_id })} disabled={disabled} />
             <Field label="Employment start date *">
               <input type="date" value={value.employment_start_date} onChange={text('employment_start_date')} />
             </Field>

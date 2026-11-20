@@ -37,6 +37,9 @@ def test_the_dashboard_matches_the_records_without_loading_them(api, db, chw, pe
     claims = db.query(PaymentClaim).filter(claim_visibility(current)).all()
     assert logs
     assert report["work_logs"]["by_status"] == dict(Counter(log.status for log in logs))
+    # Every step, drafts included, is split into Services and Payroll.
+    split = Counter((log.status, log.work_type or "LEGACY") for log in logs)
+    assert {(status, kind): n for status, kinds in report["work_logs"]["by_status_type"].items() for kind, n in kinds.items()} == dict(split)
     assert report["staff"]["total"] == len(staff)
     assert report["staff"]["active"] == sum(1 for person in staff if person.status == "ACTIVE")
     active = {person.id for person in staff if person.status == "ACTIVE"}

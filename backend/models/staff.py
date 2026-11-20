@@ -1,5 +1,5 @@
 """Staff registry: one identity per person, effective-dated assignments, cadre form templates."""
-from sqlalchemy import Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 
 from .base import Base, created_at, updated_at
@@ -46,6 +46,9 @@ class Staff(Base):
         CheckConstraint("status IN ('ACTIVE', 'EXITED')", name="status"),
         CheckConstraint("enrollment_source IN ('ROSTER_IMPORT', 'ENGAGEMENT_LIST', 'MANUAL')", name="enrollment_source"),
         CheckConstraint("facility_staff_type IS NULL OR facility_staff_type IN ('GOVERNMENT', 'PROJECT')", name="facility_staff_type"),
+        CheckConstraint("id_type IS NULL OR id_type IN ('NIDA', 'VOTER')", name="id_type"),
+        CheckConstraint("(id_type IS NULL) = (id_number IS NULL)", name="id_pair"),
+        Index("uq_staff_id_number", "id_type", "id_number", unique=True, postgresql_where=text("id_number IS NOT NULL")),
     )
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), unique=True)
@@ -55,6 +58,9 @@ class Staff(Base):
     last_name = Column(String(100), nullable=False)
     verified_phone = Column(String(20), unique=True, nullable=False)
     tin_number = Column(String(11), unique=True)  # Taxpayer Identification Number, 123-456-789; optional
+    # Identity document: NIDA (National ID, 20 digits) or VOTER (Voter ID). Required when registering; one person per number.
+    id_type = Column(String(10))
+    id_number = Column(String(30))
     occupation = Column(String(100))
     occupation_other = Column(String(100))
     # HCP only: GOVERNMENT (a government facility's own staff) or PROJECT (staff the project placed at the facility)

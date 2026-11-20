@@ -4,6 +4,7 @@ import { FACILITY_STAFF_TYPE_MESSAGE, facilityStaffTypeLabel } from './FacilityS
 const pay = { tin_number: '100 200 302', bank_name: 'NMB', bank_account_number: '40100200302' };
 const worker = (patch) => ({
   ...emptyHealthWorker(), first_name: 'Neema', last_name: 'Mushi', occupation: 'Clinical Officer', pay,
+  national_id: { id_type: 'NIDA', id_number: '19900101123451234512' },
   assignment: { ...emptyHealthWorker().assignment, region_id: '11' }, ...patch,
 });
 

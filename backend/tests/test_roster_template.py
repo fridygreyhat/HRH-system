@@ -64,8 +64,10 @@ def test_a_filled_template_imports_as_it_is(api, db):
         for key, value in values.items():
             roster.cell(row=row, column=col[key], value=value)
 
-    fill(2, first_name="Excel", last_name="Leading", phone="0799 000 201", cadre="CHW", region="Iringa", start_date="2023-02-01")
-    fill(4, first_name="Excel", last_name="Dated", phone="0799000202", cadre="chw", region="Iringa")  # row 3 left empty
+    fill(2, first_name="Excel", last_name="Leading", phone="0799 000 201", cadre="CHW", region="Iringa", start_date="2023-02-01",
+         id_type="NIDA", id_number="19900101-00007-99020-01")
+    fill(4, first_name="Excel", last_name="Dated", phone="0799000202", cadre="chw", region="Iringa",
+         id_type="VOTER", id_number="T-1000-0799-202")  # row 3 left empty
     roster.cell(row=4, column=col["start_date"]).value = __import__("datetime").date(2023, 3, 1)  # a real Excel date
     fill(5, first_name="Excel", last_name="Unknown", phone="0799000203", cadre="ALIEN", region="Iringa", start_date="2023-02-01")
     buffer = BytesIO()

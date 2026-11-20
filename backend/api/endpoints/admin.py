@@ -932,7 +932,7 @@ def put_setting(key: str, body: SettingIn, db: Session = Depends(get_db), curren
         low, high = SETTING_LIMITS[key]
         if isinstance(body.value, bool) or not isinstance(body.value, int) or not low <= body.value <= high:
             raise HTTPException(status_code=422, detail=f"{key} must be a whole number from {low} to {high}")
-    if key in {"max_daily_hours", "max_weekly_hours", "saturday_min_hours", "saturday_max_hours"}:
+    if key in {"max_daily_hours", "max_weekly_hours", "saturday_min_hours", "saturday_max_hours", "services_max_daily_hours"}:
         if isinstance(body.value, bool) or not isinstance(body.value, (int, float)) or not 0 < body.value <= (120 if key == "max_weekly_hours" else 24):
             raise HTTPException(status_code=422, detail=f"{key} must be a number within its valid range")
         body.value = float(body.value)

@@ -12,7 +12,7 @@ const monthText = (month: string, sw: boolean) =>
 
 /**
  * Regional Finance sends Payroll to the CSO by signing each region's monthly Payroll report. Payroll timesheets are
- * not routed one by one: RM's approval ends their steps, and the signed report is what the CSO receives and pays from.
+ * not routed one by one: the last approval (technical review, or RM's while RM approval is on) ends their steps, and the signed report is what the CSO receives and pays from.
  */
 export function PayrollToCso() {
   const { lang } = useAuth();
@@ -23,15 +23,15 @@ export function PayrollToCso() {
       <header className="page-header">
         <h1>{sw ? 'Mshahara kwa CSO' : 'Payroll to CSO'}</h1>
         <p className="muted">{sw
-          ? 'Majedwali ya Mshahara yaliyoidhinishwa na RM hutumwa kwa CSO kwa kusaini ripoti ya Mshahara ya kila mkoa kwa mwezi. Mara tu unaposaini, CSO inapata majedwali ya mshahara na fomu ya malipo.'
-          : 'RM-approved Payroll timesheets go to the CSO when you sign each region’s monthly Payroll report. As soon as you sign, the CSO gets the salary timesheets and the payment form.'}</p>
+          ? 'Majedwali ya Mshahara yaliyoidhinishwa hutumwa kwa CSO kwa kusaini ripoti ya Mshahara ya kila mkoa kwa mwezi. Mara tu unaposaini, CSO inapata majedwali ya mshahara na fomu ya malipo.'
+          : 'Approved Payroll timesheets go to the CSO when you sign each region’s monthly Payroll report. As soon as you sign, the CSO gets the salary timesheets and the payment form.'}</p>
       </header>
       <AsyncState data={status.data} error={status.error} loading={status.loading}>
         {(data) => {
           const payroll = data.filter((item) => item.work_type === 'PAYROLL');
           const waiting = payroll.filter((item) => item.state !== 'SIGNED');
           if (!payroll.length) {
-            return <Empty>{sw ? 'Hakuna Mshahara ulioidhinishwa na RM katika miezi mitatu iliyopita.' : 'No RM-approved Payroll in the last three pay months.'}</Empty>;
+            return <Empty>{sw ? 'Hakuna Mshahara ulioidhinishwa katika miezi mitatu iliyopita.' : 'No approved Payroll in the last three pay months.'}</Empty>;
           }
           return (
             <div className="stack">
@@ -45,7 +45,7 @@ export function PayrollToCso() {
                       <span className="payroll-text">
                         <strong>{monthText(item.month, sw)} · {item.region_name}</strong>
                         <span className="muted small">
-                          {sw ? `Watoa huduma ${num(item.providers)} walioidhinishwa na RM` : `${num(item.providers)} RM-approved ${item.providers === 1 ? 'provider' : 'providers'}`}
+                          {sw ? `Watoa huduma ${num(item.providers)} walioidhinishwa` : `${num(item.providers)} approved ${item.providers === 1 ? 'provider' : 'providers'}`}
                           {item.state === 'SIGNED' && item.approved_at
                             ? ` · ${sw ? 'imetumwa' : 'sent'} ${dateTime(item.approved_at)} ${sw ? 'na' : 'by'} ${item.approved_by_name}` : ''}
                           {item.withdrawn ? ` · ${withdrawnText(item.withdrawn, sw)}` : ''}

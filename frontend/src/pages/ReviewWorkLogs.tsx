@@ -184,7 +184,7 @@ export function ReviewWorkLogs({ initialType }: { initialType?: 'SERVICES' | 'PA
         </div>
       </header>
 
-      {isFinance && <p className="notice notice-info review-note">{t('Payroll is report-only for Finance, by pay month (26th–25th).', 'Kwa Fedha, Mshahara ni ripoti tu, kwa mwezi wa malipo (tarehe 26–25).')}</p>}
+      {isFinance && (!canReviewPayroll || visibleWorkType === 'PAYROLL') && <p className="notice notice-info review-note">{t('Payroll is report-only for Finance, by pay month (26th–25th).', 'Kwa Fedha, Mshahara ni ripoti tu, kwa mwezi wa malipo (tarehe 26–25).')}</p>}
       {viewsFacilityOnly && (
         <p className="notice notice-info review-note">{t('Read only. CTC In-Charge verifies these timesheets.', 'Kusoma tu. Mkuu wa CTC ndiye anayehakiki majedwali haya.')}</p>
       )}

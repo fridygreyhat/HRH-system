@@ -67,10 +67,10 @@ def test_a_new_hcp_user_keeps_the_facility_staff_type(api, db):
 
 
 def test_roster_import_reads_the_facility_staff_type(api, db):
-    head = "first_name,last_name,phone,cadre,occupation,facility_staff_type,region,start_date\n"
-    rows = ("Roster,Gov,0799 000 501,HCP,Nurse,Government facility staff,Iringa,2023-01-01\n"
-            "Roster,Proj,0799 000 502,HCP,OPD Tester,PROJECT,Iringa,2023-01-01\n"
-            "Roster,Clerk,0799 000 503,DATA_CLERK,Data Intern,PROJECT,Iringa,2023-01-01\n")
+    head = "first_name,last_name,phone,cadre,occupation,facility_staff_type,region,start_date,id_type,id_number\n"
+    rows = ("Roster,Gov,0799 000 501,HCP,Nurse,Government facility staff,Iringa,2023-01-01,VOTER,T-1000-0799-501\n"
+            "Roster,Proj,0799 000 502,HCP,OPD Tester,PROJECT,Iringa,2023-01-01,VOTER,T-1000-0799-502\n"
+            "Roster,Clerk,0799 000 503,DATA_CLERK,Data Intern,PROJECT,Iringa,2023-01-01,VOTER,T-1000-0799-503\n")
     result = api.call("POST", "/staff/import", "central1", files={"file": ("roster.csv", head + rows, "text/csv")}, expect=201)
     assert (result["created_count"], result["error_count"]) == (2, 1) and "Only HCP" in result["errors"][0]["error"]
     types = {s.last_name: s.facility_staff_type for s in db.query(Staff).filter(Staff.first_name == "Roster", Staff.last_name.in_(["Gov", "Proj"]))}

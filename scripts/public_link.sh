@@ -6,7 +6,7 @@
 #   scripts/public_link.sh --background  run on its own; the link is in .data/run/public_url.txt
 #   scripts/stop_local.sh                close it (and stop the system)
 #
-# The link changes every time the tunnel opens. Log: .data/logs/tunnel.log
+# Without an ngrok fixed address (below), the link changes every time the tunnel opens. Log: .data/logs/tunnel.log
 set -uo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p .data/logs .data/run
@@ -36,6 +36,31 @@ rm -f "$URLFILE" .data/run/stop
 trap 'rm -f "$PIDFILE" "$URLFILE"' EXIT
 curl -s -m 5 -o /dev/null http://127.0.0.1:5000/api/health ||
   echo "Note: the system is not answering on http://localhost:5000 yet. Start it with scripts/keep_running.sh --background"
+
+# A fixed address: with an ngrok account (its authtoken added once with `ngrok config add-authtoken ...`) and its free
+# domain written in .data/public_domain, the link is always https://<that domain>, after an internet drop or a restart too.
+DOMAIN=$(tr -d '[:space:]' <.data/public_domain 2>/dev/null); DOMAIN=${DOMAIN#https://}; DOMAIN=${DOMAIN%/}
+if [[ -n $DOMAIN ]]; then
+  NGROK=$(command -v ngrok || echo /opt/homebrew/bin/ngrok)
+  [[ -x $NGROK ]] || { echo "Install ngrok first: brew install ngrok" >&2; exit 1; }
+  while true; do
+    if [[ -f $LOG ]] && (( $(wc -c <"$LOG") > 5 * 1024 * 1024 )); then mv "$LOG" "$LOG.1"; fi
+    echo "$(date '+%F %T') public_link: opening https://$DOMAIN (ngrok)" | tee -a "$LOG"
+    # ngrok reconnects by itself after a drop and keeps the same address; the loop only restarts it if it exits.
+    "$NGROK" http 127.0.0.1:5000 --url "https://$DOMAIN" --log stdout --log-format logfmt 2>&1 | tee -a "$LOG" |
+      while read -r line; do
+        case $line in
+          *"started tunnel"*) echo "https://$DOMAIN" >"$URLFILE"; echo "$(date '+%F %T') Public link: https://$DOMAIN" ;;
+          *ERR_NGROK*|*"lvl=crit"*) echo "$(date '+%F %T') public_link: ngrok: $line" ;;
+        esac
+      done
+    rm -f "$URLFILE"
+    [[ -f .data/run/stop ]] && exit 0
+    echo "$(date '+%F %T') public_link: ngrok stopped; starting it again in 10 seconds (same address)" | tee -a "$LOG"
+    sleep 10
+  done
+fi
+
 while true; do
   if [[ -f $LOG ]] && (( $(wc -c <"$LOG") > 5 * 1024 * 1024 )); then mv "$LOG" "$LOG.1"; fi
   echo "$(date '+%F %T') public_link: opening the tunnel" >>"$LOG"

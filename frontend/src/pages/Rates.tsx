@@ -178,6 +178,32 @@ function ReviseRate({ activity, onClose, onSaved }: { activity: RateActivity; on
   </form>;
 }
 
+/** Stop offering a Service: providers can no longer choose it; recorded and paid days keep their amounts. */
+export function RetireRate({ activity, onSaved }: { activity: RateActivity; onSaved: () => void }) {
+  const { lang } = useAuth();
+  const sw = lang === 'sw';
+  const [reason, setReason] = useState('');
+  const [sure, setSure] = useState(false);
+  const action = useAction();
+  const retire = async () => {
+    if (reason.trim().length < 5) return action.setError(sw ? 'Andika sababu ya kusitisha huduma hii.' : 'Give the reason for stopping this Service.');
+    const result = await action.run(() => api.post<RateActivity>(`/rates/${activity.id}/retire`, { reason: reason.trim() }));
+    if (result) onSaved();
+  };
+  return <section className="stack card" aria-label={sw ? 'Sitisha huduma' : 'Stop this Service'}>
+    <h3>{sw ? 'Sitisha huduma hii' : 'Stop this Service'}</h3>
+    <p className="muted small">{sw
+      ? 'Watoa huduma hawataweza kuichagua tena. Siku zilizorekodiwa, kuidhinishwa au kulipwa zinabaki na viasi vyake.'
+      : 'Providers can no longer choose it. Days already recorded, approved or paid keep their amounts.'}</p>
+    <Field label={sw ? 'Sababu (lazima)' : 'Reason (required)'}><input id={`retire-reason-${activity.id}`} value={reason} onChange={(event) => setReason(event.target.value)} maxLength={1000} /></Field>
+    <label className="checkbox"><input type="checkbox" checked={sure} onChange={(event) => setSure(event.target.checked)} />{' '}
+      {sw ? `Ndiyo, sitisha ${activity.label_sw || activity.label_en}` : `Yes, stop ${activity.label_en}`}</label>
+    <Alert>{action.error}</Alert>
+    <div className="row"><button type="button" className="btn btn-danger" disabled={!sure || action.busy} onClick={retire}>
+      {action.busy ? (sw ? 'Inasitisha…' : 'Stopping…') : (sw ? 'Sitisha huduma' : 'Stop Service')}</button></div>
+  </section>;
+}
+
 export function Rates() {
   const { hasRole, lang } = useAuth();
   const sw = lang === 'sw';
@@ -228,13 +254,13 @@ export function Rates() {
               <td className="num"><span className="cell-main">{money(activity.rate_value, activity.currency)}</span><span className="cell-sub">{word(UNIT_LABELS, activity.unit_type)}</span></td>
               <td className="nowrap">{dateOnly(activity.effective_start_date)}</td>
               <td><span className={`badge ${activity.is_active ? 'badge-success' : 'badge-neutral'}`}>{activity.is_active ? (sw ? 'Inatumika' : 'Active') : (sw ? 'Haitumiki' : 'Inactive')}</span></td>
-              <td>{canEdit && activity.item_type === 'SERVICES' && <button className="btn btn-secondary btn-sm nowrap" onClick={() => setEditing(activity)}>{sw ? 'Badilisha kiasi' : 'Revise daily amount'}</button>}{activity.item_type === 'PAYROLL' && <span className="muted small">{sw ? 'Kumbukumbu tu' : 'Historical only'}</span>}</td>
+              <td>{canEdit && activity.item_type === 'SERVICES' && activity.is_active && <button className="btn btn-secondary btn-sm nowrap" onClick={() => setEditing(activity)}>{sw ? 'Badilisha au sitisha' : 'Revise or stop'}</button>}{activity.item_type === 'PAYROLL' && <span className="muted small">{sw ? 'Kumbukumbu tu' : 'Historical only'}</span>}</td>
             </tr>;
           })}</tbody>
         </table></div> : <p className="empty">{sw ? 'Hakuna kinacholingana na vichujio hivi.' : 'No definitions match these filters.'}</p>}
       </AsyncState>
       {canEdit && creating && templates.data && <Drawer title={sw ? 'Ongeza kiasi cha huduma' : 'Add rate definition'} onClose={() => setCreating(false)} wide><CreateRate lookups={templates.data} onClose={() => setCreating(false)} onSaved={reload} /></Drawer>}
-      {canEdit && editing && <Drawer title={sw ? `Badilisha ${editing.label_sw || editing.label_en}` : `Revise ${editing.label_en}`} onClose={() => setEditing(null)}><ReviseRate activity={editing} onClose={() => setEditing(null)} onSaved={reload} /></Drawer>}
+      {canEdit && editing && <Drawer title={sw ? `Badilisha ${editing.label_sw || editing.label_en}` : `Revise ${editing.label_en}`} onClose={() => setEditing(null)}><div className="stack-lg"><ReviseRate activity={editing} onClose={() => setEditing(null)} onSaved={reload} />{editing.is_active && <RetireRate activity={editing} onSaved={reload} />}</div></Drawer>}
     </div>
   );
 }

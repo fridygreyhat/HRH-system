@@ -95,6 +95,29 @@ def test_daily_weekly_hour_limits_and_backdating_are_enforced(api, period):
         api.put("/admin/settings/max_daily_hours", "admin", {"value": 9.0, "reason": "Restore configured limit"})
         api.put("/admin/settings/max_weekly_hours", "admin", {"value": 45.0, "reason": "Restore configured limit"})
 
+    # A Services day is at most four hours (the services_max_daily_hours setting), on weekdays and Saturdays;
+    # Payroll keeps its eight-hour day.
+    api.put("/admin/settings/services_max_daily_hours", "admin", {"value": 4.0, "reason": "Test the Services day"})
+    try:
+        third_day, saturday = str(first_date + timedelta(days=2)), str(first_date + timedelta(days=5))
+        refused = api.put(f"/worklogs/{log['id']}/entries/{third_day}", "chw1", {**first, "hours_worked": 4.25}, expect=422)
+        assert "4 per day" in refused["detail"]
+        api.put(f"/worklogs/{log['id']}/entries/{third_day}", "chw1", {**first, "hours_worked": 4})
+        refused = api.put(f"/worklogs/{log['id']}/entries/{saturday}", "chw1", {**first, "hours_worked": 5}, expect=422)
+        assert "4–4" not in refused["detail"] and "4 total hours" in refused["detail"]
+        detail = api.put(f"/worklogs/{log['id']}/entries/{saturday}", "chw1", {**first, "hours_worked": 4})
+        services = detail["review_summary"]["limits"]
+        assert (services["daily_hours"], services["weekly_hours"], services["saturday_max_hours"]) == ("4.0", "20.0", "4.0")
+        from backend.db.session import SessionLocal
+        from backend.services.work_hours import hour_limits
+
+        with SessionLocal() as db:
+            payroll = hour_limits(db, "PAYROLL")
+        assert (payroll["daily_hours"], payroll["weekly_hours"], payroll["saturday_max_hours"]) == (8, 40, 6)
+        api.put("/admin/settings/services_max_daily_hours", "admin", {"value": 25, "reason": "Out of range"}, expect=422)
+    finally:
+        api.put("/admin/settings/services_max_daily_hours", "admin", {"value": 9.0, "reason": "Restore the test limit"})
+
     api.put("/admin/settings/backdate_grace_hours", "admin", {"value": 48, "reason": "Test backdating"})
     api.put("/admin/settings/backdate_restriction_enabled", "admin", {"value": True, "reason": "Explicitly test the optional backdate restriction"})
     try:

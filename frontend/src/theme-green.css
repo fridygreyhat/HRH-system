@@ -1,0 +1,256 @@
+/* ==========================================================================================
+   Green theme
+   Green leads (buttons, links, the active page, counts); near-black green holds the sidebar. Gold and blue are
+   kept only where they carry a meaning (warnings, information, chart series). No flag band or flag colouring:
+   the user asked for the Tanzania flag look to be removed.
+
+   Loaded after index.css. Page stylesheets load later, so component rules here start with `html` to win
+   without !important. Every colour is a token, redefined for both themes.
+   ========================================================================================== */
+:root {
+  --tz-green: #1eb53a;
+  --tz-green-deep: #0b7a43;
+  --tz-gold: #fcd116;
+  --tz-gold-deep: #e0a800;
+  --tz-black: #0a0f0c;
+  --tz-blue: #00a3dd;
+  --tz-mint: #3ccf7f;
+
+  --bg: #f2f6f2;
+  --bg-accent: radial-gradient(900px 460px at -12% 6%, rgba(30, 181, 58, 0.08), transparent 60%);
+  --surface: #ffffff;
+  --surface-2: #eef4ef;
+  --surface-3: #e1eae3;
+  --border: #d8e3da;
+  --border-strong: #bccbbf;
+  --text: #0f231a;
+  --muted: #586b61;
+  --primary: #0b7a43;
+  --primary-hover: #08653a;
+  --primary-soft: #dcf1e3;
+  --primary-text: #ffffff;
+  --accent: #c48a00;
+  --gold-soft: #fff3c4;
+  --gold-ink: #6a4a00;
+  --blue-soft: #dcf1fa;
+  --blue-ink: #075c82;
+  --danger: #c0392b;
+  --success-bg: #dcf1e3;
+  --success-fg: #0b6b3b;
+  --warn-bg: #fff1c7;
+  --warn-fg: #7a5600;
+  --danger-bg: #fbe3df;
+  --danger-fg: #a12f24;
+  --info-bg: #dcf1fa;
+  --info-fg: #075c82;
+  --neutral-bg: #e9eeea;
+  --neutral-fg: #4c5c54;
+  --route-bg: #fff3c4;
+  --route-fg: #6a4a00;
+  --shadow: 0 1px 2px rgba(15, 35, 26, 0.05), 0 8px 24px rgba(15, 35, 26, 0.05);
+  --lift: 0 2px 6px rgba(15, 35, 26, 0.08), 0 16px 36px rgba(15, 35, 26, 0.1);
+  --ring: 0 0 0 3px rgba(11, 122, 67, 0.26);
+  --side-bg: #0c1d15;
+  --side-bg-2: #0f2a1d;
+  --side-text: #bcd2c4;
+  --side-text-strong: #f5f8f3;
+  --side-active: rgba(30, 181, 58, 0.18);
+  --side-accent: #3ccf7f;
+  --series-1: #0f8f4e;
+  --series-2: #d99a00;
+  --series-3: #0b8cc4;
+  --series-4: #3e4b44;
+  --series-5: #c4623d;
+  --chart-grid: #dde6df;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #09130e;
+    --bg-accent: radial-gradient(900px 420px at -10% 0%, rgba(30, 181, 58, 0.1), transparent 55%);
+    --surface: #111d17;
+    --surface-2: #17271f;
+    --surface-3: #1f3228;
+    --border: #243a2f;
+    --border-strong: #34503f;
+    --text: #e7f0ea;
+    --muted: #9db3a6;
+    --primary: #3ccf7f;
+    --primary-hover: #63dc97;
+    --primary-soft: #143826;
+    --primary-text: #04140b;
+    --accent: #f5c542;
+    --gold-soft: #3a3011;
+    --gold-ink: #f5d878;
+    --blue-soft: #0f3142;
+    --blue-ink: #8fd6f5;
+    --danger: #f08a7e;
+    --success-bg: #143826;
+    --success-fg: #8fe0b2;
+    --warn-bg: #3a3011;
+    --warn-fg: #f5d878;
+    --danger-bg: #3d221e;
+    --danger-fg: #f4b0a6;
+    --info-bg: #0f3142;
+    --info-fg: #8fd6f5;
+    --neutral-bg: #1f3228;
+    --neutral-fg: #c3d3c9;
+    --route-bg: #3a3011;
+    --route-fg: #f5d878;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+    --lift: 0 12px 30px rgba(0, 0, 0, 0.5);
+    --ring: 0 0 0 3px rgba(60, 207, 127, 0.32);
+    --side-bg: #06100b;
+    --side-bg-2: #0b1d14;
+    --series-1: #3ccf7f;
+    --series-2: #f5c542;
+    --series-3: #4cc0ef;
+    --series-4: #b9c8bf;
+    --series-5: #ee8a63;
+    --chart-grid: #243a2f;
+  }
+}
+:root[data-theme='dark'] {
+  --bg: #09130e;
+  --bg-accent: radial-gradient(900px 420px at -10% 0%, rgba(30, 181, 58, 0.1), transparent 55%);
+  --surface: #111d17;
+  --surface-2: #17271f;
+  --surface-3: #1f3228;
+  --border: #243a2f;
+  --border-strong: #34503f;
+  --text: #e7f0ea;
+  --muted: #9db3a6;
+  --primary: #3ccf7f;
+  --primary-hover: #63dc97;
+  --primary-soft: #143826;
+  --primary-text: #04140b;
+  --accent: #f5c542;
+  --gold-soft: #3a3011;
+  --gold-ink: #f5d878;
+  --blue-soft: #0f3142;
+  --blue-ink: #8fd6f5;
+  --danger: #f08a7e;
+  --success-bg: #143826;
+  --success-fg: #8fe0b2;
+  --warn-bg: #3a3011;
+  --warn-fg: #f5d878;
+  --danger-bg: #3d221e;
+  --danger-fg: #f4b0a6;
+  --info-bg: #0f3142;
+  --info-fg: #8fd6f5;
+  --neutral-bg: #1f3228;
+  --neutral-fg: #c3d3c9;
+  --route-bg: #3a3011;
+  --route-fg: #f5d878;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --lift: 0 12px 30px rgba(0, 0, 0, 0.5);
+  --ring: 0 0 0 3px rgba(60, 207, 127, 0.32);
+  --side-bg: #06100b;
+  --side-bg-2: #0b1d14;
+  --series-1: #3ccf7f;
+  --series-2: #f5c542;
+  --series-3: #4cc0ef;
+  --series-4: #b9c8bf;
+  --series-5: #ee8a63;
+  --chart-grid: #243a2f;
+}
+
+html body { background: var(--bg-accent), var(--bg); background-attachment: fixed; }
+
+/* ---- Brand mark: green tile, a light green heartbeat ---- */
+html .brand-mark rect,
+html .sidebar svg.brand-mark rect,
+html .login-hero svg.brand-mark rect { fill: var(--tz-green-deep); }
+html .brand-mark path { stroke: #9ff0c1; }
+
+/* ---- Sidebar: near-black green, a green marker on the open page ---- */
+html .shell { background: linear-gradient(90deg, var(--side-bg-2) 264px, transparent 264px); }
+html .sidebar {
+  background: radial-gradient(420px 260px at 0% 0%, rgba(30, 181, 58, 0.16), transparent 70%),
+    linear-gradient(185deg, #0f2a1d 0%, var(--side-bg) 52%, #07130d 100%);
+}
+html .shell .nav-item.active,
+html .nav-item.active {
+  background: linear-gradient(90deg, rgba(30, 181, 58, 0.26), rgba(30, 181, 58, 0.06));
+  box-shadow: inset 0 0 0 1px rgba(30, 181, 58, 0.16);
+  color: #fff;
+}
+html .nav-item.active::before { background: var(--tz-mint); box-shadow: 0 0 10px rgba(60, 207, 127, 0.55); }
+html .nav-item.active .icon { color: var(--tz-mint); }
+html .nav-item:hover { background: rgba(255, 255, 255, 0.07); }
+html .nav-count { background: var(--tz-mint); color: #04140b; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.25); }
+html .nav-group-label { color: #8fb39d; opacity: 0.9; }
+html .nav-search input:focus { border-color: var(--tz-mint); box-shadow: 0 0 0 3px rgba(60, 207, 127, 0.22); }
+
+/* ---- Top bar and the signed-in person ---- */
+html .shell .user-chip .avatar,
+html .avatar { background: linear-gradient(135deg, var(--tz-green-deep), #0a5a33); box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--tz-mint); }
+html .topbar { border-bottom: 1px solid var(--border); }
+
+/* ---- Buttons and focus ---- */
+html .btn-primary {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 86%, #fff), var(--primary));
+  color: var(--primary-text);
+  box-shadow: 0 1px 2px rgba(8, 80, 44, 0.3), 0 6px 16px rgba(8, 80, 44, 0.18);
+}
+html .btn-primary:hover:not(:disabled) { background: var(--primary-hover); box-shadow: 0 2px 4px rgba(8, 80, 44, 0.3), 0 10px 22px rgba(8, 80, 44, 0.22); }
+html .btn-secondary:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+html :focus-visible { outline-color: var(--primary); }
+html .eyebrow { color: var(--primary); }
+html .pill-toggle [aria-pressed='true'], html .pill-toggle .is-active { background: var(--primary); color: var(--primary-text); }
+
+/* ---- Sign-in: deep green to black ---- */
+html main.login .login-hero,
+html .login-hero {
+  background:
+    radial-gradient(620px 460px at 0% 100%, rgba(30, 181, 58, 0.32), transparent 62%),
+    linear-gradient(150deg, #0d3b25 0%, #0a2a1b 52%, #07160f 100%);
+}
+html main.login .hero-accent,
+html .hero-accent { color: transparent; background: linear-gradient(90deg, #3ccf7f, #9ff0c1); -webkit-background-clip: text; background-clip: text; }
+html main.login .hero-lead { color: #d4e6da; }
+html main.login .hero-pipeline { background: rgba(255, 255, 255, 0.06); border-color: rgba(60, 207, 127, 0.18); }
+html main.login .hero-step,
+html main.login .hero-pipeline li:last-child .hero-step { background: var(--tz-green); color: #04160b; box-shadow: 0 0 0 4px rgba(30, 181, 58, 0.18); }
+html main.login .hero-step-sw { color: #b6d6c1; }
+html .login-card { position: relative; overflow: hidden; }
+
+/* ---- Home: the greeting in deep green ---- */
+html .home-hero {
+  background:
+    radial-gradient(520px 300px at 94% -24%, rgba(60, 207, 127, 0.22), transparent 70%),
+    linear-gradient(135deg, #0d6b3c 0%, #0a4e2f 52%, #082f22 100%);
+  box-shadow: 0 18px 44px rgba(8, 47, 34, 0.3);
+}
+html .home-date { color: #bfe3cc; }
+html .home-lead, html .home .home-lead { color: #def0e4; }
+html .home-month { border-color: rgba(60, 207, 127, 0.24); background: rgba(255, 255, 255, 0.08); }
+html .home-month-bar span { background: linear-gradient(90deg, var(--tz-green), #9ff0c1); }
+html .home-cta { background: var(--tz-mint); color: #04140b; border-color: transparent; font-weight: 700; }
+html .home-cta:hover:not(:disabled) { background: #63dc97; color: #04140b; }
+
+/* ---- Figures: each tile carries its tone on top, its icon tinted to match ---- */
+html .kpi { border-top-width: 3px; }
+html .kpi-icon { background: var(--primary-soft); color: var(--primary); }
+html .kpi-info, html .kpi.is-info { border-top-color: var(--tz-blue); }
+html .kpi-info .kpi-icon, html .kpi.is-info .kpi-icon { background: var(--blue-soft); color: var(--blue-ink); }
+html .kpi-warn .kpi-icon { background: var(--gold-soft); color: var(--gold-ink); }
+html .kpi-warn { border-top-color: var(--tz-gold-deep); }
+html .stat { border-left-color: var(--primary); }
+
+/* ---- Tables, badges and section headers ---- */
+html thead th { background: var(--surface-2); color: var(--muted); }
+html tbody tr[tabindex]:hover, html tbody tr[role='button']:hover { background: var(--primary-soft); }
+html .badge-warn { background: var(--gold-soft); color: var(--gold-ink); }
+html .badge-info { background: var(--info-bg); color: var(--info-fg); }
+html .page-header .page-icon, html .page-icon { background: var(--primary-soft); color: var(--primary); }
+
+@media (max-width: 960px) {
+  html .shell { background: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html .nav-item:hover { transform: none; }
+}
+
+/* A figure is never cut short ("TZS 15…"): it wraps between words when its tile is narrow. */
+html .kpi-value { white-space: normal; overflow: visible; text-overflow: clip; }

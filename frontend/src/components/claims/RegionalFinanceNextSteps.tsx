@@ -2,7 +2,7 @@ import React from 'react';
 import { useAuth } from '../../AuthContext';
 import { navigate } from '../../nav';
 
-/** Regional Finance works from RM-approved records, not the legacy manual claim form. */
+/** Regional Finance works from approved records, not the legacy manual claim form. */
 export function RegionalFinanceNextSteps() {
   const { lang } = useAuth();
   const sw = lang === 'sw';
@@ -11,7 +11,7 @@ export function RegionalFinanceNextSteps() {
       <div>
         <h2>{sw ? 'Eneo la kazi la Fedha ya Mkoa' : 'Regional Finance workspace'}</h2>
         <p className="muted small">
-          {sw ? 'Anza na kazi iliyoidhinishwa na RM katika mkoa wako.' : 'Start with RM-approved work in your assigned region.'}
+          {sw ? 'Anza na kazi iliyoidhinishwa katika mkoa wako.' : 'Start with approved work in your assigned region.'}
         </p>
       </div>
       <div className="stack">

@@ -56,10 +56,10 @@ def test_secondary_facility_requires_name_and_still_requires_gps(api, period, ne
     assert saved["entries"][0]["measures"] == payload["measures"]
 
 
-def test_only_weekend_clinic_service_and_separate_payroll_record(api, period, new_workflow):
+def test_weekend_clinic_and_secondary_facility_services_and_separate_payroll_record(api, period, new_workflow):
     service = api.post("/worklogs", "clerk1", {"period_id": period["id"], "work_type": "SERVICES"})
-    assert len(service["cadre"]["activities"]) == 1
-    activity = service["cadre"]["activities"][0]
+    assert {a["key"] for a in service["cadre"]["activities"]} == {"data_clerk_weekend_clinic", "data_clerk_secondary_facility_service"}
+    activity = next(a for a in service["cadre"]["activities"] if a["key"] == "data_clerk_weekend_clinic")
     assert activity["key"] == "data_clerk_weekend_clinic"
     assert activity["label_en"] == "Weekend Clinics"
     assert activity["fields"] == []

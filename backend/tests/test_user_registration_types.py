@@ -2,6 +2,7 @@
 import itertools
 
 from backend.models import Staff, User, UserReviewCadre, UserScope
+from .conftest import national_id
 from .test_bank_only_cadres import _staff
 
 _phones = itertools.count(301)
@@ -18,7 +19,7 @@ def office(api, username, roles, scopes=(), cadres=(), expect=None):
 
 
 def test_a_provider_is_registered_with_tin_bank_name_and_account_number(api, db):
-    base = _staff(api, "CHW", phone(), "MOBILE_WALLET")
+    base = {**_staff(api, "CHW", phone(), "MOBILE_WALLET"), **national_id()}
     for path, payload in (("/staff", base), ("/admin/users", {"username": "no.bank", "password": "Strong-pass-123",
                                                                "full_name": "No Bank", "phone": base["verified_phone"],
                                                                "roles": ["PROVIDER"], "staff": base})):

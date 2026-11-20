@@ -80,7 +80,7 @@ export interface Me {
   cadre: Cadre | null;
   organizations: { id: number; name: string; type: string }[];
   scopes: UserScope[];
-  client_settings: { gps_capture_events: string[]; otp_length: number; provider_otp_required: boolean; gps_required_on_submit: boolean };
+  client_settings: { gps_capture_events: string[]; otp_length: number; provider_otp_required: boolean; gps_required_on_submit: boolean; rm_approval_required?: boolean; payroll_time_only?: boolean };
 }
 
 export interface PublicHoliday {
@@ -773,6 +773,9 @@ export interface StaffDetail {
   verified_phone: string;
   /** Taxpayer Identification Number, 123-456-789; masked for people who do not see contact details. */
   tin_number?: string | null;
+  /** National ID (NIDA) or Voter ID; the number is masked for people who do not see contact details. */
+  id_type?: 'NIDA' | 'VOTER' | null;
+  id_number?: string | null;
   occupation: string | null;
   occupation_other: string | null;
   /** HCP only: GOVERNMENT or PROJECT facility staff. */
@@ -928,6 +931,7 @@ export interface DashboardData {
   staff: { total: number; active: number; exited: number; mid_period_exits: number; rotations_in_period: number };
   work_logs: {
     by_status: Record<string, number>;
+    by_status_type?: Record<string, Record<string, number>>;
     reminder_after_hours: number;
     queues: { status: string; owner: string; count: number; max_age_hours: number; avg_age_hours: number; over_48h: number; over_threshold: number }[];
     completeness: { active_staff: number; with_log: number; missing: number | null };

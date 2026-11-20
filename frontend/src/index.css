@@ -1202,19 +1202,17 @@ details > summary { cursor: pointer; font-weight: 600; }
   box-shadow: var(--shadow);
 }
 .partner-bar img { display: block; width: auto; object-fit: contain; }
-/* The national emblem (nembo) and FHI 360 lead; the US mark is the smallest of the three. */
-.partner-nembo { height: 56px; max-width: 26%; }
-.partner-usa { height: 22px; max-width: 40%; }
-.partner-fhi { height: 56px; max-width: 26%; }
+/* FHI 360 leads; the US mark is the smaller of the two. */
+.partner-usa { height: 26px; max-width: 55%; }
+.partner-fhi { height: 56px; max-width: 35%; }
 .partner-divider { flex: none; width: 1px; align-self: stretch; background: #d5dbe4; }
 @media (max-width: 400px) {
   .partner-bar { gap: 0.6rem; padding: 0.75rem 0.9rem; }
-  .partner-nembo { height: 46px; }
-  .partner-usa { height: 18px; }
+  .partner-usa { height: 20px; }
   .partner-fhi { height: 46px; }
 }
-/* The national emblem (nembo) beside the product name in the side menu. */
-.brand-nembo { display: inline-block; height: 1.6em; width: auto; margin-left: 0.4em; vertical-align: middle; }
+/* The FHI 360 logo beside the product name in the side menu, on its own white tile so it reads on the dark menu. */
+.brand-fhi { display: inline-block; height: 1.9em; width: auto; margin-left: 0.5em; vertical-align: middle; background: #ffffff; border-radius: 6px; padding: 2px 5px; }
 
 /* Cadre picker on the user form */
 .choice-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.5rem; }

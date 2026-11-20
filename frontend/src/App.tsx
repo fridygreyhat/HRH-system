@@ -278,7 +278,7 @@ function App() {
           <div>
             <div className="brand-name">
               HRH Pay
-              <img src={`${process.env.PUBLIC_URL}/brand/tanzania-nembo.png`} alt="Nembo ya Taifa" title="Nembo ya Taifa" className="brand-nembo" />
+              <img src={`${process.env.PUBLIC_URL}/brand/fhi360-logo.png`} alt="FHI 360" title="FHI 360" className="brand-fhi" />
             </div>
             <div className="brand-sub">{lang === 'sw' ? 'Kazi · Madai · Malipo' : 'Work logs · Claims · Payroll'}</div>
           </div>

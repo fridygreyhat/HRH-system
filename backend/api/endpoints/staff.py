@@ -12,6 +12,7 @@ from ...core import audit as system_audit
 from ...core.roles import CENTRAL_ADMIN, CSO_FINANCE, FHI360_FINANCE, PROVIDER, REGIONAL_ADMIN, SYSTEM_ADMIN
 from ...core.security import CurrentUser, get_current_user, hash_password, require_roles
 from ...core.phones import same_number, tz_mobile
+from ...core.national_id import mask_id
 from ...core.tin import mask_tin, tin_number
 from ...core.bank import bank_text
 from ...core.serialize import mask_payment_fields, mask_phone, to_dict
@@ -59,6 +60,9 @@ class StaffCreate(BaseModel):
     @classmethod
     def valid_tin(cls, value):
         return tin_number(value)
+    # Identity document, required at registration: NIDA (National ID) or VOTER (Voter ID), with its number.
+    id_type: Optional[str] = Field(default=None, max_length=20)
+    id_number: Optional[str] = Field(default=None, max_length=40)
     # Payroll is paid by the CSO into this account; Services go to the verified phone's mobile wallet.
     bank_name: Optional[str] = Field(default=None, max_length=100)
     bank_account_number: Optional[str] = Field(default=None, max_length=40)
@@ -299,6 +303,7 @@ def new_staff_record(db: Session, current: CurrentUser, body: StaffCreate) -> St
     assignment = _assignment_columns(db, body.assignment)
     if db.query(Staff).filter(Staff.verified_phone.in_(same_number(body.verified_phone))).first():
         raise HTTPException(status_code=409, detail="A staff member with this phone already exists. Use a rotation instead of creating a second identity.")
+    body.id_type, body.id_number = reg.checked_identity(db, body.id_type, body.id_number, None, required=True)
     missing = [label for label, value in (("TIN", body.tin_number), ("bank name", body.bank_name),
                                           ("bank account number", body.bank_account_number)) if not value]
     if missing and body.facility_staff_type != "GOVERNMENT":  # Government facility staff are paid for Services only
@@ -360,6 +365,7 @@ def get_staff(staff_id: int, db: Session = Depends(get_db), current: CurrentUser
         "cadre": db.get(Cadre, staff.cadre_id).code,
         "verified_phone": staff.verified_phone if _sees_contact(current) or current.staff_id == staff.id else mask_phone(staff.verified_phone),
         "tin_number": staff.tin_number if _sees_contact(current) or current.staff_id == staff.id else mask_tin(staff.tin_number),
+        "id_number": staff.id_number if _sees_contact(current) or current.staff_id == staff.id else mask_id(staff.id_number),
         "assignments": [{**assignment_out(db, a), "end_reason": a.end_reason, "is_primary": a.is_primary} for a in assignments],
         "username": db.get(User, staff.user_id).username if staff.user_id else None,
     }

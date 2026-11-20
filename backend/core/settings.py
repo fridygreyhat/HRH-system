@@ -8,6 +8,11 @@ from ..models import SystemSetting
 DEFAULTS: dict[str, Any] = {
     # Provider SMS confirmation is disabled by request; CTC goes to technical review.
     "provider_otp_required": False,
+    # RM approval is removed by request: the technical review is the last approval before Regional Finance (Services)
+    # or the monthly Payroll report. Switch it back on to restore the RM step for new technical approvals.
+    "rm_approval_required": False,
+    # Payroll days record the time worked only (start and end time): no activity to choose and no indicators to count.
+    "payroll_time_only": True,
     "otp_length": 4,
     "otp_ttl_minutes": 10,
     "otp_max_attempts": 5,
@@ -32,6 +37,8 @@ DEFAULTS: dict[str, Any] = {
     "max_weekly_hours": 45.0,
     "saturday_min_hours": 4.0,
     "saturday_max_hours": 6.0,
+    # Services are extra work beside the payroll day, so a Services day is shorter (weekdays and Saturdays).
+    "services_max_daily_hours": 4.0,
     "backdate_restriction_enabled": False,
     "backdate_grace_hours": 72,
     "sms_max_attempts": 5,
@@ -50,6 +57,8 @@ DEFAULTS: dict[str, Any] = {
 
 SETTING_DESCRIPTIONS = {
     "provider_otp_required": "Provider confirms the verified log with an SMS code (off: CTC verification goes straight to technical review)",
+    "rm_approval_required": "The Regional Manager (RM) approves each timesheet after technical review (off: technical review approves it)",
+    "payroll_time_only": "Payroll days record only the start and end time, with no activity or indicators (off: each cadre's daily form)",
     "otp_length": "Digits in the provider confirmation code",
     "otp_ttl_minutes": "Minutes before a confirmation code expires",
     "otp_max_attempts": "Wrong-code attempts allowed per code",
@@ -65,10 +74,11 @@ SETTING_DESCRIPTIONS = {
     "sms_send_until_hour": "Latest local hour for reviewer summaries and reminders",
     "submit_reminder_days": "Days of the month when providers who have not submitted get a reminder (e.g. 23, 25)",
     "submit_reminder_hour": "Local hour for the provider submission reminder",
-    "max_daily_hours": "Maximum hours per weekday for Services; Payroll is separately capped at eight hours",
+    "max_daily_hours": "Maximum hours per weekday; Services is also held to its own daily maximum, and Payroll to eight hours",
     "max_weekly_hours": "Monday–Friday hours per work type; Payroll is separately capped at 40, and Saturday clinics are counted separately",
     "saturday_min_hours": "Minimum total hours for a Saturday weekend clinic",
     "saturday_max_hours": "Maximum total hours for a Saturday weekend clinic; Sunday work is not allowed",
+    "services_max_daily_hours": "Maximum hours in one day on a Services timesheet, weekdays and Saturdays (Payroll keeps its own eight-hour day)",
     "backdate_restriction_enabled": "Enforce the missed-date limit for CHW, HCP and Data Clerk entries (temporarily disabled)",
     "backdate_grace_hours": "Hours allowed without Technical Officer permission when the backdate restriction is enabled (72 = three days)",
     "sms_max_attempts": "Delivery attempts before an SMS is marked failed",

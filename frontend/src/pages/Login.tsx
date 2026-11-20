@@ -13,8 +13,8 @@ const STAGES: { en: string; sw: string }[] = [
   { en: 'Provider logs work', sw: 'Mtoa huduma anarekodi kazi' },
   { en: 'CTC or CSO Technical', sw: 'Uhakiki wa CTC au CSO' },
   { en: 'Technical review', sw: 'Mapitio ya kitaalamu' },
-  { en: 'RM approves', sw: 'RM anaidhinisha' },
-  { en: 'Finance and payment', sw: 'Fedha na malipo' },
+  { en: 'Regional Finance', sw: 'Fedha ya Mkoa' },
+  { en: 'Payment by FHI360 or CSO', sw: 'Malipo na FHI360 au CSO' },
 ];
 
 export function Login() {
@@ -93,13 +93,6 @@ export function Login() {
             {busy ? 'Signing in… / Inaingia…' : 'Sign in / Ingia'}
           </button>
           <div className="partner-bar" role="group" aria-label="Programme partners">
-            <img
-              src={`${process.env.PUBLIC_URL}/brand/tanzania-nembo.png`}
-              alt="Nembo ya Taifa, United Republic of Tanzania"
-              title="Nembo ya Taifa · Coat of arms of Tanzania (drawing: FischX, CC BY-SA 3.0)"
-              className="partner-nembo"
-            />
-            <span className="partner-divider" aria-hidden="true" />
             <img src={`${process.env.PUBLIC_URL}/brand/usa-mark.png`} alt="United States of America" className="partner-usa" />
             <span className="partner-divider" aria-hidden="true" />
             <img src={`${process.env.PUBLIC_URL}/brand/fhi360-logo.png`} alt="FHI 360" className="partner-fhi" />

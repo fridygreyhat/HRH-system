@@ -24,7 +24,9 @@ test('the Services summary has name, region, facility, days, total of all servic
   expect(html).toContain('Services payments - October 2026');
   expect(html).toContain('Venue: Iringa and Njombe');
   expect(cellsOf(html).slice(0, 9)).toEqual(['1', 'Asha Juma', 'CHW', 'Iringa', 'Kidamali', '10', 'Index testing outreach (10 days)', '400,000', '0700000001']);
-  expect(cellsOf(html).slice(9)).toEqual(['', 'TOTAL', '', '', '', '', '', '400,000', '']);
+  expect(cellsOf(html).slice(9)).toEqual(['', '10', '', '400,000', '']);  // the total row: its days and amount
+  expect(html).toContain('TOTAL (1 person)');
+  expect(html).not.toContain('Subtotal');  // one facility: no subtotals
 });
 
 test('the Payroll form shows salary and bank, and says what is missing', () => {
@@ -40,4 +42,33 @@ test('the Payroll form shows salary and bank, and says what is missing', () => {
   expect(cells.slice(0, 10)).toEqual(['1', 'Asha Juma', 'CHW', 'Iringa', 'Kidamali', '750,000', '22', '750,000', 'NMB', '•••• 6789']);
   expect(cells.slice(10, 20)).toEqual(['2', 'Juma Ali', 'HCP', 'Iringa', 'Kidamali', 'Missing', '20', '', 'Missing', 'Missing']);
   expect(html).toContain('is-payroll');
+});
+
+test('a long Services summary shows one service per line with its days', () => {
+  const lines = [['Index testing outreach', 4], ['SNS-RNR testing outreach', 3], ['TB contact tracing', 2], ['Special and weekend clinics', 2],
+    ['Community TB active case finding', 1], ['Outreach services', 1], ['Weekend clinic data entry', 1]];
+  const form = {
+    kind: 'SERVICES', month: '2026-10', activity: 'Services payments - October 2026', venue: 'Njombe', columns: SERVICES, totals: { TZS: '140000' },
+    rows: [{ sn: 1, name: 'Janeth Mandepu', cadre: 'Health Care Provider', region: 'Njombe', facility: 'Kifanya Dispensary', days: 14,
+      summary: lines.map(([s, d]) => `${s} (${d} ${d === 1 ? 'day' : 'days'})`).join('\n'), summary_lines: lines,
+      subtotal: '140000', total: '140000', currency: 'TZS', mobile: '+255710000003' }],
+  };
+  const html = renderToStaticMarkup(<PaymentFormView form={form} />);
+  const items = [...html.matchAll(/<li>(.*?)<\/li>/g)].map((m) => m[1].replace(/<[^>]+>/g, ' ').trim().replace(/\s+/g, ' '));
+  expect(items).toHaveLength(7);
+  expect(items[0]).toBe('Index testing outreach 4 days');
+  expect(items[6]).toBe('Weekend clinic data entry 1 day');
+});
+
+test('many facilities: a summary by facility, then a subtotal after each one', () => {
+  const row = (sn, facility, days) => ({ sn, name: `Person ${sn}`, cadre: 'CHW', region: 'Njombe', facility, days, subtotal: String(days * 20000),
+    total: String(days * 20000), currency: 'TZS', mobile: '0700', summary_lines: [['Outreach services', days]] });
+  const form = { kind: 'SERVICES', month: '2026-10', activity: 'Services payments - October 2026', venue: 'Njombe', columns: SERVICES,
+    rows: [row(1, 'Kifanya Dispensary', 3), row(2, 'Kifanya Dispensary', 2), row(3, 'Ihanga Dispensary', 4)], totals: { TZS: '180000' } };
+  const html = renderToStaticMarkup(<PaymentFormView form={form} />);
+  expect(html).toContain('Summary by health facility');
+  expect(html).toContain('Subtotal: Kifanya Dispensary, Njombe (2 people)');
+  expect(html).toContain('Subtotal: Ihanga Dispensary, Njombe (1 person)');
+  expect(html).toContain('TOTAL (3 people)');
+  expect(html.indexOf('Subtotal: Kifanya')).toBeLessThan(html.indexOf('Person 3'));
 });
